@@ -2,6 +2,13 @@
   padding-bottom: 160rpx;
 }
 
+/* 本月账单 sheet 打开期间,临时锁住 page 自身滚动
+   防止 scroll-view 边界手势穿透,让外层 page 跟着滑动 */
+.page.page-locked {
+  overflow: hidden;
+  height: 100vh;
+}
+
 .month-total {
   font-size: 68rpx;
   font-weight: 800;
@@ -373,6 +380,27 @@
   color: var(--gold);
 }
 
+/* 固定支出「每月自动落账」开关行 */
+.recur-auto {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8rpx;
+  /* 避免按钮按下态被外层 .recur-row:active 干扰 */
+  pointer-events: auto;
+}
+
+.recur-auto-label {
+  font-size: 22rpx;
+  color: var(--text-sub);
+}
+
+/* switch 缩放:原生的 64rpx 偏大,缩到 56rpx 配合小字 label */
+.recur-auto switch {
+  transform: scale(0.85);
+  transform-origin: right center;
+}
+
 /* ---------- 月度总览卡「查看本月账单」入口 ---------- */
 .statement-link {
   margin-top: 18rpx;
@@ -386,8 +414,33 @@
 
 /* ---------- 本月账单 sheet ---------- */
 .statement-sheet {
-  /* 让 sheet 更高,容纳饼图 + 分类明细 + 解读 */
-  max-height: 90vh;
+  /* 改 flex 列布局:title 在上 / scroll-view 占中间 / 底部按钮固定 */
+  display: flex;
+  flex-direction: column;
+  /* 高度收一点,留 18vh 给遮罩外的视觉呼吸 */
+  max-height: 82vh;
+  /* 关闭 sheet 自身滚动,交给内部 scroll-view */
+  overflow: hidden;
+}
+
+/* 内容滚动区:占满中间,只滚这里 */
+.statement-scroll {
+  flex: 1;
+  /* flex 子项允许缩小到内容以下,scroll-view 才能拿到剩余高度 */
+  min-height: 0;
+  /* 抵消全局 .sheet 的左右 padding,内部内容再靠 32rpx 内 padding 居中 */
+  margin: 0 -32rpx;
+  padding: 0 32rpx;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 底部按钮固定不跟随内容滚动 */
+.statement-bottom {
+  flex-shrink: 0;
+  margin-top: 16rpx;
+  padding-top: 16rpx;
+  border-top: 1rpx solid var(--border-light);
 }
 
 .stmt-row {
@@ -477,16 +530,7 @@
 .stmt-cmp-pct.flat { color: var(--text-mute); }
 .stmt-cmp-pct.muted { color: var(--text-mute); font-weight: 400; }
 
-.stmt-pie-wrap {
-  display: flex;
-  justify-content: center;
-  margin: 20rpx 0 24rpx;
-}
-
-.stmt-pie-canvas {
-  width: 340rpx;
-  height: 340rpx;
-}
+/* 饼图已删除 — 原 .stmt-pie-wrap / .stmt-pie-canvas 样式一并清理 */
 
 .stmt-cats {
   margin-bottom: 24rpx;
@@ -595,4 +639,344 @@
   line-height: 1.65;
   white-space: pre-line;
   color: rgba(255, 255, 255, 0.92);
+}
+
+.stmt-insight-loading {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.stmt-insight-spinner {
+  width: 28rpx;
+  height: 28rpx;
+  border: 3rpx solid rgba(255, 255, 255, 0.28);
+  border-top-color: var(--gold);
+  border-radius: 50%;
+  animation: stmt-spin 0.9s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes stmt-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---------- 账本君对话问答 ---------- */
+.stmt-chat {
+  margin-top: 16rpx;
+  border-top: 1rpx solid rgba(255, 255, 255, 0.14);
+  padding-top: 16rpx;
+}
+
+.stmt-chat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 24rpx;
+  color: rgba(255, 255, 255, 0.78);
+  margin-bottom: 12rpx;
+}
+
+.stmt-chat-close {
+  font-size: 22rpx;
+  color: var(--gold);
+  padding: 4rpx 14rpx;
+  border: 1rpx solid var(--gold);
+  border-radius: 999rpx;
+}
+
+.stmt-chat-close:active {
+  opacity: 0.8;
+}
+
+.stmt-chat-history {
+  max-height: 480rpx;
+  min-height: 120rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+  margin-bottom: 14rpx;
+  padding: 4rpx 0;
+}
+
+.stmt-chat-msg {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  /* 每条消息之间留间距(parent 的 gap 在某些情况下被覆盖,这里双保险) */
+  margin-bottom: 18rpx;
+}
+.stmt-chat-msg:last-child {
+  margin-bottom: 0;
+}
+
+.stmt-chat-msg.mine {
+  justify-content: flex-end;
+}
+
+.stmt-chat-msg.his {
+  justify-content: flex-start;
+}
+
+.stmt-chat-bubble {
+  display: inline-block;
+  max-width: 80%;
+  padding: 12rpx 18rpx;
+  border-radius: 14rpx;
+  font-size: 26rpx;
+  line-height: 1.5;
+  white-space: pre-line;
+  word-break: break-word;
+}
+
+.stmt-chat-msg.mine .stmt-chat-bubble {
+  background: var(--gold);
+  color: var(--navy-900);
+  border-bottom-right-radius: 4rpx;
+}
+
+.stmt-chat-msg.his .stmt-chat-bubble {
+  background: rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.92);
+  border-bottom-left-radius: 4rpx;
+}
+
+.stmt-chat-msg.his.loading {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 24rpx;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.stmt-chat-input-row {
+  display: flex;
+  gap: 12rpx;
+  align-items: center;
+}
+
+.stmt-chat-input {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 26rpx;
+  padding: 16rpx 20rpx;
+  border-radius: 12rpx;
+  min-height: 40rpx;
+}
+
+.stmt-chat-input::placeholder {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.stmt-chat-send {
+  background: var(--gold);
+  color: var(--navy-900);
+  font-size: 24rpx;
+  font-weight: 700;
+  padding: 14rpx 24rpx;
+  border-radius: 999rpx;
+  flex-shrink: 0;
+}
+
+.stmt-chat-send:active {
+  opacity: 0.85;
+}
+
+.stmt-chat-send.disabled {
+  background: rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.stmt-chat-error {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #FFD7A8;
+  text-align: center;
+}
+
+/* ---------- 消费日历热力图 ---------- */
+.heatmap-card {
+  /* 复用 .card 样式 */
+}
+
+.heatmap-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12rpx;
+}
+
+.heatmap-card-titles {
+  flex: 1;
+  min-width: 0;
+}
+
+.heatmap-card-sub {
+  font-size: 22rpx;
+  color: var(--text-sub);
+  margin-top: 4rpx;
+}
+
+.heatmap-card-arrow {
+  font-size: 40rpx;
+  color: var(--text-mute);
+  line-height: 1;
+  padding-left: 16rpx;
+}
+
+.heatmap-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4rpx;
+  margin: 12rpx 0 14rpx;
+}
+
+.heatmap-mini-cell {
+  width: 28rpx;
+  height: 28rpx;
+  border-radius: 5rpx;
+  background: var(--heat-0);
+}
+
+.heatmap-legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6rpx;
+}
+
+.legend-text {
+  font-size: 20rpx;
+  color: var(--text-mute);
+}
+
+.legend-cell {
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 3rpx;
+  background: var(--heat-0);
+}
+
+/* 完整 sheet */
+.heatmap-tabs {
+  display: flex;
+  gap: 12rpx;
+  margin-bottom: 20rpx;
+  justify-content: center;
+}
+
+.heatmap-tab {
+  padding: 10rpx 24rpx;
+  font-size: 24rpx;
+  color: var(--text-sub);
+  background: var(--chip-bg);
+  border-radius: 999rpx;
+}
+
+.heatmap-tab.active {
+  background: linear-gradient(135deg, var(--navy-700), var(--navy-900));
+  color: #fff;
+  font-weight: 600;
+}
+
+.heatmap-scroll {
+  /* 横滚以支持 52 周 */
+  white-space: nowrap;
+  padding-bottom: 12rpx;
+}
+
+.heatmap-grid-wrap {
+  display: inline-block;
+  padding-left: 8rpx;
+}
+
+.heatmap-months {
+  position: relative;
+  height: 28rpx;
+  font-size: 18rpx;
+  color: var(--text-mute);
+  margin-bottom: 6rpx;
+}
+
+.heatmap-month-label {
+  position: absolute;
+  top: 0;
+}
+
+.heatmap-grid {
+  display: flex;
+  gap: 4rpx;
+  /* 不设 width:100% — 内容自然撑出,scroll-view 决定是否横滚 */
+}
+
+.heatmap-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+  /* flex:1 让 13 列时平分 grid 宽度 → 自然撑满弹框;min-width 48rpx 兜底
+     26/52 列时不被压太扁,触发横滚 */
+  flex: 1 1 0;
+  min-width: 48rpx;
+}
+
+.heatmap-cell {
+  /* width 跟 col 平分,height 固定 48rpx 保持色块大小一致(矩形也可,不强求正方形) */
+  width: 100%;
+  height: 48rpx;
+  border-radius: 8rpx;
+  background: var(--heat-0);
+}
+
+.heatmap-cell.heat-1 { background: var(--heat-1); }
+.heatmap-cell.heat-2 { background: var(--heat-2); }
+.heatmap-cell.heat-3 { background: var(--heat-3); }
+.heatmap-cell.heat-4 { background: var(--heat-4); }
+
+.heatmap-cell.today {
+  outline: 2rpx solid var(--gold);
+  outline-offset: -2rpx;
+}
+
+.heatmap-cell:active {
+  transform: scale(0.92);
+}
+
+.heatmap-stats {
+  display: flex;
+  background: var(--input-bg);
+  border-radius: 16rpx;
+  padding: 20rpx 0;
+  margin: 16rpx 0;
+}
+
+.hs-item {
+  flex: 1;
+  text-align: center;
+}
+
+.hs-num {
+  font-size: 30rpx;
+  font-weight: 800;
+  font-family: "DIN Alternate", sans-serif;
+  color: var(--text);
+}
+
+.hs-label {
+  font-size: 20rpx;
+  color: var(--text-sub);
+  margin-top: 4rpx;
+}
+
+/* 单日 sheet */
+.heatmap-day-sheet {
+  max-height: 70vh;
+}
+
+.heatmap-day-total {
+  text-align: center;
+  font-size: 24rpx;
+  color: var(--text-sub);
+  margin-bottom: 16rpx;
 }

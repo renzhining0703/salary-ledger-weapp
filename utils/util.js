@@ -26,6 +26,26 @@ function daysBetween(aStr, bStr) {
   return Math.round((parseDate(bStr) - parseDate(aStr)) / 86400000)
 }
 
+/**
+ * 起始到结束的每日数组(含两端),返回 ['YYYY-MM-DD', ...]
+ * 跨年也安全(直接推进 Date)
+ */
+function eachDay(startStr, endStr) {
+  const out = []
+  const d = parseDate(startStr)
+  const end = parseDate(endStr)
+  while (d <= end) {
+    out.push(fmtDate(d))
+    d.setDate(d.getDate() + 1)
+  }
+  return out
+}
+
+/** 0=周日, 1=周一 ... 6=周六 */
+function getWeekday(dateStr) {
+  return parseDate(dateStr).getDay()
+}
+
 /** 某年某月最后一天 */
 function lastDayOfMonth(y, m) {
   return new Date(y, m + 1, 0).getDate()
@@ -251,6 +271,8 @@ module.exports = {
   parseDate,
   todayStr,
   daysBetween,
+  eachDay,
+  getWeekday,
   lastDayOfMonth,
   dayInMonth,
   calcDueDate,

@@ -48,6 +48,12 @@ page {
   --tint-danger-22: rgba(201, 64, 64, 0.22);
   --tint-text-sub-12: rgba(151, 163, 178, 0.12);
   --tint-danger-strong: #F5DFDF;
+  /* 消费日历热力图色阶(5 档:无→深) */
+  --heat-0: #EDF0F4;
+  --heat-1: #DDE6F0;
+  --heat-2: #9FB6D1;
+  --heat-3: #4A6B8A;
+  --heat-4: #C94040;
 
   background: var(--bg);
   color: var(--text);
@@ -109,6 +115,12 @@ page {
     --tint-danger-22: rgba(229, 88, 88, 0.32);
     --tint-text-sub-12: rgba(168, 180, 197, 0.16);
     --tint-danger-strong: #4A2020;
+    /* 深色模式热力图色阶 */
+    --heat-0: #2A3441;
+    --heat-1: #3A4F66;
+    --heat-2: #6B89A8;
+    --heat-3: #B5CCDF;
+    --heat-4: #E55858;
   }
 }
 

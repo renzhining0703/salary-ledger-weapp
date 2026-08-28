@@ -3,6 +3,107 @@ const util = require('../../utils/util')
 const dbApi = require('../../utils/db')
 const finTemplate = require('../../utils/finTemplate')
 
+/**
+ * 构造 GitHub 风格 grid：7 行 × N 列,补齐首末日附近的空格,确保每列是完整周（周日→周六）。
+ * 返回 [[{date, amount, level}, ...]]
+ * level ∈ 0..4,基于非零金额 25/50/75 分位动态分桶（避免极端值把所有格子挤到 1 档）。
+ */
+function buildHeatmapCells(byDay, totalDays) {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const endDate = new Date(today)
+  const dow = endDate.getDay()  // 0=Sun
+  // 列数 = ceil((totalDays + dow + 1) / 7),+1 是把今天自己算进去
+  const cols = Math.ceil((totalDays + dow + 1) / 7)
+  // 起始日期 = 向前推 cols*7 天,确保第一列从周日开始,最后一列止于今天
+  const startDate = new Date(endDate)
+  startDate.setDate(endDate.getDate() - cols * 7 + 1)
+
+  // 分桶阈值(percentile)
+  const amts = Object.values(byDay).filter((a) => a > 0).sort((a, b) => a - b)
+  const p = (q) => amts.length
+    ? (amts[Math.min(amts.length - 1, Math.floor(amts.length * q))] || 0)
+    : 0
+  const t1 = p(0.25)
+  const t2 = p(0.50)
+  const t3 = p(0.75)
+
+  // 填格
+  const grid = []
+  const cur = new Date(startDate)
+  for (let wi = 0; wi < cols; wi++) {
+    const col = []
+    for (let r = 0; r < 7; r++) {
+      const dateStr = util.fmtDate(cur)
+      const amount = byDay[dateStr] || 0
+      let level = 0
+      if (amount > 0) {
+        level = amount <= t1 ? 1 : amount <= t2 ? 2 : amount <= t3 ? 3 : 4
+      }
+      col.push({ date: dateStr, amount, level })
+      cur.setDate(cur.getDate() + 1)
+    }
+    grid.push(col)
+  }
+  return grid
+}
+
+/**
+ * 在每月第一周上方显示月份 label。
+ * 返回 [{weekIndex, left, label}],left 是 rpx(基于 cellSize + gap 4rpx)。
+ */
+function buildHeatmapMonthLabels(grid, cellSize) {
+  const labels = []
+  let lastMonth = -1
+  const cellWidth = (cellSize || 48) + 4  // cell + gap
+  grid.forEach((col, wi) => {
+    const c = col[0]
+    if (!c) return
+    const m = Number(c.date.slice(5, 7))
+    if (m !== lastMonth) {
+      labels.push({ weekIndex: wi, left: wi * cellWidth, label: `${m}月` })
+      lastMonth = m
+    }
+  })
+  return labels
+}
+
+/**
+ * 统计区间内的总开销 / 有开销天数 / 日均 / 最高单日。
+ */
+function computeHeatmapStats(byDay) {
+  const days = Object.keys(byDay).filter((d) => byDay[d] > 0)
+  if (days.length === 0) {
+    return {
+      totalDays: 0,
+      totalAmountText: '0.00',
+      avgAmountText: '0.00',
+      maxDay: '—'
+    }
+  }
+  const total = days.reduce((s, d) => s + byDay[d], 0)
+  const maxKey = days.reduce((a, b) => (byDay[a] > byDay[b] ? a : b))
+  return {
+    totalDays: days.length,
+    totalAmountText: util.moneyThousand(total),
+    avgAmountText: util.moneyThousand(Math.round(total / days.length)),
+    maxDay: maxKey.slice(5)  // 只显示 MM-DD,简洁
+  }
+}
+
+/**
+ * 按 date 分组明细,供点击单元格时 O(1) 取当天所有流水。
+ */
+function groupItemsByDate(items) {
+  const out = {}
+  for (const x of items) {
+    const d = x.date
+    if (!d) continue
+    ;(out[d] = out[d] || []).push(x)
+  }
+  return out
+}
+
 Page({
   data: {
     categories: config.CATEGORIES,
@@ -39,16 +140,37 @@ Page({
     // 本月账单 sheet
     showStatement: false,
     showStatementClosing: false,
+    pageLocked: false,      // 本月账单 sheet 打开期间锁住 page 自身滚动,防止内部手势穿透
     statementLoading: false,
-    statement: null      // { month, monthText, income, expense, balance, savingsRate,
+    statement: null,     // { month, monthText, income, expense, balance, savingsRate,
                          //   prevMonthExpense, prevYearExpense, hasPrevYear,
                          //   categories:[{name,amount,budget,over,pct}], recurTotal,
                          //   overCategories, budgetOver, budgetNear,
                          //   insightText, insightSource: 'cache'|'llm'|'template' }
+    // 账本君对话问答
+    chatOpen: false,           // 是否展开 chat 区
+    chatInput: '',             // 当前输入框文本
+    chatSending: false,        // 请求中
+    chatMessages: [],          // [{ role:'user'|'assistant', content, ts, source? }]
+    chatRateError: '',         // 限流错误文案(2 秒后自动消)
+    // 消费日历热力图
+    heatmapSubText: '加载中…',         // 入口卡副标题(动态统计)
+    heatmapPreview: [],               // [{date, level}] 最近 91 天格子
+    heatmapRange: 'q',                // 'q' 近3月 / 'h' 半年 / 'y' 全年
+    heatCellSize: 40,                 // 动态算:13 列撑满 sheet 内宽的 cell 边长(rpx)
+    showHeatmap: false,
+    showHeatmapClosing: false,
+    heatmapGrid: null,                // [[{date, amount, level, today?}, ...]] 7 行 N 列
+    heatmapMonthLabels: [],           // [{weekIndex, left, label}] 月份标记位置
+    heatmapStats: null,               // {totalDays, totalAmountText, avgAmountText, maxDay}
+    showHeatmapDay: false,
+    showHeatmapDayClosing: false,
+    heatmapDay: null                  // {date, items, totalText, count}
   },
 
   onShow() {
     util.checkLock()
+    this._computeHeatCellSize()
     this.loadData()
     // 记一笔快捷入口：其他页点「＋」跳转过来时，自动弹开记账表单
     const app = getApp()
@@ -65,7 +187,6 @@ Page({
       if (this.data.showStatement) {
         const stmt = this._buildStatementData()
         this.setData({ statement: { ...stmt, insightText: this.data.statement.insightText, insightSource: this.data.statement.insightSource } })
-        setTimeout(() => this.drawStatementPie(), 80)
       }
     }
     wx.onThemeChange(this._stmtThemeHandler)
@@ -142,7 +263,9 @@ Page({
         }
       })
       const repay = repayByMonth[month] || 0
-      const balance = income - monthTotal - repay
+      // 还款流水已经包含在 monthTotal(标记已还会自动写一条 category=还款 的流水),
+      // 这里不能再减一次,否则还款金额被算两遍(支出减一次 + 还款再减一次)
+      const balance = income - monthTotal
       const savingsRate = income > 0 ? (balance / income) * 100 : 0
 
       // 分类统计
@@ -167,6 +290,9 @@ Page({
         ...x,
         amountText: util.moneyThousand(x.amount)
       }))
+
+      // 留一份原始流水(带 note),给「本月账单」sheet 聚合分类 top-3 备注用
+      this._stmtRawList = list
 
       this._loaded = true
       this.setData({
@@ -212,6 +338,9 @@ Page({
         util.animateNumber(this, 'lastMonthTotal', lastMonthTotal, { duration: 600, decimals: 2, thousand: true, prefix: '¥' }),
         util.animateNumber(this, 'overAmount', overAmount, { duration: 500, decimals: 2, thousand: true, prefix: '¥' })
       ]
+
+      // 热力图入口卡预览(异步,不阻塞主流程)
+      this._loadHeatmapPreview(force).catch((err) => console.warn('热力图预览失败', err))
     } catch (e) {
       this._loaded = true
       this.setData({ loading: false })
@@ -434,6 +563,34 @@ Page({
     })
   },
 
+  /* 切换「每月自动落账」开关（乐观更新,失败回滚） */
+  async toggleAutoRecord(e) {
+    const id = e.currentTarget.dataset.id
+    const newVal = e.detail.value === true
+    const before = (this.data.recurList || []).find((r) => r._id === id)
+    if (!before || before.autoRecord === newVal) return
+    // 乐观更新 UI,立即反馈
+    const list = (this.data.recurList || []).map((r) =>
+      r._id === id ? { ...r, autoRecord: newVal } : r
+    )
+    this.setData({ recurList: list })
+    try {
+      await dbApi.updateRecurring(id, { autoRecord: newVal })
+      wx.showToast({
+        title: newVal ? '已开启自动落账' : '已关闭自动落账',
+        icon: 'none',
+        duration: 1500
+      })
+    } catch (err) {
+      // 写库失败 → 回滚 UI
+      const rollback = (this.data.recurList || []).map((r) =>
+        r._id === id ? { ...r, autoRecord: !newVal } : r
+      )
+      this.setData({ recurList: rollback })
+      wx.showToast({ title: '切换失败', icon: 'none' })
+    }
+  },
+
   removeRecurringItem(e) {
     const { id, name } = e.currentTarget.dataset
     wx.showModal({
@@ -463,17 +620,311 @@ Page({
     util.openSheet(this, 'showStatement')
     // 拼好基础数据(数字 / 分类 / 同比环比),AI 解读异步填
     const stmt = this._buildStatementData()
-    this.setData({ statement: stmt, statementLoading: true })
+    // 每次开 sheet 重置 chat(关闭后再次进入,从零开始)
+    this.setData({
+      statement: stmt,
+      statementLoading: true,
+      chatOpen: false,
+      chatInput: '',
+      chatSending: false,
+      chatMessages: [],
+      chatRateError: '',
+      pageLocked: true   // 锁 page 自身滚动,防止 sheet 内 scroll-view 边界手势穿透
+    })
     this.loadStatement(false)
-    // 等 sheet 动画 + canvas 挂载后再画饼图
-    setTimeout(() => this.drawStatementPie(), 280)
   },
 
   closeStatement() {
     this._stmtCloseTimer = util.closeSheet(this, 'showStatement')
+    // 关 sheet 时重置 chat,下次打开是干净状态
+    this.setData({
+      chatOpen: false,
+      chatInput: '',
+      chatSending: false,
+      chatMessages: [],
+      chatRateError: '',
+      pageLocked: true   // 保持锁定直到滑出动画结束,避免动画期间 page 闪动
+    })
+    // 动画结束后(240ms)再解锁 page 滚动
+    if (this._stmtUnlockTimer) clearTimeout(this._stmtUnlockTimer)
+    this._stmtUnlockTimer = setTimeout(() => {
+      this.setData({ pageLocked: false })
+      this._stmtUnlockTimer = null
+    }, 240)
   },
 
-  /** 把 loadData 算出的字段组装成 sheet 要渲染的对象（包含所有展示用的预格式化字符串） */
+  /* ---------- 消费日历热力图 ---------- */
+
+  openHeatmap() {
+    if (this._heatmapCloseTimer) { clearTimeout(this._heatmapCloseTimer); this._heatmapCloseTimer = null }
+    util.openSheet(this, 'showHeatmap')
+    this._loadHeatmapFull()
+  },
+
+  closeHeatmap() {
+    this._heatmapCloseTimer = util.closeSheet(this, 'showHeatmap')
+  },
+
+  switchHeatmapRange(e) {
+    const r = e.currentTarget.dataset.range
+    if (!r || r === this.data.heatmapRange) return
+    // 先重置 grid,避免切换瞬间的错位闪烁
+    this.setData({ heatmapRange: r, heatmapGrid: null, heatmapMonthLabels: [], heatmapStats: null })
+    // cellSize 保持 13 列基准不变 — 切到 26/52 列时 cell 不缩,grid 自然超 viewport → 横滚查看
+    this._loadHeatmapFull()
+  },
+
+  tapHeatmapCell(e) {
+    const { date, amount } = e.currentTarget.dataset
+    if (!date || !amount || Number(amount) <= 0) {
+      wx.showToast({ title: '这天没开销', icon: 'none', duration: 1000 })
+      return
+    }
+    const items = (this._heatmapItemsByDate && this._heatmapItemsByDate[date]) || []
+    const fmtItems = items.map((x) => ({
+      ...x,
+      amountText: util.moneyThousand(x.amount)
+    }))
+    const total = fmtItems.reduce((s, x) => s + (x.amount || 0), 0)
+    this.setData({
+      showHeatmapDay: true,
+      showHeatmapDayClosing: false,
+      heatmapDay: {
+        date,
+        items: fmtItems,
+        totalText: util.moneyThousand(total),
+        count: fmtItems.length
+      }
+    })
+  },
+
+  closeHeatmapDay() {
+    util.closeSheet(this, 'showHeatmapDay')
+  },
+
+  /**
+   * 入口卡预览：拉最近 4 个月开销(覆盖 13 周 + 余量),聚合 13 列 × 7 行 = 91 格。
+   * 失败静默(主流程 catch 已处理过,这里再兜一道,不让预览报错打断主流程)。
+   */
+  async _loadHeatmapPreview(force) {
+    const { byDay, items } = await dbApi.listExpensesForHeatmap(4, force)
+    const cells = buildHeatmapCells(byDay, 91)
+    // 压平成时间序列,截取最近 91 格给入口卡预览
+    const flat = []
+    for (const col of cells) for (const c of col) flat.push(c)
+    const preview = flat.slice(-91)
+    const stats = computeHeatmapStats(byDay)
+    this.setData({
+      heatmapPreview: preview,
+      heatmapSubText: `近 3 月共 ¥${stats.totalAmountText} · ${stats.totalDays} 天有开销`
+    })
+    // 顺便把 items 也分组缓存,主 sheet 复用
+    this._heatmapItemsByDate = groupItemsByDate(items)
+  },
+
+  /**
+   * 主 sheet 数据:按当前 heatmapRange 拉对应范围,构造完整 grid + 月份 label + 统计
+   */
+  async _loadHeatmapFull() {
+    const map = { q: [4, 91], h: [7, 182], y: [13, 365] }
+    const conf = map[this.data.heatmapRange] || map.q
+    const [monthsBack, days] = conf
+    const { byDay, items } = await dbApi.listExpensesForHeatmap(monthsBack)
+    const grid = buildHeatmapCells(byDay, days, this.data.heatCellSize)
+    const today = util.todayStr()
+    grid.forEach((col) => col.forEach((c) => { if (c.date === today) c.today = true }))
+    const monthLabels = buildHeatmapMonthLabels(grid, this.data.heatCellSize)
+    this._heatmapItemsByDate = groupItemsByDate(items)
+    this.setData({
+      heatmapGrid: grid,
+      heatmapMonthLabels: monthLabels,
+      heatmapStats: computeHeatmapStats(byDay)
+    })
+  },
+
+  /**
+   * 按 13 列撑满弹框算 cell 边长,作为基准。
+   * 切到近半年(26 列)/近一年(52 列)时 cell 不变,grid 总宽 > viewport → 横滚查看。
+   * 这样三种窗口 cell 视觉一致,信息密度通过列数表达。
+   *
+   * 公式: cell = (container - 8 - 12*4) / 13
+   * 仅设下限 32rpx(小屏也别太小,大屏 cell 自然放大,真正撑满)。
+   */
+  _computeHeatCellSize() {
+    let screenWidth = 750
+    try {
+      const info = (wx.getWindowInfo && wx.getWindowInfo()) || wx.getSystemInfoSync()
+      screenWidth = (info && info.windowWidth) || screenWidth
+    } catch (e) {}
+    const container = screenWidth - 64  // sheet 左右 padding 32*2
+    const size = Math.max(32, Math.floor((container - 8 - 12 * 4) / 13))
+    if (size !== this.data.heatCellSize) {
+      this.setData({ heatCellSize: size })
+    }
+  },
+
+  /* ---------- 账本君对话问答 ---------- */
+  openChat() {
+    this.setData({ chatOpen: true })
+  },
+
+  closeChat() {
+    // 关闭输入区,但保留对话历史,再开能继续看
+    this.setData({ chatOpen: false, chatInput: '', chatRateError: '' })
+  },
+
+  onChatInput(e) {
+    this.setData({ chatInput: e.detail.value || '' })
+  },
+
+  async sendChat() {
+    const stmt = this.data.statement
+    if (!stmt) return
+    const q = (this.data.chatInput || '').trim()
+    if (!q || this.data.chatSending) return
+
+    // 1. 前端 throttle：每分钟 ≤6 次
+    const now = Date.now()
+    this._chatTs = (this._chatTs || []).filter((t) => now - t < 60000)
+    if (this._chatTs.length >= 6) {
+      this.setData({ chatRateError: '一分钟最多问 6 次,稍等再问' })
+      setTimeout(() => this.setData({ chatRateError: '' }), 2000)
+      return
+    }
+    this._chatTs.push(now)
+
+    // 2. 推 user 气泡,清空输入框,置 sending
+    const userMsg = { role: 'user', content: q, ts: now }
+    this.setData({
+      chatSending: true,
+      chatInput: '',
+      chatMessages: [...this.data.chatMessages, userMsg]
+    })
+
+    // 3. 调云函数 + 8s 超时
+    let result = null
+    let timedOut = false
+    try {
+      result = await new Promise((resolve, reject) => {
+        let settled = false
+        const timer = setTimeout(() => {
+          if (settled) return
+          settled = true
+          timedOut = true
+          reject(new Error('云函数超时'))
+        }, 8000)
+        wx.cloud.callFunction({
+          name: 'finChat',
+          data: { month: stmt.month, question: q, data: this._stmtForChat() },
+          success: (r) => {
+            if (settled) return
+            settled = true
+            clearTimeout(timer)
+            resolve((r && r.result) || null)
+          },
+          fail: (e) => {
+            if (settled) return
+            settled = true
+            clearTimeout(timer)
+            reject(e)
+          }
+        })
+      })
+    } catch (e) {
+      console.warn('finChat 失败', e)
+    }
+
+    // 4. 拼 assistant 气泡
+    let assistant
+    const code = result && result.code
+    if (result && result.text) {
+      assistant = { role: 'assistant', content: result.text, ts: Date.now(), source: 'llm' }
+    } else if (code === 'RATE_LIMIT') {
+      assistant = { role: 'assistant', content: result.msg || '问得有点急,稍等再问', ts: Date.now(), source: 'local' }
+    } else if (code === 'NO_KEY' || timedOut) {
+      // 本地模板兜底
+      const tpl = finTemplate.build({
+        monthText: stmt.monthText,
+        income: stmt.income,
+        expense: stmt.expense,
+        balance: stmt.balance,
+        savingsRate: stmt.savingsRate,
+        prevMonthExpense: stmt.prevMonthExpense,
+        prevYearExpense: stmt.hasPrevYear ? stmt.prevYearExpense : undefined,
+        hasPrevYear: stmt.hasPrevYear,
+        recurTotal: stmt.recurTotal,
+        categories: stmt.categories,
+        budgetOver: stmt.budgetOver,
+        budgetNear: stmt.budgetNear,
+        overCategories: stmt.overCategories
+      })
+      const prefix = timedOut ? '账本君想了太久,先回你本地版:' : '账本君还没拿到口粮,先用本地话答你:'
+      assistant = { role: 'assistant', content: `${prefix}\n${tpl}`, ts: Date.now(), source: 'local' }
+    } else {
+      assistant = { role: 'assistant', content: '账本君暂时没想明白,稍后再问', ts: Date.now(), source: 'local' }
+    }
+
+    this.setData({
+      chatSending: false,
+      chatMessages: [...this.data.chatMessages, assistant]
+    })
+
+    // 5. 滚到底部(scroll-view 的 scroll-into-view 模式)
+    const lastTs = (this.data.chatMessages[this.data.chatMessages.length - 1] || {}).ts
+    if (lastTs) {
+      this.setData({ chatScrollIntoView: 'msg-' + lastTs })
+    }
+  },
+
+  /** 序列化 statement 给云函数,只传 LLM 需要的字段 */
+  _stmtForChat() {
+    const s = this.data.statement
+    if (!s) return null
+
+    // 对话数据增强:在 _stmtForChat 里现算,不污染 _buildStatementData / loadData
+    // 1) 最近 30 条明细(按金额倒序)— 解决"买烟哪天"这类问题
+    const recentList = (this.data.list || [])
+      .slice()
+      .sort((a, b) => (b.amount || 0) - (a.amount || 0))
+      .slice(0, 30)
+      .map((x) => ({
+        date: x.date || '',
+        category: x.category || '其他',
+        amount: x.amount || 0,
+        note: (x.note || '').trim()
+      }))
+
+    // 2) 近 3 个月趋势 — 阶段 2 再补 income/savingsRate,这里先只算 expense(只塞当月数据)
+    //    阶段 2 改造:在 loadData 里加 trendMonths 字段,这里直接读
+    const recentMonths = [{ month: s.month, expense: s.expense }]
+
+    return {
+      month: s.month,
+      monthText: s.monthText,
+      income: s.income,
+      expense: s.expense,
+      balance: s.balance,
+      savingsRate: s.savingsRate,
+      prevMonthExpense: s.prevMonthExpense,
+      prevYearExpense: s.hasPrevYear ? s.prevYearExpense : undefined,
+      hasPrevYear: s.hasPrevYear,
+      recurTotal: s.recurTotal,
+      categories: (s.categories || []).map((c) => ({
+        name: c.name,
+        amount: c.amount,
+        budget: c.budget || 0,
+        over: !!c.over,
+        topNotes: c.topNotes || []
+      })),
+      budgetOver: s.budgetOver,
+      budgetNear: s.budgetNear,
+      overCategories: s.overCategories,
+      recentList,
+      recentMonths
+    }
+  },
+
+  /** 把 loadData 算出的字段组装成 sheet 要渲染的对象（包含原始数字 + 展示字符串 + 分类备注） */
   _buildStatementData() {
     const month = this.data.viewMonth
     const monthTotal = this.data._monthTotalNum || 0
@@ -488,7 +939,18 @@ Page({
       .filter((r) => r.active !== false)
       .reduce((s, r) => s + (r.amount || 0), 0)
 
-    // 分类,带上预算对照 + 颜色 + 格式化字符串
+    // 分类备注 top-3:按"出现金额"权重排序,让 LLM 看到"抚养费/补习班"而不是泛称
+    const noteByCat = {}
+    ;(this._stmtRawList || []).forEach((x) => {
+      const n = (x.note || '').trim()
+      if (!n) return
+      const k = x.category || '其他'
+      if (!noteByCat[k]) noteByCat[k] = new Map()
+      const m = noteByCat[k]
+      m.set(n, (m.get(n) || 0) + (x.amount || 0))
+    })
+
+    // 分类,带上预算对照 + 颜色 + 格式化字符串 + top-3 备注
     const palette = ['#14304F', '#C8A04D', '#C94040', '#C98A2D', '#2F9B6B', '#4A6B8A']
     const paletteDark = ['#8AA4C2', '#E5C26B', '#E55858', '#E0A055', '#4FB78A', '#8AA4C2']
     const app = getApp()
@@ -500,6 +962,12 @@ Page({
       .map((c, idx) => {
         const b = budgetMap[c.name]
         const over = typeof b === 'number' && b > 0 && c.amount > b
+        const topNotes = noteByCat[c.name]
+          ? [...noteByCat[c.name].entries()]
+              .sort((a, b2) => b2[1] - a[1])
+              .slice(0, 3)
+              .map(([n]) => n)
+          : []
         return {
           name: c.name,
           amount: c.amount,
@@ -507,6 +975,7 @@ Page({
           percent: c.percent,
           budget: typeof b === 'number' ? b : 0,
           over,
+          topNotes,
           color: colors[idx % colors.length]
         }
       })
@@ -529,6 +998,16 @@ Page({
     return {
       month,
       monthText: `${Number(month.slice(0, 4))}年${Number(month.slice(5, 7))}月`,
+      // 原始数字 — 模板 / 云函数都靠这些,必须存在
+      income,
+      expense: monthTotal,
+      balance,
+      savingsRate,
+      prevMonthExpense,
+      prevYearExpense: hasPrevYear ? prevYearExpense : null,
+      hasPrevYear,
+      recurTotal,
+      // 展示用字符串 — WXML 渲染用
       incomeText: util.moneyThousand(income),
       expenseText: util.moneyThousand(monthTotal),
       balanceText: util.moneyThousand(Math.abs(balance)),
@@ -539,9 +1018,7 @@ Page({
       momDelta: mom,
       yoyText: hasPrevYear ? util.moneyThousand(prevYearExpense) : '—',
       yoyDelta: yoy,
-      hasPrevYear,
       categories,
-      recurTotal,
       recurTotalText: util.moneyThousand(recurTotal),
       overCategories,
       budgetOver: this.data.budgetOver,
@@ -553,41 +1030,46 @@ Page({
 
   /**
    * 拉 AI 解读
-   *  - 缓存命中: 直接显示
-   *  - 否则: 云函数 finReport,8s 超时降级到模板
+   *  - 流程: 进入先 loading,等云函数结果;AI 拿到就显示 AI;失败/超时/未配 key 才回退到本地模板
    *  - force=true: 跳过缓存,云函数强制重生成
    */
   async loadStatement(force) {
     const stmt = this.data.statement
     if (!stmt) return
-    this.setData({ statementLoading: true })
 
-    // 1. 先本地模板兜底,任何时候都能立刻出字
-    const tplText = finTemplate.build({
-      monthText: stmt.monthText,
-      income: stmt.income,
-      expense: stmt.expense,
-      balance: stmt.balance,
-      savingsRate: stmt.savingsRate,
-      prevMonthExpense: stmt.prevMonthExpense,
-      prevYearExpense: stmt.hasPrevYear ? stmt.prevYearExpense : undefined,
-      hasPrevYear: stmt.hasPrevYear,
-      recurTotal: stmt.recurTotal,
-      categories: stmt.categories,
-      budgetOver: stmt.budgetOver,
-      budgetNear: stmt.budgetNear,
-      overCategories: stmt.overCategories
+    // 1. 先清空 + 切到 loading,避免残留旧文本闪现
+    this.setData({
+      statementLoading: true,
+      statement: { ...stmt, insightText: '', insightSource: 'loading' }
     })
-    this._renderInsight(tplText, force ? '' : 'template-pending')
 
-    // 2. 调云函数(超时 8s 自动放弃,保留模板)
+    // 2. 调云函数(8s 超时自动放弃 → 走模板兜底)
     try {
       const res = await this._callFinReport(stmt, force)
       if (res && res.text) {
         this._renderInsight(res.text, res.source || 'llm')
+        return
       }
+      throw new Error('云函数返回空')
     } catch (e) {
-      console.warn('AI 解读失败,保留模板', e)
+      console.warn('AI 解读失败,回退本地模板', e)
+      // 3. 兜底:用同一 stmt 对象(含原始数字)喂模板,不会再走"没数据"分支
+      const tplText = finTemplate.build({
+        monthText: stmt.monthText,
+        income: stmt.income,
+        expense: stmt.expense,
+        balance: stmt.balance,
+        savingsRate: stmt.savingsRate,
+        prevMonthExpense: stmt.prevMonthExpense,
+        prevYearExpense: stmt.hasPrevYear ? stmt.prevYearExpense : undefined,
+        hasPrevYear: stmt.hasPrevYear,
+        recurTotal: stmt.recurTotal,
+        categories: stmt.categories,
+        budgetOver: stmt.budgetOver,
+        budgetNear: stmt.budgetNear,
+        overCategories: stmt.overCategories
+      })
+      this._renderInsight(tplText, 'template')
     } finally {
       this.setData({ statementLoading: false })
     }
@@ -621,7 +1103,8 @@ Page({
               name: c.name,
               amount: c.amount,
               budget: c.budget || 0,
-              over: !!c.over
+              over: !!c.over,
+              topNotes: c.topNotes || []
             })),
             budgetOver: stmt.budgetOver,
             budgetNear: stmt.budgetNear,
@@ -660,65 +1143,4 @@ Page({
     this.loadStatement(true)
   },
 
-  /** 画分类饼图（弹层 wx:if 挂载完成后再调） */
-  drawStatementPie() {
-    if (!this.data.showStatement || !this.data.statement) return
-    const query = this.createSelectorQuery()
-    query.select('#statementPie')
-      .fields({ node: true, size: true })
-      .exec((res) => {
-        if (!res || !res[0] || !res[0].node) return
-        const canvas = res[0].node
-        const W = res[0].width
-        const H = res[0].height
-        const dpr = (wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync()).pixelRatio || 2
-        canvas.width = W * dpr
-        canvas.height = H * dpr
-        const ctx = canvas.getContext('2d')
-        ctx.scale(dpr, dpr)
-        ctx.clearRect(0, 0, W, H)
-
-        const cats = (this.data.statement.categories || []).filter((c) => c.amount > 0)
-        if (!cats.length) return
-
-        const total = cats.reduce((s, c) => s + c.amount, 0)
-        const cx = W / 2
-        const cy = H / 2
-        const r = Math.min(W, H) / 2 - 6
-        const innerR = r * 0.58
-
-        const app = getApp()
-        const isDark = app && app.globalData && app.globalData.theme === 'dark'
-        // 6 个分类按 config.CATEGORIES 顺序固定取色
-        const paletteLight = ['#14304F', '#C8A04D', '#C94040', '#C98A2D', '#2F9B6B', '#4A6B8A']
-        const paletteDark = ['#8AA4C2', '#E5C26B', '#E55858', '#E0A055', '#4FB78A', '#8AA4C2']
-        const colors = isDark ? paletteDark : paletteLight
-
-        let start = -Math.PI / 2
-        cats.forEach((c, i) => {
-          const angle = (c.amount / total) * Math.PI * 2
-          ctx.beginPath()
-          ctx.moveTo(cx, cy)
-          ctx.arc(cx, cy, r, start, start + angle)
-          ctx.closePath()
-          ctx.fillStyle = colors[i % colors.length]
-          ctx.fill()
-          start += angle
-        })
-        // 中心挖空（甜甜圈样式）
-        ctx.beginPath()
-        ctx.arc(cx, cy, innerR, 0, Math.PI * 2)
-        ctx.fillStyle = isDark ? '#1A2532' : '#FFFFFF'
-        ctx.fill()
-        // 中心文字
-        ctx.fillStyle = isDark ? '#A8B4C5' : '#657183'
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.font = '500 20px sans-serif'
-        ctx.fillText('总支出', cx, cy - 16)
-        ctx.fillStyle = isDark ? '#E8EDF3' : '#151E2B'
-        ctx.font = 'bold 28px "DIN Alternate", sans-serif'
-        ctx.fillText('¥' + total.toFixed(0), cx, cy + 14)
-      })
-  }
 })

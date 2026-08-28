@@ -252,11 +252,21 @@ Page({
   async markPaid(e) {
     const id = e.currentTarget.dataset.id
     const card = (this._cards || []).find((c) => c._id === id) || {}
-    const history = [...(card.history || []), { date: util.todayStr(), amount: card.amount || 0 }]
     try {
-      // repayDate 必须写入：旧版看板按 repayDate 归月统计；history 为新版还款流水
-      await dbApi.updateCard(id, { status: 'paid', repayDate: util.todayStr(), history })
-      wx.showToast({ title: '已标记还款', icon: 'success' })
+      // 一并写一条分类=还款的流水,让记账 Tab 自然看到这笔还款
+      const r = await dbApi.recordCardRepayment(id)
+      if (r && !r.dup) {
+        // 产生了新流水 → 失效当月 AI 解读缓存,避免账本君基于旧数据说话
+        dbApi.invalidateFinCache(util.thisMonthStr())
+        wx.showToast({ title: '已记账', icon: 'success' })
+      } else {
+        wx.showToast({ title: '已标记还款', icon: 'success' })
+      }
+      // 同步追加 history(趋势图按月聚合需要)
+      if (!(card.history || []).some((h) => h.date === util.todayStr())) {
+        const history = [...(card.history || []), { date: util.todayStr(), amount: card.amount || 0 }]
+        await dbApi.updateCard(id, { history })
+      }
       this.loadData()
     } catch (err) {
       wx.showToast({ title: '操作失败', icon: 'none' })

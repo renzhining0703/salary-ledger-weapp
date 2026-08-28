@@ -147,6 +147,42 @@ async function listExpensesRange(startMonth, endMonth, force) {
   return r.data
 }
 
+/**
+ * 热力图专用：拉最近 N 个月的开销，聚合日级 + 返回全量明细（用于点击单元格展开）。
+ * 复用 listExpenses 的 60s 缓存（单月粒度），所以同一月多次访问不会重复查库。
+ *
+ * @param {number} monthsBack  往前推几个月（4 / 7 / 13，覆盖 13 / 26 / 52 周 + 余量）
+ * @param {boolean} [force]    跳过缓存
+ * @returns {Promise<{ byDay: {[date]: number}, items: expense[] }>}
+ *   byDay  : 'YYYY-MM-DD' -> 当天合计金额
+ *   items  : 全部明细（供点击单元格时按 date 过滤）
+ */
+async function listExpensesForHeatmap(monthsBack, force) {
+  const today = new Date()
+  const months = []
+  for (let i = monthsBack - 1; i >= 0; i--) {
+    const y = today.getFullYear()
+    const m = today.getMonth() + 1 - i
+    const d = new Date(y, m - 1, 1)
+    months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  }
+  const key = `heat_${monthsBack}`
+  if (!force && fresh(cache.expenses[key])) return cache.expenses[key].d
+
+  // 并行按月拉（每单月 ≤500 条,符合 listExpenses 上限）
+  const results = await Promise.all(months.map((m) => listExpenses(m, force)))
+  const items = results.flat()
+  const byDay = {}
+  for (const x of items) {
+    const d = x.date
+    if (!d) continue
+    byDay[d] = (byDay[d] || 0) + (x.amount || 0)
+  }
+  const data = { byDay, items }
+  cache.expenses[key] = { t: Date.now(), d: data }
+  return data
+}
+
 /** 软删除：进回收站，保留 30 天 */
 async function removeExpense(id) {
   const r = await db.collection('expenses').doc(id).update({ data: { deleted: true, deletedAt: db.serverDate() } })
@@ -159,7 +195,14 @@ async function removeExpense(id) {
 async function addRecurring(data) {
   try {
     const r = await db.collection('recurring').add({
-      data: { ...data, active: true, lastRecorded: '', createdAt: db.serverDate(), updatedAt: db.serverDate() }
+      data: {
+        ...data,
+        active: true,
+        autoRecord: data.autoRecord === true,
+        lastRecorded: '',
+        createdAt: db.serverDate(),
+        updatedAt: db.serverDate()
+      }
     })
     invalidate()
     return r
@@ -233,6 +276,78 @@ async function recordRecurring(id) {
   })
   invalidate()
   return { dup: false }
+}
+
+/**
+ * 手动确认还款（用户点了「标记已还」才扣）：
+ * 按卡片金额在【今天】生成一条开销记录(category=还款, note=信用卡·卡名),
+ * 并把卡片标记为已还 + 写入 repayDate(首页看板按月归集已还金额)。
+ *
+ * 防重：status==='paid' 直接返回 dup(true)。note/cardId 字段让流水可追溯到卡。
+ */
+async function recordCardRepayment(id) {
+  const r = await db.collection('cards').doc(id).get()
+  const card = r.data
+  if (!card) throw new Error('信用卡不存在')
+  if (card.status === 'paid') {
+    return { dup: true }
+  }
+  const now = new Date()
+  const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const today = `${month}-${String(now.getDate()).padStart(2, '0')}`
+  const bankName = (card.bank || '').trim()
+  await db.collection('expenses').add({
+    data: {
+      date: today,
+      category: '还款',
+      amount: card.amount,
+      note: bankName ? `信用卡·${bankName}` : '信用卡',
+      cardId: id,
+      createdAt: db.serverDate()
+    }
+  })
+  await db.collection('cards').doc(id).update({
+    data: { status: 'paid', repayDate: today, updatedAt: db.serverDate() }
+  })
+  invalidate()
+  return { dup: false }
+}
+
+/**
+ * 自动落账扫描：对所有 autoRecord=true 且当月未记的固定支出,
+ * 自动调 recordRecurring 写入本月流水。
+ *
+ * 调用方负责防抖(建议只在 app.js onShow 跨月/跨 App 启动时调一次),
+ * 这里不做内部去重——每次调用都做完整扫描,因为 recordRecurring 内部 lastRecorded 防重,
+ * 即使 caller 重复调也只会写一次。
+ *
+ * 失败策略：单个模板失败不影响其他;整体失败抛错由 caller 处理(静默 log)。
+ * 返回 { swept: number, skipped: number } 便于调试。
+ */
+async function sweepAutoRecord() {
+  const now = new Date()
+  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const due = (await listRecurring(true))
+    .filter((r) => r.active !== false)
+    .filter((r) => r.autoRecord === true)
+    .filter((r) => r.lastRecorded !== thisMonth)
+
+  let swept = 0
+  let skipped = 0
+  for (const r of due) {
+    try {
+      const res = await recordRecurring(r._id)
+      if (res && res.dup) {
+        skipped++
+      } else {
+        swept++
+      }
+    } catch (e) {
+      console.error('自动落账失败', r.name, e)
+      skipped++
+    }
+  }
+  return { swept, skipped, thisMonth, due: due.length }
 }
 
 /* ---------------- 回收站（软删除，保留 RECYCLE_DAYS 天） ---------------- */
@@ -361,12 +476,15 @@ module.exports = {
   addExpense,
   listExpenses,
   listExpensesRange,
+  listExpensesForHeatmap,
   removeExpense,
   addRecurring,
   listRecurring,
   updateRecurring,
   removeRecurring,
   recordRecurring,
+  recordCardRepayment,
+  sweepAutoRecord,
   listRecycle,
   restoreDoc,
   destroyDoc,

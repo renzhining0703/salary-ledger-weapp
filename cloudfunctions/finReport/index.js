@@ -40,7 +40,8 @@ const SYSTEM_PROMPT = `你是「账本君」,用户的个人财务朋友。性�
 - 不堆砌所有分类,只挑变化最大或占比最大的 2-3 个
 - 不编造数据,数据里没有的数字不要提
 - 不用表情符号
-- 不超过 130 字`
+- 不超过 130 字
+- 【硬约束·最关键】数据块里没有出现的数字、金额、百分比绝对不许写;不许估算、不许四舍五入、不许"大概 / 约 / 估计"。数据块写"收入 ¥11000",正文必须出现 11000(可写"1.1 万"但不能写 6000 或别的)。用户没记录过的项直接不提。`
 
 /* ---------------- 入口 ---------------- */
 exports.main = async (event) => {
@@ -186,7 +187,12 @@ function formatDataForLLM(d) {
         const budgetTxt = typeof c.budget === 'number' && c.budget > 0
           ? (c.over ? `超 ¥${(c.amount - c.budget).toFixed(0)}` : `剩 ¥${(c.budget - c.amount).toFixed(0)}`)
           : '未设预算'
-        return `${c.name} ¥${c.amount.toFixed(0)}(${pct}%,${budgetTxt})`
+        const noteTxt = Array.isArray(c.topNotes) && c.topNotes.length
+          ? `备注：${c.topNotes.join('、')}`
+          : ''
+        return noteTxt
+          ? `${c.name} ¥${c.amount.toFixed(0)}(${pct}%,${budgetTxt});${noteTxt}`
+          : `${c.name} ¥${c.amount.toFixed(0)}(${pct}%,${budgetTxt})`
       })
     if (items.length) lines.push(`分类（降序）：${items.join('，')}`)
   }

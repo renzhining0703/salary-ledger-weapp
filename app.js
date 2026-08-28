@@ -55,6 +55,32 @@ App({
     this.syncTheme()
     this.applyNavBarColor()
     this.checkPrivacyLock()
+    // 自动落账扫描：当月已扫过则跳过,避免每次切 tab 都查库
+    this.maybeSweepAutoRecord()
+  },
+
+  /**
+   * 自动落账扫描(防抖到「当月」粒度)
+   * - 必须在 loginPromise 完成后再调(否则 db 查询未授权)
+   * - 失败静默 log,不打扰用户
+   * - 同一月内多次 onShow 只查一次(用户每天切回 App 都触发 onShow)
+   */
+  maybeSweepAutoRecord() {
+    if (!this.loginPromise) return
+    this.loginPromise.then(() => {
+      const d = new Date()
+      const thisMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      if (this.globalData._lastAutoSweepMonth === thisMonth) return
+      this.globalData._lastAutoSweepMonth = thisMonth
+      const dbApi = require('./utils/db')
+      dbApi.sweepAutoRecord()
+        .then((r) => {
+          if (r && r.swept > 0) {
+            console.log(`自动落账完成:${r.swept} 笔 (${r.thisMonth})`)
+          }
+        })
+        .catch((e) => console.error('自动落账扫描异常', e))
+    })
   },
 
   /** 读取系统主题并写入 globalData */

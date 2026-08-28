@@ -177,9 +177,15 @@ Page({
   async markPaid(e) {
     const id = e.currentTarget.dataset.id
     try {
-      // repayDate 必须写入：首页看板按 repayDate 归月统计「已还」金额
-      await dbApi.updateCard(id, { status: 'paid', repayDate: util.todayStr() })
-      wx.showToast({ title: '已标记还款', icon: 'success' })
+      // 一并写一条分类=还款的流水,让记账 Tab 自然看到这笔还款
+      const r = await dbApi.recordCardRepayment(id)
+      if (r && r.dup) {
+        wx.showToast({ title: '已标记还款', icon: 'success' })
+      } else {
+        // 产生了新流水 → 失效当月 AI 解读缓存,避免账本君基于旧数据说话
+        dbApi.invalidateFinCache(util.thisMonthStr())
+        wx.showToast({ title: '已记账', icon: 'success' })
+      }
       this.loadData()
     } catch (err) {
       wx.showToast({ title: '操作失败', icon: 'none' })
