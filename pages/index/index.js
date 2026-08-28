@@ -5,6 +5,7 @@ const dbApi = require('../../utils/db')
 Page({
   data: {
     user: null,
+    recycleDays: config.RECYCLE_DAYS,
     todoList: [],
     boardMonth: '',          // 当前查看的月份，如 2026-08
     board: null,             // 月度结余看板

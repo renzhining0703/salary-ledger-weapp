@@ -127,7 +127,7 @@
 
     <view class="form-item recycle-entry" bindtap="openRecycle">
       <text class="form-label">回收站</text>
-      <view class="recycle-link">已删记录保留 30 天 ›</view>
+      <view class="recycle-link">已删记录保留 {{recycleDays}} 天 ›</view>
     </view>
 
     <view class="sheet-actions">

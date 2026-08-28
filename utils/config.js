@@ -21,5 +21,8 @@ module.exports = {
   DEMO_DATA: false,
 
   /** 开销分类 */
-  CATEGORIES: ['餐饮', '交通', '购物', '孩子', '居住', '其他']
+  CATEGORIES: ['餐饮', '交通', '购物', '孩子', '居住', '其他'],
+
+  /** 回收站保留天数（删除的记录多少天后自动清理） */
+  RECYCLE_DAYS: 30
 }

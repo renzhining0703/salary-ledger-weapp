@@ -1,10 +1,12 @@
 const util = require('../../utils/util')
 const dbApi = require('../../utils/db')
+const config = require('../../utils/config')
 
 Page({
   data: {
     list: [],
-    loading: true
+    loading: true,
+    recycleDays: config.RECYCLE_DAYS
   },
 
   onShow() {

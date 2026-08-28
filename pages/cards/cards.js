@@ -1,5 +1,6 @@
 const util = require('../../utils/util')
 const dbApi = require('../../utils/db')
+const config = require('../../utils/config')
 
 Page({
   data: {
@@ -247,7 +248,7 @@ Page({
     const { id, bank } = e.currentTarget.dataset
     wx.showModal({
       title: '删除卡片',
-      content: `确定删除「${bank}」吗？删除后可在回收站恢复（保留 30 天）。`,
+      content: `确定删除「${bank}」吗？删除后可在回收站恢复（保留 ${config.RECYCLE_DAYS} 天）。`,
       confirmColor: '#ef4444',
       success: async (res) => {
         if (!res.confirm) return

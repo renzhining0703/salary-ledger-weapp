@@ -4,6 +4,7 @@ page {
   --navy-800: #0E2238;
   --navy-700: #14304F;
   --navy-600: #1F4E79;
+  --navy-300: #4A6B8A;
   --gold: #C8A04D;
   --gold-light: #F4E9D2;
   --gold-700: #A3823A;

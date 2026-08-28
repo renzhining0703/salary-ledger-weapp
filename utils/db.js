@@ -9,6 +9,7 @@
  */
 const db = wx.cloud.database()
 const _ = db.command
+const config = require('./config')
 
 const CACHE_TTL = 60 * 1000
 const cache = {
@@ -234,9 +235,9 @@ async function recordRecurring(id) {
   return { dup: false }
 }
 
-/* ---------------- 回收站（软删除，保留 30 天） ---------------- */
+/* ---------------- 回收站（软删除，保留 RECYCLE_DAYS 天） ---------------- */
 
-const RECYCLE_DAYS = 30
+const RECYCLE_DAYS = config.RECYCLE_DAYS
 const RECYCLE_COLS = ['salary', 'cards', 'expenses', 'recurring']
 
 /** 回收站列表：四类集合里 deleted=true 的文档合并，按删除时间倒序 */
