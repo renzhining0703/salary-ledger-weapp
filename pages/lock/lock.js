@@ -60,7 +60,9 @@ Page({
     // 等画布节点就绪
     await new Promise((r) => setTimeout(r, 50))
     const query = this.createSelectorQuery()
-    const res = await new Promise((resolve) => query.select('#gestureCanvas').fields({ node: true, size: true }).exec(resolve))
+    // 同时取 node/size/rect,让画布位置在用户触摸之前就缓存好;
+    // 否则首次触摸时再 await 取 rect,会让 touchend 在 _touching=true 之前先触发,整个手势被吞掉
+    const res = await new Promise((resolve) => query.select('#gestureCanvas').fields({ node: true, size: true, rect: true }).exec(resolve))
     if (!res[0] || !res[0].node) return
     const canvas = res[0].node
     const W = res[0].width
@@ -72,6 +74,7 @@ Page({
     this._canvas = canvas
     this._ctx = ctx
     this._size = W
+    this._rect = res[0] // 缓存画布位置,触摸事件路径不再查询
     this._selected = []
     this._touching = false
     // 3x3 圆心
@@ -82,7 +85,6 @@ Page({
         this._centers.push({ x: cell * c + cell / 2, y: cell * r + cell / 2 })
       }
     }
-    this._rect = null
     this.drawGesture(null)
   },
 
@@ -130,15 +132,10 @@ Page({
     })
   },
 
-  async onTouchStart(e) {
-    if (!this._ctx) await this.initGesture()
+  onTouchStart(e) {
+    // 必须是同步路径:任何 await 都会让后续 touchmove/touchend 在 _touching=true
+    // 之前先触发,导致整条手势被吞,UI 上表现为「画不动」
     if (!this._ctx) return
-    // 记录画布在页面中的位置（touch 坐标是页面级）
-    if (!this._rect) {
-      const q = this.createSelectorQuery()
-      const r = await new Promise((resolve) => q.select('#gestureCanvas').boundingClientRect(resolve))
-      if (r) this._rect = r
-    }
     this._selected = []
     this._touching = true
     this.hitTest(e)
