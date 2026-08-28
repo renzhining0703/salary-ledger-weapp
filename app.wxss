@@ -251,7 +251,8 @@ page {
   padding-bottom: 6rpx; /* ＋ 视觉居中 */
   box-sizing: border-box;
   box-shadow: 0 12rpx 32rpx rgba(20, 48, 79, 0.35);
-  z-index: 60;
+  /* 必须低于 .mask(90) 和 .sheet(100),但要高于 trend canvas(1) 防止被柱状图盖住 */
+  z-index: 80;
 }
 .quick-add:active {
   transform: scale(0.94);

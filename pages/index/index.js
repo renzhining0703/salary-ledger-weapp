@@ -275,9 +275,11 @@ Page({
   /** 弹层关闭后 canvas 随 wx:if 重建，需要重新绘制趋势图 */
   redrawTrendAfterPopup() {
     if (this.data.trendEmpty) return
+    // 关闭动画 240ms,等 wx:if 重新挂载 canvas 后再画;中途若用户又打开弹层则放弃
     setTimeout(() => {
+      if (this.data.showProfile || this.data.showShare) return
       this.drawTrend()
-    }, 60)
+    }, 280)
   },
 
   /* ---------- 隐私锁 ---------- */
