@@ -42,7 +42,13 @@
       </view>
       <view wx:if="{{budgetOver}}" class="over-tip">⚠️ 已超支 {{overAmount}}</view>
       <view class="compare-row">上月同期：{{lastMonthTotal}}</view>
-      <view class="statement-link" bindtap="openStatement">📊 查看本月账单 ›</view>
+      <view class="statement-link" bindtap="openStatement">
+        <view class="stmt-ico">
+          <view class="stmt-ico-line"></view>
+          <view class="stmt-ico-line short"></view>
+        </view>
+        <text>查看本月账单 ›</text>
+      </view>
     </view>
 
     <!-- 消费日历热力图(入口) -->
@@ -233,45 +239,41 @@
   <view wx:if="{{showStatement}}" class="sheet statement-sheet {{showStatementClosing ? 'sheet-out' : ''}}">
     <view class="sheet-title">{{statement.monthText}} 账单</view>
 
-    <scroll-view class="statement-scroll" scroll-y="{{true}}" bounces="{{false}}" enhanced="{{true}}">
+    <scroll-view class="statement-scroll" scroll-y="{{true}}" bounces="{{false}}" enhanced="{{true}}" scroll-top="{{stmtScrollTop}}">
 
-    <!-- 收支三栏 -->
-    <view class="stmt-row">
-      <view class="stmt-cell">
-        <view class="stmt-cell-label">收入</view>
-        <view class="stmt-cell-num income">¥{{statement.incomeText}}</view>
-      </view>
-      <view class="stmt-cell">
-        <view class="stmt-cell-label">支出</view>
-        <view class="stmt-cell-num expense">¥{{statement.expenseText}}</view>
-      </view>
-      <view class="stmt-cell">
-        <view class="stmt-cell-label">结余</view>
-        <view class="stmt-cell-num {{statement.balanceSign === '+' ? 'pos' : 'neg'}}">{{statement.balanceSign}}¥{{statement.balanceText}}</view>
-      </view>
-    </view>
-    <view class="stmt-savings">
-      储蓄率 <text class="stmt-savings-num {{statement.savingsLevel}}">{{statement.savingsRateText}}</text>
-    </view>
-
-    <!-- 同比环比 -->
-    <view class="stmt-compare">
-      <view class="stmt-cmp-item">
-        <view class="stmt-cmp-label">上月支出</view>
-        <view class="stmt-cmp-val">¥{{statement.momText}}</view>
-        <view wx:if="{{statement.momDelta}}" class="stmt-cmp-pct {{statement.momDelta.dir}}">
-          {{statement.momDelta.arrow}}{{statement.momDelta.pctText}}
+    <!-- 结余 Hero：主数字 + 储蓄率徽章 + 三栏明细 -->
+    <view class="stmt-hero">
+      <view class="stmt-hero-top">
+        <view class="stmt-hero-main">
+          <view class="stmt-hero-label">本月结余</view>
+          <view class="stmt-hero-num {{statement.balanceSign === '+' ? 'pos' : 'neg'}}">{{statement.balanceSign}}¥{{statement.balanceText}}</view>
+        </view>
+        <view class="stmt-hero-badge">
+          <view class="shb-num">{{statement.savingsRateText}}</view>
+          <view class="shb-label">储蓄率</view>
         </view>
       </view>
-      <view class="stmt-cmp-item">
-        <view class="stmt-cmp-label">去年同月</view>
-        <view wx:if="{{statement.hasPrevYear}}" class="stmt-cmp-val">¥{{statement.yoyText}}</view>
-        <view wx:else class="stmt-cmp-val muted">—</view>
-        <view wx:if="{{statement.hasPrevYear && statement.yoyDelta}}" class="stmt-cmp-pct {{statement.yoyDelta.dir}}">
-          {{statement.yoyDelta.arrow}}{{statement.yoyDelta.pctText}}
+      <view class="stmt-hero-grid">
+        <view class="shg-item">
+          <view class="shg-num gold">¥{{statement.incomeText}}</view>
+          <view class="shg-label">收入</view>
         </view>
-        <view wx:elif="{{!statement.hasPrevYear}}" class="stmt-cmp-pct muted">暂无历史</view>
+        <view class="shg-item">
+          <view class="shg-num">¥{{statement.expenseText}}</view>
+          <view class="shg-label">支出</view>
+        </view>
+        <view class="shg-item">
+          <view class="shg-num">¥{{statement.repayText}}</view>
+          <view class="shg-label">已还</view>
+        </view>
       </view>
+    </view>
+
+    <!-- 对比上月（单行 chip） -->
+    <view class="stmt-cmp-bar">
+      <text class="stmt-cmp-label">较上月支出 ¥{{statement.momText}}</text>
+      <view wx:if="{{statement.momDelta}}" class="stmt-cmp-pct {{statement.momDelta.dir}}">{{statement.momDelta.arrow}} {{statement.momDelta.pctText}}</view>
+      <view wx:else class="stmt-cmp-pct flat">持平</view>
     </view>
 
     <!-- 分类明细(原饼图已去掉,canvas 在 overflow 容器内"飘"的问题不需要再处理) -->
@@ -288,16 +290,16 @@
     </view>
 
     <!-- AI 解读卡 -->
-    <view class="stmt-insight">
+    <view id="stmt-insight" class="stmt-insight">
       <view class="stmt-insight-head">
-        <view class="stmt-insight-title">账本君说</view>
+        <view class="stmt-insight-avatar">账</view>
+        <view class="stmt-insight-title">账本君</view>
         <view class="stmt-insight-src">
           <text wx:if="{{statement.insightSource === 'loading'}}">思考中…</text>
           <text wx:elif="{{statement.insightSource === 'cache'}}">缓存</text>
           <text wx:elif="{{statement.insightSource === 'llm'}}">AI</text>
           <text wx:elif="{{statement.insightSource === 'template-pending'}}">本地生成</text>
           <text wx:elif="{{statement.insightSource === 'template'}}">本地生成</text>
-          <text wx:if="{{!chatOpen && (statement.insightSource === 'cache' || statement.insightSource === 'llm' || statement.insightSource === 'template')}}" class="stmt-insight-refresh" bindtap="openChat">问他点什么</text>
         </view>
       </view>
       <view wx:if="{{statement.insightSource === 'loading'}}" class="stmt-insight-body stmt-insight-loading">
@@ -306,22 +308,32 @@
       </view>
       <view wx:else class="stmt-insight-body">{{statement.insightText}}</view>
 
+      <!-- 对话入口：通栏输入条暗示，点开即进入问答 -->
+      <view wx:if="{{!chatOpen && (statement.insightSource === 'cache' || statement.insightSource === 'llm' || statement.insightSource === 'template')}}" class="stmt-ask-bar" bindtap="openChat">
+        <text class="ask-text">问问账本君：这个月餐饮花在哪了？</text>
+        <view class="ask-arrow">›</view>
+      </view>
+
       <!-- 对话问答区 -->
       <view wx:if="{{chatOpen}}" class="stmt-chat" scroll-y="{{true}}">
         <view class="stmt-chat-head">
           <text>问问账本君</text>
           <view class="stmt-chat-close" bindtap="closeChat">收起</view>
         </view>
-        <scroll-view class="stmt-chat-history" scroll-y="{{true}}" scroll-into-view="{{chatScrollIntoView}}" scroll-with-animation="{{true}}">
+        <scroll-view class="stmt-chat-history" scroll-y="{{true}}" scroll-into-view="{{chatScrollIntoView}}" scroll-with-animation="{{true}}" style="height: 480rpx;">
           <block wx:for="{{chatMessages}}" wx:key="ts" wx:for-item="m">
             <view id="msg-{{m.ts}}" class="stmt-chat-msg {{m.role === 'user' ? 'mine' : 'his'}}">
+              <view wx:if="{{m.role === 'assistant'}}" class="chat-avatar">账</view>
               <text class="stmt-chat-bubble">{{m.content}}</text>
             </view>
           </block>
           <view wx:if="{{chatSending}}" id="msg-sending" class="stmt-chat-msg his loading">
+            <view class="chat-avatar">账</view>
             <view class="stmt-insight-spinner"></view>
             <text>账本君在想…</text>
           </view>
+          <!-- 哨兵节点:scroll-into-view 指向这里保证永远滚到最底 -->
+          <view id="chat-bottom" style="height: 1rpx;"></view>
         </scroll-view>
         <view class="stmt-chat-input-row">
           <input
@@ -330,9 +342,11 @@
             maxlength="60"
             placeholder="比如:这个月餐饮花在哪了?"
             bindinput="onChatInput"
+            bindfocus="onChatFocus"
             bindconfirm="sendChat"
             confirm-type="send"
-            adjust-position="{{false}}"
+            adjust-position="{{true}}"
+            cursor-spacing="20"
             hold-keyboard="{{true}}"
           />
           <view class="stmt-chat-send {{chatSending || !chatInput.trim() ? 'disabled' : ''}}" bindtap="sendChat">发送</view>
@@ -340,6 +354,9 @@
         <view wx:if="{{chatRateError}}" class="stmt-chat-error">{{chatRateError}}</view>
       </view>
     </view>
+
+    <!-- 哨兵节点:scroll-into-view 指向这里保证 sheet 滚到底(看到输入框) -->
+    <view id="stmt-bottom" style="height: 1rpx;"></view>
 
     </scroll-view>
 

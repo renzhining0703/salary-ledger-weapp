@@ -153,6 +153,7 @@ Page({
     chatSending: false,        // 请求中
     chatMessages: [],          // [{ role:'user'|'assistant', content, ts, source? }]
     chatRateError: '',         // 限流错误文案(2 秒后自动消)
+    stmtScrollTop: 0,          // sheet 内主 scroll-view 滚到 sheet 底(超大值即可,自动 clamp)
     // 消费日历热力图
     heatmapSubText: '加载中…',         // 入口卡副标题(动态统计)
     heatmapPreview: [],               // [{date, level}] 最近 91 天格子
@@ -765,16 +766,37 @@ Page({
 
   /* ---------- 账本君对话问答 ---------- */
   openChat() {
-    this.setData({ chatOpen: true })
+    this.setData({
+      chatOpen: true,
+      // 展开对话区:滚到 sheet 底部,让输入框进入可视区
+      stmtScrollTop: this._bumpScrollTop(99999)
+    })
   },
 
   closeChat() {
     // 关闭输入区,但保留对话历史,再开能继续看
-    this.setData({ chatOpen: false, chatInput: '', chatRateError: '' })
+    this.setData({
+      chatOpen: false,
+      chatInput: '',
+      chatRateError: '',
+      // 收起时滚回账本君卡片,看到 AI 解读 + 问问入口
+      stmtScrollTop: this._bumpScrollTop(99999)
+    })
   },
 
   onChatInput(e) {
     this.setData({ chatInput: e.detail.value || '' })
+  },
+
+  /**
+   * 输入框聚焦:键盘弹起时强制 sheet 滚到底,避免输入框被键盘遮挡。
+   * input 在 scroll-view 内部,系统 adjust-position 不一定可靠,自己滚最稳。
+   * 延迟 80ms 是等键盘弹起动画到位,scrollTop 值用递增触发新滚动。
+   */
+  onChatFocus() {
+    setTimeout(() => {
+      this.setData({ stmtScrollTop: this._bumpScrollTop(99999) })
+    }, 80)
   },
 
   async sendChat() {
@@ -798,7 +820,11 @@ Page({
     this.setData({
       chatSending: true,
       chatInput: '',
-      chatMessages: [...this.data.chatMessages, userMsg]
+      chatMessages: [...this.data.chatMessages, userMsg],
+      // 立即滚到底部:user 消息出现时立刻可见,不等 assistant 返回
+      chatScrollIntoView: 'chat-bottom',
+      // 同时滚外层 sheet 到底部,看到自己刚发的气泡 + 输入框
+      stmtScrollTop: this._bumpScrollTop(99999)
     })
 
     // 3. 调云函数 + 8s 超时
@@ -866,14 +892,12 @@ Page({
 
     this.setData({
       chatSending: false,
-      chatMessages: [...this.data.chatMessages, assistant]
+      chatMessages: [...this.data.chatMessages, assistant],
+      // 滚到底部哨兵(assistant 回来时也保持可见)
+      chatScrollIntoView: 'chat-bottom',
+      // 同时滚外层 sheet 到底部,看到 AI 回答 + 输入框
+      stmtScrollTop: this._bumpScrollTop(99999)
     })
-
-    // 5. 滚到底部(scroll-view 的 scroll-into-view 模式)
-    const lastTs = (this.data.chatMessages[this.data.chatMessages.length - 1] || {}).ts
-    if (lastTs) {
-      this.setData({ chatScrollIntoView: 'msg-' + lastTs })
-    }
   },
 
   /** 序列化 statement 给云函数,只传 LLM 需要的字段 */
@@ -981,7 +1005,8 @@ Page({
       })
     const overCategories = categories.filter((c) => c.over).map((c) => c.name)
 
-    // 同比环比 — 预格式化方向 + 百分比字符串(WXML 不能用 Math.abs)
+    // 环比 — 预格式化方向 + 百分比字符串(WXML 不能用 Math.abs)
+    // 注:去年同月(yoy)已从 UI 移除,prevYear 数据保留供 AI 解读使用
     const buildDelta = (cur, prev) => {
       if (!prev || !cur) return null
       const diff = cur - prev
@@ -993,7 +1018,6 @@ Page({
       }
     }
     const mom = buildDelta(monthTotal, prevMonthExpense)
-    const yoy = hasPrevYear ? buildDelta(monthTotal, prevYearExpense) : null
 
     return {
       month,
@@ -1002,6 +1026,7 @@ Page({
       income,
       expense: monthTotal,
       balance,
+      repay,
       savingsRate,
       prevMonthExpense,
       prevYearExpense: hasPrevYear ? prevYearExpense : null,
@@ -1012,12 +1037,11 @@ Page({
       expenseText: util.moneyThousand(monthTotal),
       balanceText: util.moneyThousand(Math.abs(balance)),
       balanceSign: balance >= 0 ? '+' : '-',
+      repayText: util.moneyThousand(repay),
       savingsRateText: savingsRate.toFixed(0) + '%',
       savingsLevel: savingsRate >= 20 ? 'good' : savingsRate >= 0 ? 'mid' : 'bad',
       momText: util.moneyThousand(prevMonthExpense),
       momDelta: mom,
-      yoyText: hasPrevYear ? util.moneyThousand(prevYearExpense) : '—',
-      yoyDelta: yoy,
       categories,
       recurTotalText: util.moneyThousand(recurTotal),
       overCategories,
@@ -1133,8 +1157,19 @@ Page({
   _renderInsight(text, source) {
     const stmt = this.data.statement || {}
     this.setData({
-      statement: { ...stmt, insightText: text, insightSource: source }
+      statement: { ...stmt, insightText: text, insightSource: source },
+      // AI 解读渲染完成:滚到 sheet 底部,看到 AI 文本 + 问问入口
+      stmtScrollTop: this._bumpScrollTop(99999)
     })
+  },
+
+  /**
+   * 给一个略大于 target 的 scroll-top 值,保证 setData 时跟上次不同(同值不触发滚动)。
+   * 99999 已经超过任何实际 sheet 高度,会被 scroll-view clamp 到 maxScrollTop = 滚到底。
+   */
+  _bumpScrollTop(target) {
+    this._stmtScrollBump = (this._stmtScrollBump || 0) + 1
+    return target + this._stmtScrollBump
   },
 
   /** 强制重新生成（清缓存 + 调 AI） */
