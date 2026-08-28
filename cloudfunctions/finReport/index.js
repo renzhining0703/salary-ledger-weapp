@@ -18,6 +18,9 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
 const _ = db.command
 
+// Node 16 没有全局 fetch,用 undici 兜底;Node 18+ 走原生
+const fetchFn = typeof fetch === 'function' ? fetch : require('undici').fetch
+
 const API_KEY = process.env.LLM_API_KEY
 const BASE_URL = process.env.LLM_BASE_URL || 'https://api.deepseek.com'
 const MODEL = process.env.LLM_MODEL || 'deepseek-chat'
@@ -120,7 +123,7 @@ async function callLLM(data) {
       { role: 'user', content: userMsg }
     ]
   }
-  const resp = await fetch(url, {
+  const resp = await fetchFn(url, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${API_KEY}`,
