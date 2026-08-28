@@ -1,9 +1,13 @@
 const dbApi = require('../../utils/db')
 
-const NAVY = '#14304F'
-const GOLD = '#C8A04D'
-const GRID = '#D8DFE7'
-const ERR = '#C94040'
+// 主题色：跟随系统深浅色,保证锁页画布在两种模式下都清晰可辨
+function themeColors() {
+  const app = getApp()
+  const isDark = app && app.globalData && app.globalData.theme === 'dark'
+  return isDark
+    ? { NAVY: '#8AA4C2', GOLD: '#E5C26B', GRID: '#3A4A60', ERR: '#E55858' }
+    : { NAVY: '#14304F', GOLD: '#C8A04D', GRID: '#D8DFE7', ERR: '#C94040' }
+}
 
 Page({
   data: {
@@ -94,6 +98,7 @@ Page({
     const size = this._size
     if (!ctx) return
     ctx.clearRect(0, 0, size, size)
+    const { NAVY, GOLD, ERR } = themeColors()
     const lineColor = errMode ? ERR : GOLD
     const dotColor = errMode ? ERR : NAVY
 
@@ -126,6 +131,7 @@ Page({
         ctx.lineWidth = 3
         ctx.stroke()
       } else {
+        const { GRID } = themeColors()
         ctx.fillStyle = GRID
         ctx.fill()
       }

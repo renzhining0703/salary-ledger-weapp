@@ -25,7 +25,7 @@
 
 .budget-bar {
   height: 16rpx;
-  background: #E8EDF3;
+  background: var(--fill-bg);
   border-radius: 999rpx;
   margin-top: 12rpx;
   overflow: hidden;
@@ -72,7 +72,7 @@
 .cat-bar {
   flex: 1;
   height: 18rpx;
-  background: #E8EDF3;
+  background: var(--fill-bg);
   border-radius: 999rpx;
   overflow: hidden;
   margin: 0 16rpx;
@@ -162,7 +162,7 @@
   font-weight: 600;
   padding: 24rpx 56rpx;
   border-radius: 999rpx;
-  box-shadow: 0 12rpx 32rpx rgba(20, 48, 79, 0.28);
+  box-shadow: 0 12rpx 32rpx var(--shadow-deep);
   z-index: 50;
 }
 .fab:active {
@@ -181,7 +181,7 @@
   min-width: 120rpx;
   text-align: center;
   padding: 16rpx 28rpx;
-  background: #F1F5FA;
+  background: var(--chip-bg);
   border-radius: 999rpx;
   font-size: 28rpx;
   color: var(--text-sub);
@@ -192,7 +192,7 @@
   background: linear-gradient(135deg, var(--navy-700), var(--navy-800));
   color: #fff;
   font-weight: 600;
-  box-shadow: 0 8rpx 20rpx rgba(20, 48, 79, 0.2);
+  box-shadow: 0 8rpx 20rpx var(--shadow-strong);
 }
 
 .amount-input {
@@ -238,11 +238,11 @@
 }
 
 .month-arrow:active {
-  background: #E8EDF3;
+  background: var(--press-bg);
 }
 
 .month-arrow.disabled {
-  color: #C6CFD9;
+  color: var(--text-mute);
 }
 
 .month-arrow.disabled:active {
@@ -251,7 +251,7 @@
 
 /* 固定支出入口卡片 */
 .recur-card:active {
-  background: #F6F8FB;
+  background: var(--press-bg);
 }
 
 .recur-summary {
@@ -283,14 +283,14 @@
   display: flex;
   align-items: center;
   padding: 20rpx 0;
-  border-bottom: 1rpx solid #EEF1F5;
+  border-bottom: 1rpx solid var(--border-light);
   gap: 16rpx;
 }
 
 .recur-row.inactive .recur-name,
 .recur-row.inactive .recur-meta,
 .recur-row.inactive .recur-amount {
-  color: #B7C0CB;
+  color: var(--text-mute);
 }
 
 .recur-info {
@@ -325,7 +325,7 @@
 
 .recur-del {
   font-size: 24rpx;
-  color: #E5484D;
+  color: var(--danger);
   padding: 8rpx 4rpx;
 }
 
@@ -352,23 +352,23 @@
   padding: 10rpx 24rpx;
   font-size: 24rpx;
   font-weight: 600;
-  color: #C8A04D;
-  border: 2rpx solid #C8A04D;
+  color: var(--gold);
+  border: 2rpx solid var(--gold);
   border-radius: 999rpx;
-  background: rgba(200, 160, 77, 0.06);
+  background: var(--tint-gold-06);
   white-space: nowrap;
 }
 
 .recur-record:active {
-  background: rgba(200, 160, 77, 0.18);
+  background: var(--tint-gold-18);
 }
 
 .recur-record.done {
-  color: #B7C0CB;
-  border-color: #D9E0E8;
-  background: #F4F7FA;
+  color: var(--text-mute);
+  border-color: var(--border);
+  background: var(--chip-bg);
 }
 
 .recur-done-text {
-  color: #C8A04D;
+  color: var(--gold);
 }

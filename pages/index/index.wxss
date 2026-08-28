@@ -62,7 +62,7 @@
   margin: 0;
   border-radius: 0 0 32rpx 32rpx;
   color: #fff;
-  box-shadow: 0 12rpx 32rpx rgba(20, 48, 79, 0.18);
+  box-shadow: 0 12rpx 32rpx var(--shadow-strong);
 }
 
 .user {
@@ -132,7 +132,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #F7F8FA;
+  background: var(--input-bg);
   border-radius: 18rpx;
   padding: 22rpx;
   margin-bottom: 16rpx;
@@ -205,11 +205,11 @@
 }
 .budget-alert.over {
   background: var(--danger-bg);
-  border: 1rpx solid #F5CFCF;
+  border: 1rpx solid var(--danger-border);
 }
 .budget-alert.warn {
   background: var(--warn-bg);
-  border: 1rpx solid #F8E3B5;
+  border: 1rpx solid var(--warn-border);
 }
 
 .ba-dot {
@@ -246,11 +246,11 @@
   font-size: 44rpx;
   line-height: 64rpx;
   color: var(--text-sub);
-  background: #F1F5FA;
+  background: var(--chip-bg);
   border-radius: 50%;
 }
 .board-arrow:active {
-  background: #E8EDF3;
+  background: var(--press-bg);
 }
 
 .board-title {
@@ -379,14 +379,14 @@
   text-align: center;
   font-size: 26rpx;
   font-weight: 600;
-  color: var(--gold, #C8A04D);
-  border: 2rpx solid #C8A04D;
+  color: var(--gold);
+  border: 2rpx solid var(--gold);
   border-radius: 16rpx;
-  background: rgba(200, 160, 77, 0.06);
+  background: var(--tint-gold-06);
 }
 
 .share-btn:active {
-  background: rgba(200, 160, 77, 0.16);
+  background: var(--tint-gold-16);
 }
 
 /* 分享弹层（居中对话框） */
@@ -397,7 +397,7 @@
   transform: translate(-50%, -50%);
   z-index: 100;
   width: 640rpx;
-  background: #fff;
+  background: var(--card);
   border-radius: 32rpx;
   padding: 32rpx 32rpx calc(28rpx + env(safe-area-inset-bottom));
   animation: shareIn 0.26s cubic-bezier(0.32, 0.72, 0.34, 1);
@@ -421,7 +421,7 @@
   width: 576rpx;
   height: 768rpx;
   border-radius: 16rpx;
-  background: #0E2238;
+  background: var(--navy-800);
   display: block;
   margin: 0 auto;
 }
@@ -437,6 +437,6 @@
 }
 
 .btn-share {
-  background: #F3F5F8;
+  background: var(--bg);
   color: var(--text);
 }

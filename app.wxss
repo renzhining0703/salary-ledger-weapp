@@ -21,6 +21,33 @@ page {
   --warn-bg: #FEF6E8;
   --success: #2F9B6B;
   --success-bg: #EAF6EF;
+  /* 中性灰:进度条未填充轨道 / chip 底 / 按下态 / 输入框底 */
+  --fill-bg: #E8EDF3;
+  --chip-bg: #F1F5FA;
+  --press-bg: #E8EDF3;
+  --input-bg: #F7F8FA;
+  /* 浅色边框:用于 budget-alert 等警示色块的边框(深色模式自动加深) */
+  --danger-border: #F5CFCF;
+  --warn-border: #F8E3B5;
+  /* 阴影变量:浅色模式海军蓝投影,深色模式纯黑 */
+  --shadow-card: rgba(20, 48, 79, 0.05);
+  --shadow-strong: rgba(20, 48, 79, 0.22);
+  --shadow-deep: rgba(20, 48, 79, 0.35);
+  /* 海军蓝透明色:浅色模式海军蓝叠白,深色模式白色叠暗(深底上要白提亮) */
+  --tint-navy-04: rgba(20, 48, 79, 0.04);
+  --tint-navy-06: rgba(20, 48, 79, 0.06);
+  --tint-navy-08: rgba(20, 48, 79, 0.08);
+  --tint-navy-14: rgba(20, 48, 79, 0.14);
+  --tint-navy-18: rgba(20, 48, 79, 0.18);
+  /* 金 / 红 / 灰透明色:tag、按钮按下态等场景 */
+  --tint-gold-06: rgba(200, 160, 77, 0.06);
+  --tint-gold-12: rgba(200, 160, 77, 0.12);
+  --tint-gold-16: rgba(200, 160, 77, 0.16);
+  --tint-gold-18: rgba(200, 160, 77, 0.18);
+  --tint-danger-08: rgba(201, 64, 64, 0.08);
+  --tint-danger-22: rgba(201, 64, 64, 0.22);
+  --tint-text-sub-12: rgba(151, 163, 178, 0.12);
+  --tint-danger-strong: #F5DFDF;
 
   background: var(--bg);
   color: var(--text);
@@ -30,13 +57,68 @@ page {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+/* ==================== 深色模式 ====================
+ * 跟随系统设置(WX 端 + iOS/Android 系统深色),无需手动开关。
+ * 仅覆盖变量;page *.wxss 通过 var() 自动跟随。
+ */
+@media (prefers-color-scheme: dark) {
+  page {
+    --navy-900: #1F2D40;
+    --navy-800: #283A52;
+    --navy-700: #4A6B8A;
+    --navy-600: #5C82A8;
+    --navy-300: #8AA4C2;
+    --gold: #E5C26B;
+    --gold-light: #2D2519;
+    --gold-700: #B89043;
+    --text: #E8EDF3;
+    --text-sub: #A8B4C5;
+    --text-mute: #6E7B8E;
+    --bg: #0E1620;
+    --card: #1A2532;
+    --border: #2D3A4D;
+    --border-light: #1F2A37;
+    --danger: #E55858;
+    --danger-bg: #2A1A1A;
+    --warn: #E0A055;
+    --warn-bg: #2A2114;
+    --success: #4FB78A;
+    --success-bg: #142A1F;
+    --fill-bg: #243042;
+    --chip-bg: #243042;
+    --press-bg: #2A3545;
+    --input-bg: #1F2A37;
+    /* 深色模式警示边框加深,以便在深色 bg 上可见 */
+    --danger-border: #5A2A2A;
+    --warn-border: #5A4220;
+    /* 深色背景下纯黑阴影更深、更不显眼 */
+    --shadow-card: rgba(0, 0, 0, 0.28);
+    --shadow-strong: rgba(0, 0, 0, 0.45);
+    --shadow-deep: rgba(0, 0, 0, 0.55);
+    /* 深色模式下用白透明叠在深底上做层次 */
+    --tint-navy-04: rgba(255, 255, 255, 0.04);
+    --tint-navy-06: rgba(255, 255, 255, 0.06);
+    --tint-navy-08: rgba(255, 255, 255, 0.08);
+    --tint-navy-14: rgba(255, 255, 255, 0.14);
+    --tint-navy-18: rgba(255, 255, 255, 0.18);
+    --tint-gold-06: rgba(229, 194, 107, 0.10);
+    --tint-gold-12: rgba(229, 194, 107, 0.16);
+    --tint-gold-16: rgba(229, 194, 107, 0.22);
+    --tint-gold-18: rgba(229, 194, 107, 0.28);
+    --tint-danger-08: rgba(229, 88, 88, 0.14);
+    --tint-danger-22: rgba(229, 88, 88, 0.32);
+    --tint-text-sub-12: rgba(168, 180, 197, 0.16);
+    --tint-danger-strong: #4A2020;
+  }
+}
+
 /* 卡片 */
 .card {
   background: var(--card);
   border-radius: 28rpx;
   padding: 32rpx;
   margin: 24rpx;
-  box-shadow: 0 8rpx 28rpx rgba(20, 48, 79, 0.05);
+  box-shadow: 0 8rpx 28rpx var(--shadow-card);
   border: 1rpx solid var(--border-light);
   box-sizing: border-box;
 }
@@ -65,7 +147,7 @@ page {
 .btn-primary {
   background: linear-gradient(135deg, var(--navy-700), var(--navy-800));
   color: #fff;
-  box-shadow: 0 12rpx 32rpx rgba(20, 48, 79, 0.22);
+  box-shadow: 0 12rpx 32rpx var(--shadow-strong);
 }
 .btn-primary:active {
   transform: scale(0.985);
@@ -73,16 +155,16 @@ page {
 }
 
 .btn-ghost {
-  background: #F1F5FA;
+  background: var(--chip-bg);
   color: var(--navy-700);
 }
-.btn-ghost:active { background: #E8EDF3; }
+.btn-ghost:active { background: var(--press-bg); }
 
 .btn-danger {
   background: var(--danger-bg);
   color: var(--danger);
 }
-.btn-danger:active { background: #F5DFDF; }
+.btn-danger:active { background: var(--tint-danger-strong); }
 
 .btn-sm {
   min-height: 64rpx;
@@ -107,9 +189,9 @@ page {
 .tag-red { background: var(--danger-bg); color: var(--danger); }
 .tag-yellow { background: var(--warn-bg); color: var(--warn); }
 .tag-green { background: var(--success-bg); color: var(--success); }
-.tag-gray { background: #F1F5FA; color: var(--text-sub); }
+.tag-gray { background: var(--chip-bg); color: var(--text-sub); }
 .tag-gold { background: var(--gold-light); color: var(--gold-700); }
-.tag-navy { background: #F1F5FA; color: var(--navy-700); }
+.tag-navy { background: var(--chip-bg); color: var(--navy-700); }
 
 /* 空态 */
 .empty {
@@ -138,7 +220,7 @@ page {
   left: 0;
   right: 0;
   bottom: 0;
-  background: #fff;
+  background: var(--card);
   border-radius: 40rpx 40rpx 0 0;
   padding: 36rpx 32rpx calc(36rpx + env(safe-area-inset-bottom));
   z-index: 100;
@@ -192,7 +274,7 @@ page {
   font-weight: 500;
 }
 .form-input {
-  background: #F7F8FA;
+  background: var(--input-bg);
   border: 1rpx solid var(--border);
   border-radius: 16rpx;
   padding: 22rpx 24rpx;
@@ -206,7 +288,7 @@ page {
 .form-input:focus {
   outline: none;
   border-color: var(--gold);
-  box-shadow: 0 0 0 4rpx rgba(200, 160, 77, 0.12);
+  box-shadow: 0 0 0 4rpx var(--tint-gold-12);
 }
 
 .picker-val {
@@ -250,7 +332,7 @@ page {
   justify-content: center;
   padding-bottom: 6rpx; /* ＋ 视觉居中 */
   box-sizing: border-box;
-  box-shadow: 0 12rpx 32rpx rgba(20, 48, 79, 0.35);
+  box-shadow: 0 12rpx 32rpx var(--shadow-deep);
   /* 必须低于 .mask(90) 和 .sheet(100),但要高于 trend canvas(1) 防止被柱状图盖住 */
   z-index: 80;
 }
@@ -276,7 +358,7 @@ page {
   padding: 32rpx;
   margin-bottom: 24rpx;
   border: 1rpx solid var(--border-light);
-  box-shadow: 0 8rpx 28rpx rgba(20, 48, 79, 0.05);
+  box-shadow: 0 8rpx 28rpx var(--shadow-card);
 }
 
 .sk-block {

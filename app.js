@@ -11,7 +11,8 @@ App({
     user: null,
     env: config.CLOUD_ENV,
     loginReady: false,
-    lastUnlockTs: 0 // 最近一次成功解锁/设置的时间戳,守卫用
+    lastUnlockTs: 0, // 最近一次成功解锁/设置的时间戳,守卫用
+    theme: 'light' // 系统主题 'light' | 'dark'
   },
 
   onLaunch() {
@@ -26,6 +27,12 @@ App({
     wx.cloud.init({
       env: config.CLOUD_ENV,
       traceUser: true
+    })
+    // 主题检测（必须早于首屏渲染前完成）
+    this.syncTheme()
+    wx.onThemeChange(({ theme }) => {
+      this.globalData.theme = theme || 'light'
+      this.applyNavBarColor()
     })
     this.loginPromise = this.silentLogin().catch((e) => {
       console.error('静默登录异常', e)
@@ -44,7 +51,34 @@ App({
   },
 
   onShow() {
+    // 每次回到前台再同步一次主题(系统设置可能在后台被改)
+    this.syncTheme()
+    this.applyNavBarColor()
     this.checkPrivacyLock()
+  },
+
+  /** 读取系统主题并写入 globalData */
+  syncTheme() {
+    try {
+      const info = (wx.getWindowInfo && wx.getWindowInfo()) || wx.getSystemInfoSync()
+      this.globalData.theme = info && info.theme === 'dark' ? 'dark' : 'light'
+    } catch (e) {
+      this.globalData.theme = 'light'
+    }
+  },
+
+  /**
+   * 同步导航栏颜色到当前主题
+   * 深色模式:背景 #0E1620 文字 #E8EDF3
+   * 浅色模式:背景 #F3F5F8 文字 #151E2B
+   */
+  applyNavBarColor() {
+    const dark = this.globalData.theme === 'dark'
+    wx.setNavigationBarColor({
+      frontColor: dark ? '#ffffff' : '#000000',
+      backgroundColor: dark ? '#0E1620' : '#F3F5F8',
+      animation: { duration: 0, timingFunc: 'linear' }
+    })
   },
 
   /**

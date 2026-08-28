@@ -29,6 +29,17 @@ Page({
   onShow() {
     util.checkLock()
     this.loadData()
+    // 监听系统主题变化：canvas 颜色不跟随 CSS 变量，需手动重绘
+    if (this._themeChangeHandler) {
+      wx.offThemeChange(this._themeChangeHandler)
+    }
+    this._themeChangeHandler = () => {
+      const app = getApp()
+      app.syncTheme()
+      app.applyNavBarColor()
+      this.drawTrend()
+    }
+    wx.onThemeChange(this._themeChangeHandler)
   },
 
   onHide() {
@@ -36,6 +47,13 @@ Page({
     if (this._trendAnimId && this._trendCanvas && this._trendCanvas.cancelAnimationFrame) {
       this._trendCanvas.cancelAnimationFrame(this._trendAnimId)
       this._trendAnimId = null
+    }
+  },
+
+  onUnload() {
+    if (this._themeChangeHandler) {
+      wx.offThemeChange(this._themeChangeHandler)
+      this._themeChangeHandler = null
     }
   },
 
@@ -640,17 +658,21 @@ Page({
     }
     this._trendCanvas = canvas
 
+    // 取主题色（深色模式用浅色系以保证对比度）
+    const app = getApp()
+    const isDark = app && app.globalData && app.globalData.theme === 'dark'
+    const NAVY = isDark ? '#8AA4C2' : '#14304F'
+    const RED = isDark ? '#E55858' : '#C94040'
+    const GOLD = isDark ? '#E5C26B' : '#C8A04D'
+    const SUB = isDark ? '#A8B4C5' : '#97A3B2'
+    const GRID = isDark ? '#2D3A4D' : '#E9EDF2'
+    const AXIS = isDark ? '#4A5A70' : '#C9D2DC'
+    const NODE_FILL = isDark ? '#1A2532' : '#FFFFFF'
+
     const DURATION = 550
     const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3)
     const render = (p) => {
       ctx.clearRect(0, 0, W, H)
-
-      const NAVY = '#14304F'
-      const RED = '#C94040'
-      const GOLD = '#C8A04D'
-      const SUB = '#97A3B2'
-      const GRID = '#E9EDF2'
-      const AXIS = '#C9D2DC'
 
       const padL = 6
       const padR = 6
@@ -699,7 +721,7 @@ Page({
         ctx.globalAlpha = 1
       })
 
-      // 结余折线（白芯金圈圆点）：进度过半后画入，末端点到目标位
+      // 结余折线（金芯深底圆点）：进度过半后画入，末端点到目标位
       const lp = easeOutCubic(Math.min(1, Math.max(0, (p - 0.35) / 0.65)))
       if (lp > 0) {
         const drawUpTo = (list.length - 1) * lp
@@ -728,7 +750,7 @@ Page({
         // 已走过的节点画圆点
         pts.forEach((pt, i) => {
           if (i > drawUpTo) return
-          ctx.fillStyle = '#fff'
+          ctx.fillStyle = NODE_FILL
           ctx.beginPath()
           ctx.arc(pt.cx, pt.cy, 3.5, 0, Math.PI * 2)
           ctx.fill()
