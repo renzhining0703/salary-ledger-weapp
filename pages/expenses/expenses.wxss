@@ -1,0 +1,378 @@
+.page {
+  padding-bottom: 160rpx;
+}
+
+.month-total {
+  font-size: 68rpx;
+  font-weight: 800;
+  color: var(--navy-700);
+  font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+  letter-spacing: -0.02em;
+  margin: 8rpx 0 20rpx;
+}
+
+.budget-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 24rpx;
+  color: var(--text-sub);
+}
+
+.budget-label.over {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.budget-bar {
+  height: 16rpx;
+  background: #E8EDF3;
+  border-radius: 999rpx;
+  margin-top: 12rpx;
+  overflow: hidden;
+}
+
+.budget-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--navy-700), var(--gold));
+  border-radius: 999rpx;
+  transition: width 0.3s ease;
+}
+
+.budget-fill.over {
+  background: var(--danger);
+}
+
+.compare-row {
+  font-size: 24rpx;
+  color: var(--text-sub);
+  margin-top: 16rpx;
+}
+
+.over-tip {
+  margin-top: 16rpx;
+  font-size: 26rpx;
+  font-weight: 700;
+  color: var(--danger);
+}
+
+/* 分类占比 */
+.cat-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20rpx;
+}
+
+.cat-name {
+  width: 100rpx;
+  font-size: 26rpx;
+  color: var(--text-sub);
+  flex-shrink: 0;
+}
+
+.cat-bar {
+  flex: 1;
+  height: 18rpx;
+  background: #E8EDF3;
+  border-radius: 999rpx;
+  overflow: hidden;
+  margin: 0 16rpx;
+}
+
+.cat-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--navy-700), var(--navy-600));
+  border-radius: 999rpx;
+}
+
+.cat-amount {
+  font-size: 24rpx;
+  color: var(--text);
+  flex-shrink: 0;
+  min-width: 180rpx;
+  text-align: right;
+  font-weight: 600;
+}
+
+/* 流水 */
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22rpx 0;
+  border-bottom: 1rpx solid var(--border-light);
+}
+.row:last-child {
+  border-bottom: none;
+}
+
+.row-left {
+  flex: 1;
+  min-width: 0;
+}
+
+.row-top {
+  display: flex;
+  align-items: center;
+}
+
+.row-note {
+  font-size: 28rpx;
+  color: var(--text);
+  font-weight: 600;
+  margin-left: 12rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-date {
+  font-size: 22rpx;
+  color: var(--text-sub);
+  margin-top: 6rpx;
+}
+
+.row-right {
+  display: flex;
+  align-items: center;
+}
+
+.row-amount {
+  font-size: 34rpx;
+  font-weight: 800;
+  color: var(--danger);
+  font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+}
+
+.row-del {
+  font-size: 24rpx;
+  color: var(--danger);
+  margin-left: 24rpx;
+  padding: 8rpx;
+}
+
+/* 悬浮添加 */
+.fab {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(48rpx + env(safe-area-inset-bottom));
+  background: linear-gradient(135deg, var(--navy-700), var(--navy-900));
+  color: #fff;
+  font-size: 30rpx;
+  font-weight: 600;
+  padding: 24rpx 56rpx;
+  border-radius: 999rpx;
+  box-shadow: 0 12rpx 32rpx rgba(20, 48, 79, 0.28);
+  z-index: 50;
+}
+.fab:active {
+  transform: translateX(-50%) scale(0.98);
+  opacity: 0.94;
+}
+
+/* 分类 chips */
+.cat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+}
+
+.chip {
+  min-width: 120rpx;
+  text-align: center;
+  padding: 16rpx 28rpx;
+  background: #F1F5FA;
+  border-radius: 999rpx;
+  font-size: 28rpx;
+  color: var(--text-sub);
+  transition: all 0.1s ease;
+}
+
+.chip-active {
+  background: linear-gradient(135deg, var(--navy-700), var(--navy-800));
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 8rpx 20rpx rgba(20, 48, 79, 0.2);
+}
+
+.amount-input {
+  font-size: 48rpx;
+  font-weight: 800;
+  color: var(--navy-700);
+}
+
+.picker-val {
+  display: flex;
+  align-items: center;
+  color: var(--text);
+}
+
+.sheet-actions {
+  margin-top: 32rpx;
+}
+
+/* 月份切换头 */
+.month-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8rpx;
+}
+
+.month-title {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.month-arrow {
+  width: 64rpx;
+  height: 64rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 44rpx;
+  line-height: 64rpx;
+  color: var(--text-sub);
+  border-radius: 12rpx;
+}
+
+.month-arrow:active {
+  background: #E8EDF3;
+}
+
+.month-arrow.disabled {
+  color: #C6CFD9;
+}
+
+.month-arrow.disabled:active {
+  background: transparent;
+}
+
+/* 固定支出入口卡片 */
+.recur-card:active {
+  background: #F6F8FB;
+}
+
+.recur-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 16rpx;
+  margin: 4rpx 0 8rpx;
+}
+
+.recur-total {
+  font-size: 44rpx;
+  font-weight: 800;
+  color: var(--navy-700);
+  font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+}
+
+.recur-sub {
+  font-size: 24rpx;
+  color: var(--text-sub);
+}
+
+.recur-hint {
+  font-size: 24rpx;
+  color: var(--text-sub);
+}
+
+/* 固定支出管理弹层 */
+.recur-row {
+  display: flex;
+  align-items: center;
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid #EEF1F5;
+  gap: 16rpx;
+}
+
+.recur-row.inactive .recur-name,
+.recur-row.inactive .recur-meta,
+.recur-row.inactive .recur-amount {
+  color: #B7C0CB;
+}
+
+.recur-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.recur-name {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.recur-meta {
+  font-size: 24rpx;
+  color: var(--text-sub);
+  margin-top: 4rpx;
+}
+
+.recur-right {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.recur-amount {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: var(--navy-700);
+  font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+}
+
+.recur-ops {
+  transform: scale(0.8);
+}
+
+.recur-del {
+  font-size: 24rpx;
+  color: #E5484D;
+  padding: 8rpx 4rpx;
+}
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.form-tip {
+  font-size: 22rpx;
+  color: var(--text-sub);
+  margin-top: 6rpx;
+}
+
+/* 手动确认记账按钮 */
+.recur-tip {
+  font-size: 24rpx;
+  color: var(--text-sub);
+  margin: -8rpx 0 16rpx;
+}
+
+.recur-record {
+  padding: 10rpx 24rpx;
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #C8A04D;
+  border: 2rpx solid #C8A04D;
+  border-radius: 999rpx;
+  background: rgba(200, 160, 77, 0.06);
+  white-space: nowrap;
+}
+
+.recur-record:active {
+  background: rgba(200, 160, 77, 0.18);
+}
+
+.recur-record.done {
+  color: #B7C0CB;
+  border-color: #D9E0E8;
+  background: #F4F7FA;
+}
+
+.recur-done-text {
+  color: #C8A04D;
+}

@@ -1,0 +1,106 @@
+<view class="page">
+  <!-- 骨架屏 -->
+  <view wx:if="{{loading}}" class="sk-wrap">
+    <view class="sk-card">
+      <view class="sk-block sk-w50 sk-l"></view>
+      <view class="sk-block sk-w30 sk-mt"></view>
+      <view class="sk-block sk-w40 sk-mt"></view>
+    </view>
+    <view class="sk-card">
+      <view class="sk-block sk-w40"></view>
+      <view class="sk-block sk-w60 sk-mt sk-xl"></view>
+    </view>
+    <view class="sk-card">
+      <view class="sk-block sk-w30 sk-mb"></view>
+      <view wx:for="{{[1,2,3]}}" wx:key="*this" class="sk-row">
+        <view class="sk-block sk-w30"></view>
+        <view class="sk-block sk-w40 sk-l"></view>
+      </view>
+    </view>
+  </view>
+
+  <block wx:else>
+    <!-- 下次发薪 -->
+    <view class="card salary-count">
+      <view class="sc-left">
+        <view class="sc-label">{{countdown.isToday ? '今天就是发薪日' : '距离下次发薪'}}</view>
+        <view class="sc-sub">{{countdown.date}}</view>
+      </view>
+      <view class="sc-days">
+        <text class="sc-num">{{countdown.days}}</text>
+        <text class="sc-unit">天</text>
+      </view>
+      <view class="sc-edit" bindtap="openPayday">每月{{countdown.payday}}号发薪 · 修改</view>
+    </view>
+
+    <!-- 年度累计 -->
+    <view class="card year-card">
+      <view class="year-label">{{year}} 年已累计收入</view>
+      <view class="year-num">¥{{yearTotal}}</view>
+    </view>
+
+    <!-- 记录列表 -->
+    <view class="card">
+      <view class="card-title">发薪记录</view>
+      <block wx:if="{{list.length}}">
+        <view wx:for="{{list}}" wx:key="_id" class="row">
+          <view class="row-left">
+            <view class="row-date">{{item.dateText}}</view>
+            <view class="row-note">{{item.note || '工资'}}</view>
+          </view>
+          <view class="row-right">
+            <view class="row-amount">¥{{item.amountText}}</view>
+            <view class="row-del" bindtap="removeSalary" data-id="{{item._id}}" data-date="{{item.dateText}}" data-amount="{{item.amountText}}">删除</view>
+          </view>
+        </view>
+      </block>
+      <view wx:else class="empty">还没有发薪记录，点下方按钮添加</view>
+    </view>
+
+    <!-- 悬浮添加 -->
+    <view class="fab" bindtap="openForm">＋ 记录发薪</view>
+  </block>
+
+  <!-- 新增表单 -->
+  <view wx:if="{{showForm}}" class="mask {{showFormClosing ? 'mask-out' : ''}}" bindtap="closeForm"></view>
+  <view wx:if="{{showForm}}" class="sheet {{showFormClosing ? 'sheet-out' : ''}}">
+    <view class="sheet-title">记录发薪</view>
+
+    <view class="form-item">
+      <text class="form-label">到账日期</text>
+      <picker mode="date" value="{{formDate}}" bindchange="onDateChange">
+        <view class="form-input picker-val">{{formDate}}</view>
+      </picker>
+      <view class="form-tip">按工资实际到账日填写，计入该月结余。如 7 月工资 8 月 15 到账，填 8 月 15（备注写「7月工资」）</view>
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">实发金额（元）</text>
+      <input class="form-input" type="digit" placeholder="如 12500" value="{{formAmount}}" bindinput="onAmountInput" />
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">备注（可选）</text>
+      <input class="form-input" placeholder="如：8月工资 / 年终奖" value="{{formNote}}" bindinput="onNoteInput" />
+    </view>
+
+    <view class="sheet-actions">
+      <view class="btn btn-primary" bindtap="saveSalary">保存</view>
+    </view>
+  </view>
+
+  <!-- 发薪日设置弹层 -->
+  <view wx:if="{{showPayday}}" class="mask {{showPaydayClosing ? 'mask-out' : ''}}" bindtap="closePayday"></view>
+  <view wx:if="{{showPayday}}" class="sheet {{showPaydayClosing ? 'sheet-out' : ''}}">
+    <view class="sheet-title">每月几号发薪</view>
+    <view class="form-item">
+      <picker mode="selector" range="{{paydayRange}}" value="{{formPayday - 1}}" bindchange="onPaydayChange">
+        <view class="form-input picker-val">每月 {{formPayday}} 号</view>
+      </picker>
+      <view class="form-tip">设置一次即可，之后每次记录发薪会自动带出该日期</view>
+    </view>
+    <view class="sheet-actions">
+      <view class="btn btn-primary" bindtap="savePayday">保存</view>
+    </view>
+  </view>
+</view>

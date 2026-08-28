@@ -1,0 +1,439 @@
+.page {
+  padding-bottom: 200rpx;
+}
+
+/* 设置弹层：隐私锁 / 回收站 */
+.recycle-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.recycle-link {
+  font-size: 28rpx;
+  color: var(--text-sub);
+}
+
+/* 收支趋势图 */
+.trend-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16rpx;
+}
+.trend-head .card-title {
+  margin-bottom: 0;
+}
+.trend-legend {
+  display: flex;
+  gap: 20rpx;
+  font-size: 22rpx;
+  color: var(--text-sub);
+}
+.trend-legend .lg {
+  display: flex;
+  align-items: center;
+}
+.dot {
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 4rpx;
+  margin-right: 6rpx;
+}
+.dot-income { background: var(--navy-700); }
+.dot-expense { background: var(--danger); }
+.dot-balance { background: var(--gold); border-radius: 50%; }
+.trend-canvas {
+  width: 100%;
+  height: 340rpx;
+  display: block;
+}
+
+/* 顶部用户栏 — 深蓝金融质感头部 */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(135deg, var(--navy-700), var(--navy-900));
+  padding: 28rpx 32rpx 36rpx;
+  margin: 0;
+  border-radius: 0 0 32rpx 32rpx;
+  color: #fff;
+  box-shadow: 0 12rpx 32rpx rgba(20, 48, 79, 0.18);
+}
+
+.user {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.avatar {
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: 50%;
+  background: var(--gold);
+  flex-shrink: 0;
+  border: 2rpx solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.15);
+}
+
+.avatar.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 40rpx;
+  font-weight: 700;
+}
+
+.user-meta {
+  margin-left: 20rpx;
+  min-width: 0;
+}
+
+.nick {
+  font-size: 34rpx;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+
+.sub {
+  font-size: 24rpx;
+  color: rgba(255, 255, 255, 0.72);
+  margin-top: 6rpx;
+}
+
+.remind-btn {
+  flex-shrink: 0;
+  margin-left: 20rpx;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 24rpx;
+  font-weight: 600;
+  padding: 12rpx 24rpx;
+  border-radius: 999rpx;
+  border: 1rpx solid rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(4rpx);
+}
+.remind-btn:active {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* 今天要处理 */
+.todo-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #F7F8FA;
+  border-radius: 18rpx;
+  padding: 22rpx;
+  margin-bottom: 16rpx;
+  border-left: 8rpx solid transparent;
+}
+.todo-item:last-child {
+  margin-bottom: 0;
+}
+
+.todo-item.overdue {
+  border-left-color: var(--danger);
+  background: var(--danger-bg);
+}
+.todo-item.today {
+  border-left-color: var(--gold);
+  background: var(--gold-light);
+}
+.todo-item.tomorrow {
+  border-left-color: var(--warn);
+  background: var(--warn-bg);
+}
+
+.todo-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.todo-top {
+  display: flex;
+  align-items: center;
+}
+
+.todo-bank {
+  font-size: 28rpx;
+  font-weight: 700;
+  margin-right: 12rpx;
+  color: var(--text);
+}
+
+.todo-amount {
+  font-size: 34rpx;
+  font-weight: 800;
+  margin-top: 8rpx;
+  font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+  color: var(--text);
+}
+
+.todo-due {
+  font-size: 24rpx;
+  color: var(--text-sub);
+  margin-top: 4rpx;
+}
+
+.todo-item.overdue .todo-due {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.pay-btn {
+  flex-shrink: 0;
+  margin-left: 16rpx;
+}
+
+/* 预算预警 */
+.budget-alert {
+  display: flex;
+  align-items: center;
+  padding: 20rpx 28rpx;
+  border-radius: 20rpx;
+}
+.budget-alert.over {
+  background: var(--danger-bg);
+  border: 1rpx solid #F5CFCF;
+}
+.budget-alert.warn {
+  background: var(--warn-bg);
+  border: 1rpx solid #F8E3B5;
+}
+
+.ba-dot {
+  width: 16rpx;
+  height: 16rpx;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-right: 16rpx;
+}
+.budget-alert.over .ba-dot { background: var(--danger); }
+.budget-alert.warn .ba-dot { background: var(--warn); }
+
+.ba-text {
+  font-size: 26rpx;
+  line-height: 1.5;
+}
+.budget-alert.over .ba-text { color: var(--danger); font-weight: 600; }
+.budget-alert.warn .ba-text { color: var(--warn); font-weight: 600; }
+
+/* 月度结余看板 */
+.board-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8rpx;
+}
+
+.board-arrow {
+  width: 64rpx;
+  height: 64rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 44rpx;
+  line-height: 64rpx;
+  color: var(--text-sub);
+  background: #F1F5FA;
+  border-radius: 50%;
+}
+.board-arrow:active {
+  background: #E8EDF3;
+}
+
+.board-title {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.board-balance {
+  text-align: center;
+  padding: 12rpx 0 28rpx;
+}
+
+.bb-label {
+  font-size: 24rpx;
+  color: var(--text-sub);
+}
+
+.bb-num {
+  font-size: 68rpx;
+  font-weight: 800;
+  margin-top: 6rpx;
+  font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+  letter-spacing: -0.02em;
+}
+
+.board-balance.pos .bb-num { color: var(--gold); }
+.board-balance.neg .bb-num { color: var(--danger); }
+
+.overview-grid {
+  display: flex;
+  padding-top: 24rpx;
+  border-top: 1rpx solid var(--border-light);
+}
+
+.ov-item {
+  flex: 1;
+  text-align: center;
+}
+
+.ov-num {
+  font-size: 32rpx;
+  font-weight: 800;
+  font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+}
+
+.ov-num.income { color: var(--gold); }
+.ov-num.expense { color: var(--text); }
+.ov-num.repay { color: var(--navy-600); }
+
+.ov-label {
+  font-size: 24rpx;
+  color: var(--text-sub);
+  margin-top: 8rpx;
+}
+
+.board-formula {
+  margin-top: 20rpx;
+  padding-top: 16rpx;
+  border-top: 1rpx solid var(--border-light);
+  font-size: 22rpx;
+  color: var(--text-sub);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.board-current {
+  margin-left: 12rpx;
+  background: var(--navy-700);
+  color: #fff;
+  font-size: 20rpx;
+  font-weight: 600;
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+}
+
+/* 设置弹层 */
+.avatar-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8rpx 0 16rpx;
+}
+
+.avatar-btn {
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  line-height: 1;
+  border-radius: 50%;
+}
+.avatar-btn::after { border: none; }
+
+.avatar-lg {
+  width: 128rpx;
+  height: 128rpx;
+  border-radius: 50%;
+  background: var(--gold);
+  border: 2rpx solid var(--border-light);
+}
+
+.avatar-lg.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 48rpx;
+  font-weight: 700;
+}
+
+.avatar-tip {
+  font-size: 24rpx;
+  color: var(--text-sub);
+  margin-top: 12rpx;
+}
+
+.clear-btn {
+  margin-top: 16rpx;
+}
+
+/* 账单分享按钮 */
+.share-btn {
+  margin-top: 20rpx;
+  padding: 16rpx 0;
+  text-align: center;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--gold, #C8A04D);
+  border: 2rpx solid #C8A04D;
+  border-radius: 16rpx;
+  background: rgba(200, 160, 77, 0.06);
+}
+
+.share-btn:active {
+  background: rgba(200, 160, 77, 0.16);
+}
+
+/* 分享弹层（居中对话框） */
+.share-pop {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 100;
+  width: 640rpx;
+  background: #fff;
+  border-radius: 32rpx;
+  padding: 32rpx 32rpx calc(28rpx + env(safe-area-inset-bottom));
+  animation: shareIn 0.26s cubic-bezier(0.32, 0.72, 0.34, 1);
+}
+
+.share-pop-out {
+  animation: shareOut 0.22s ease forwards;
+}
+
+@keyframes shareIn {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.88); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes shareOut {
+  from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  to { opacity: 0; transform: translate(-50%, -50%) scale(0.92); }
+}
+
+.share-canvas {
+  width: 576rpx;
+  height: 768rpx;
+  border-radius: 16rpx;
+  background: #0E2238;
+  display: block;
+  margin: 0 auto;
+}
+
+.share-actions {
+  display: flex;
+  gap: 20rpx;
+  margin-top: 28rpx;
+}
+
+.share-actions .btn {
+  flex: 1;
+}
+
+.btn-share {
+  background: #F3F5F8;
+  color: var(--text);
+}

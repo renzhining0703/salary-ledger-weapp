@@ -1,0 +1,139 @@
+<view class="page">
+  <!-- 骨架屏 -->
+  <view wx:if="{{loading}}" class="sk-wrap">
+    <view wx:for="{{[1,2,3]}}" wx:key="*this" class="sk-card">
+      <view class="sk-row">
+        <view class="sk-block sk-w30 sk-l"></view>
+        <view class="sk-block sk-w20 sk-h round"></view>
+      </view>
+      <view class="sk-block sk-w50 sk-xl sk-mt"></view>
+      <view class="sk-block sk-w40 sk-mt"></view>
+      <view class="sk-row sk-mt">
+        <view class="sk-block sk-w25 sk-h round"></view>
+        <view class="sk-block sk-w25 sk-h round"></view>
+        <view class="sk-block sk-w25 sk-h round"></view>
+      </view>
+    </view>
+  </view>
+
+  <block wx:else>
+    <!-- 账单汇总 -->
+    <view class="bill-summary" wx:if="{{list.length}}">
+      <view class="bs-item">
+        <view class="bs-label">本期待还</view>
+        <view class="bs-val money {{summary.urgent ? 'bs-warn' : ''}}">¥{{summary.totalText}}</view>
+        <view class="bs-sub">{{summary.count}} 张卡</view>
+      </view>
+      <view class="bs-item">
+        <view class="bs-label">最近到期</view>
+        <view class="bs-val money {{summary.urgent ? 'bs-warn' : ''}}">{{summary.nextText}}</view>
+        <view class="bs-sub">含逾期提示</view>
+      </view>
+      <view class="bs-item">
+        <view class="bs-label">本月已还</view>
+        <view class="bs-val money">¥{{summary.paidText}}</view>
+        <view class="bs-sub">计入当月结余</view>
+      </view>
+    </view>
+
+    <!-- 卡片列表 -->
+    <view class="card {{item.status === 'pending' ? 'cc-active' : 'cc-paid'}}" wx:for="{{list}}" wx:key="_id">
+      <view class="card-head">
+        <view class="bank-name">{{item.bank}}</view>
+        <view class="tag {{item.level === 'overdue' || item.level === 'today' ? 'tag-red' : item.level === 'tomorrow' ? 'tag-yellow' : item.level === 'paid' ? 'tag-green' : 'tag-gray'}}">
+          {{item.level === 'overdue' ? '已逾期' : item.level === 'today' ? '今天到期' : item.level === 'tomorrow' ? '明天到期' : item.level === 'paid' ? '已还清' : '待还款'}}
+        </view>
+      </view>
+      <view class="card-body">
+        <view class="amount-block">
+          <view class="amount-label">本期应还</view>
+          <view class="amount">¥{{item.amountText}}</view>
+        </view>
+        <view class="info-block">
+          <view class="info-line">{{item.repayDayText}}</view>
+          <view class="info-line {{item.level === 'overdue' ? 'overdue-text' : ''}}">{{item.daysText}}</view>
+          <view class="info-line sub" wx:if="{{item.billCycleText}}">{{item.billCycleText}}</view>
+          <view class="info-line sub" wx:if="{{item.note}}">{{item.note}}</view>
+        </view>
+      </view>
+      <view class="card-actions">
+        <view wx:if="{{item.status === 'pending'}}" class="btn btn-sm btn-primary" bindtap="markPaid" data-id="{{item._id}}">标记已还</view>
+        <view wx:else class="btn btn-sm btn-ghost" bindtap="openEdit" data-id="{{item._id}}" data-bank="{{item.bank}}" data-amount="{{item.amount}}" data-repay-day="{{item.repayDay}}" data-bill-day="{{item.billDay || 0}}">更新本期</view>
+        <view class="btn btn-sm btn-ghost" bindtap="openEdit" data-id="{{item._id}}" data-bank="{{item.bank}}" data-amount="{{item.amount}}" data-repay-day="{{item.repayDay}}" data-bill-day="{{item.billDay || 0}}">改金额</view>
+        <view class="btn btn-sm btn-danger" bindtap="removeCard" data-id="{{item._id}}" data-bank="{{item.bank}}">删除</view>
+      </view>
+    </view>
+
+    <view wx:if="{{!list.length}}" class="card">
+      <view class="empty">还没有信用卡，点下方按钮添加</view>
+    </view>
+
+    <!-- 悬浮添加 -->
+    <view class="fab" bindtap="openForm">＋ 添加信用卡</view>
+  </block>
+
+  <!-- 新增表单 -->
+  <view wx:if="{{showForm}}" class="mask {{showFormClosing ? 'mask-out' : ''}}" bindtap="closeForm"></view>
+  <view wx:if="{{showForm}}" class="sheet {{showFormClosing ? 'sheet-out' : ''}}">
+    <view class="sheet-title">添加信用卡</view>
+
+    <view class="form-item">
+      <text class="form-label">卡名</text>
+      <input class="form-input" placeholder="如：招行信用卡" value="{{formBank}}" bindinput="onBankInput" />
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">每月还款日</text>
+      <picker mode="selector" range="{{repayDayRange}}" value="{{formRepayDay - 1}}" bindchange="onRepayChange">
+        <view class="form-input picker-val">每月 {{formRepayDay}} 号</view>
+      </picker>
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">账单日（可选）</text>
+      <picker mode="selector" range="{{billDayRange}}" value="{{formBillDay}}" bindchange="onBillChange">
+        <view class="form-input picker-val">{{formBillDay ? '每月 ' + formBillDay + ' 号' : '不设置'}}</view>
+      </picker>
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">本期应还金额（元）</text>
+      <input class="form-input" type="digit" placeholder="如 3500" value="{{formAmount}}" bindinput="onAmountInput" />
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">备注（可选）</text>
+      <input class="form-input" placeholder="如：分期 / 最低还款" value="{{formNote}}" bindinput="onNoteInput" />
+    </view>
+
+    <view class="sheet-actions">
+      <view class="btn btn-primary" bindtap="saveCard">保存</view>
+    </view>
+  </view>
+
+  <!-- 编辑账单 -->
+  <view wx:if="{{showEdit}}" class="mask {{showEditClosing ? 'mask-out' : ''}}" bindtap="closeEdit"></view>
+  <view wx:if="{{showEdit}}" class="sheet {{showEditClosing ? 'sheet-out' : ''}}">
+    <view class="sheet-title">更新「{{editBank}}」账单</view>
+    <view class="form-item">
+      <text class="form-label">本期应还金额（元）</text>
+      <input class="form-input" type="digit" placeholder="如 3500" value="{{editAmount}}" bindinput="onEditAmountInput" />
+    </view>
+    <view class="form-item">
+      <text class="form-label">每月还款日</text>
+      <picker mode="selector" range="{{repayDayRange}}" value="{{editRepayDay - 1}}" bindchange="onEditRepayChange">
+        <view class="form-input picker-val">每月 {{editRepayDay}} 号</view>
+      </picker>
+    </view>
+    <view class="form-item">
+      <text class="form-label">账单日</text>
+      <picker mode="selector" range="{{billDayRange}}" value="{{editBillDay}}" bindchange="onEditBillChange">
+        <view class="form-input picker-val">{{editBillDay ? '每月 ' + editBillDay + ' 号' : '不设置'}}</view>
+      </picker>
+    </view>
+    <view class="edit-tip">保存后该卡将重置为「待还款」状态</view>
+    <view class="sheet-actions">
+      <view class="btn btn-primary" bindtap="saveEdit">保存</view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,25 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# WeChat DevTools 本地私有配置（每个开发者本地不同，不上传）
+project.private.config.json
+
+# 工具/编辑器目录
+.workbuddy/
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 日志
+*.log
+npm-debug.log*
+
+# Node / npm（云函数依赖）
+node_modules/
+miniprogram_npm/
+
+# 云函数 node_modules（按需开启）
+# cloudfunctions/*/node_modules/

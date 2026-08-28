@@ -1,0 +1,52 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/salary/salary",
+    "pages/cards/cards",
+    "pages/expenses/expenses",
+    "pages/recycle/recycle",
+    "pages/lock/lock"
+  ],
+  "window": {
+    "navigationBarBackgroundColor": "#0E2238",
+    "navigationBarTitleText": "薪账本",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#F3F5F8",
+    "backgroundTextStyle": "dark"
+  },
+  "tabBar": {
+    "color": "#97A3B2",
+    "selectedColor": "#14304F",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "首页",
+        "iconPath": "images/tab-home.png",
+        "selectedIconPath": "images/tab-home-active.png"
+      },
+      {
+        "pagePath": "pages/salary/salary",
+        "text": "工资",
+        "iconPath": "images/tab-salary.png",
+        "selectedIconPath": "images/tab-salary-active.png"
+      },
+      {
+        "pagePath": "pages/cards/cards",
+        "text": "信用卡",
+        "iconPath": "images/tab-card.png",
+        "selectedIconPath": "images/tab-card-active.png"
+      },
+      {
+        "pagePath": "pages/expenses/expenses",
+        "text": "记账",
+        "iconPath": "images/tab-expense.png",
+        "selectedIconPath": "images/tab-expense-active.png"
+      }
+    ]
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents"
+}

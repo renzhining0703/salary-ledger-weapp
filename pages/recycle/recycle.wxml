@@ -1,0 +1,51 @@
+<view class="page">
+  <!-- 骨架屏 -->
+  <view wx:if="{{loading}}" class="sk-wrap">
+    <view class="sk-card">
+      <view class="sk-block sk-w30"></view>
+      <view class="sk-block sk-w50 sk-xl sk-mt"></view>
+      <view class="sk-block sk-w40 sk-mt"></view>
+    </view>
+    <view class="sk-card">
+      <view class="sk-block sk-w20 sk-h round"></view>
+      <view class="sk-block sk-w50 sk-mt"></view>
+      <view class="sk-block sk-w30 sk-mt sk-l"></view>
+    </view>
+  </view>
+
+  <block wx:else>
+    <!-- 顶部提示 -->
+    <view class="tip-card" wx:if="{{list.length}}">
+      <view class="tip-text">删除的记录会在这里保留 30 天，到期自动清理</view>
+      <view class="tip-btn" bindtap="clearAll">清空回收站</view>
+    </view>
+
+    <!-- 记录列表 -->
+    <view wx:if="{{list.length}}">
+      <view wx:for="{{list}}" wx:key="_id" class="rc-card">
+        <view class="rc-head">
+          <view class="rc-left">
+            <view class="rc-tag {{item.typeClass}}">{{item.typeText}}</view>
+            <view class="rc-title">{{item.title}}</view>
+          </view>
+          <view class="rc-amount money" wx:if="{{item.amountText}}">¥{{item.amountText}}</view>
+        </view>
+        <view class="rc-meta">
+          <view class="rc-time">删除于 {{item.deletedAtText}}</view>
+          <view class="rc-days">剩 {{item.daysLeft}} 天</view>
+        </view>
+        <view class="rc-actions">
+          <view class="btn btn-restore" bindtap="restoreItem" data-col="{{item._col}}" data-id="{{item._id}}" data-title="{{item.title}}">恢复</view>
+          <view class="btn btn-destroy" bindtap="destroyItem" data-col="{{item._col}}" data-id="{{item._id}}" data-title="{{item.title}}">彻底删除</view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 空状态 -->
+    <view wx:else class="empty-state">
+      <view class="empty-icon">🗑</view>
+      <view class="empty-title">回收站是空的</view>
+      <view class="empty-desc">删除的记录会在这里保留 30 天\n到期前可随时恢复</view>
+    </view>
+  </block>
+</view>

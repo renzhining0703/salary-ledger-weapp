@@ -1,0 +1,159 @@
+.page {
+  padding-bottom: 160rpx;
+}
+
+/* 发薪倒计时 — 顶部氛围卡片 */
+.salary-count {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(135deg, var(--navy-700), var(--navy-900));
+  border-radius: 0 0 32rpx 32rpx;
+  padding: 36rpx 32rpx 92rpx;
+  margin: 0 0 24rpx;
+  color: #fff;
+  box-shadow: 0 12rpx 32rpx rgba(20, 48, 79, 0.2);
+  border: none;
+}
+
+.sc-label {
+  color: #fff;
+  font-size: 30rpx;
+  font-weight: 700;
+}
+
+.sc-sub {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 24rpx;
+  margin-top: 8rpx;
+}
+
+.sc-days {
+  display: flex;
+  align-items: baseline;
+}
+
+.sc-num {
+  color: var(--gold);
+  font-size: 88rpx;
+  font-weight: 800;
+  font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+  letter-spacing: -0.02em;
+}
+
+.sc-unit {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 28rpx;
+  margin-left: 8rpx;
+}
+
+.sc-edit {
+  position: absolute;
+  left: 32rpx;
+  bottom: 24rpx;
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 24rpx;
+  padding: 8rpx 22rpx;
+  border: 1rpx solid rgba(255, 255, 255, 0.35);
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* 年度累计 */
+.year-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.year-label {
+  font-size: 28rpx;
+  color: var(--text-sub);
+}
+
+.year-num {
+  font-size: 44rpx;
+  font-weight: 800;
+  color: var(--gold);
+  font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+}
+
+/* 记录列表 */
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24rpx 0;
+  border-bottom: 1rpx solid var(--border-light);
+}
+.row:last-child {
+  border-bottom: none;
+}
+
+.row-date {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.row-note {
+  font-size: 24rpx;
+  color: var(--text-sub);
+  margin-top: 6rpx;
+}
+
+.row-right {
+  display: flex;
+  align-items: center;
+}
+
+.row-amount {
+  font-size: 34rpx;
+  font-weight: 800;
+  color: var(--gold);
+  font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+}
+
+.row-del {
+  font-size: 24rpx;
+  color: var(--danger);
+  margin-left: 24rpx;
+  padding: 8rpx;
+}
+
+/* 悬浮添加 */
+.fab {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(48rpx + env(safe-area-inset-bottom));
+  background: linear-gradient(135deg, var(--navy-700), var(--navy-900));
+  color: #fff;
+  font-size: 30rpx;
+  font-weight: 600;
+  padding: 24rpx 56rpx;
+  border-radius: 999rpx;
+  box-shadow: 0 12rpx 32rpx rgba(20, 48, 79, 0.28);
+  z-index: 50;
+}
+.fab:active {
+  transform: translateX(-50%) scale(0.98);
+  opacity: 0.94;
+}
+
+.picker-val {
+  display: flex;
+  align-items: center;
+  color: var(--text);
+}
+
+.form-tip {
+  font-size: 22rpx;
+  color: var(--text-sub);
+  margin-top: 8rpx;
+}
+
+.sheet-actions {
+  margin-top: 32rpx;
+}

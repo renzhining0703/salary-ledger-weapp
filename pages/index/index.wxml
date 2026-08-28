@@ -1,0 +1,148 @@
+<view class="page" bindtap="onPageTap">
+  <!-- 顶部用户栏 -->
+  <view class="header">
+    <view class="user" bindtap="openProfile">
+      <image wx:if="{{user.avatarUrl}}" class="avatar" src="{{user.avatarUrl}}" mode="aspectFill" />
+      <view wx:else class="avatar placeholder">薪</view>
+      <view class="user-meta">
+        <view class="nick">{{user.nickname || '未设置昵称'}}</view>
+        <view class="sub">每月{{user.payday || 15}}号发薪 · 月预算 ¥{{user.budget || 4000}}</view>
+      </view>
+    </view>
+    <view class="remind-btn" bindtap="subscribeRemind">还款提醒</view>
+  </view>
+
+  <!-- 今天要处理（置顶） -->
+  <view class="card">
+    <view class="card-title">今天要处理</view>
+    <block wx:if="{{todoList.length}}">
+      <view wx:for="{{todoList}}" wx:key="id" class="todo-item {{item.level}}">
+        <view class="todo-main">
+          <view class="todo-top">
+            <text class="todo-bank">{{item.bank}}</text>
+            <view class="tag tag-red" wx:if="{{item.level === 'overdue'}}">逾期</view>
+            <view class="tag tag-red" wx:elif="{{item.level === 'today'}}">今天</view>
+            <view class="tag tag-yellow" wx:else>明天</view>
+          </view>
+          <view class="todo-amount">¥{{item.amount}}</view>
+          <view class="todo-due">{{item.dueText}}</view>
+        </view>
+        <view class="btn btn-sm btn-primary pay-btn" bindtap="markPaid" data-id="{{item.id}}" wx:if="{{item.canPay}}">标记已还</view>
+      </view>
+    </block>
+    <view wx:else class="empty">今天没有要处理的事项</view>
+  </view>
+
+  <!-- 预算超支预警 -->
+  <view wx:if="{{budgetAlert}}" class="card budget-alert {{budgetAlert.type}}">
+    <view class="ba-dot"></view>
+    <view class="ba-text">{{budgetAlert.text}}</view>
+  </view>
+
+  <!-- 月度结余看板 -->
+  <view class="card">
+    <view class="board-head">
+      <view class="board-arrow" bindtap="prevMonth">‹</view>
+      <view class="board-title">{{board.monthText}} 结余</view>
+      <view class="board-arrow" bindtap="nextMonth">›</view>
+    </view>
+    <view class="board-balance {{board.balancePositive ? 'pos' : 'neg'}}">
+      <text class="bb-label">本月结余</text>
+      <view class="bb-num">{{board.balance}}</view>
+    </view>
+    <view class="overview-grid">
+      <view class="ov-item">
+        <view class="ov-num income">{{board.income}}</view>
+        <view class="ov-label">收入</view>
+      </view>
+      <view class="ov-item">
+        <view class="ov-num expense">{{board.expense}}</view>
+        <view class="ov-label">支出</view>
+      </view>
+      <view class="ov-item">
+        <view class="ov-num repay">{{board.repay}}</view>
+        <view class="ov-label">已还</view>
+      </view>
+    </view>
+    <view class="board-formula">
+      收入 − 支出 − 已还 = 结余
+      <text wx:if="{{board.isThisMonth}}" class="board-current">当前月</text>
+    </view>
+    <view class="share-btn" bindtap="openShare">生成账单卡片</view>
+  </view>
+
+  <!-- 近 6 个月收支趋势 -->
+  <view class="card">
+    <view class="trend-head">
+      <view class="card-title">收支趋势</view>
+      <view class="trend-legend">
+        <view class="lg"><view class="dot dot-income"></view>收入</view>
+        <view class="lg"><view class="dot dot-expense"></view>支出</view>
+        <view class="lg"><view class="dot dot-balance"></view>结余</view>
+      </view>
+    </view>
+    <canvas type="2d" id="trendCanvas" class="trend-canvas" wx:if="{{!trendEmpty && !showProfile && !showShare}}"></canvas>
+    <view wx:elif="{{trendEmpty}}" class="empty">近 6 个月暂无收支数据</view>
+  </view>
+
+  <!-- 记一笔快捷入口 -->
+  <view class="quick-add" catchtap="quickExpense">＋</view>
+
+  <!-- 设置弹层 -->
+  <view wx:if="{{showProfile}}" class="mask {{showProfileClosing ? 'mask-out' : ''}}" bindtap="closeProfile"></view>
+  <view wx:if="{{showProfile}}" class="sheet {{showProfileClosing ? 'sheet-out' : ''}}">
+    <view class="sheet-title">个人设置</view>
+
+    <view class="form-item avatar-row">
+      <button class="avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
+        <image wx:if="{{formAvatar}}" class="avatar-lg" src="{{formAvatar}}" mode="aspectFill" />
+        <view wx:else class="avatar-lg placeholder">选</view>
+      </button>
+      <view class="avatar-tip">点击选择微信头像</view>
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">昵称</text>
+      <input class="form-input" type="nickname" placeholder="填写昵称（自愿）" value="{{formNickname}}" bindinput="onNickInput" />
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">每月发薪日</text>
+      <picker mode="selector" range="{{paydayRange}}" value="{{formPayday - 1}}" bindchange="onPaydayChange">
+        <view class="form-input picker-val">每月 {{formPayday}} 号</view>
+      </picker>
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">每月开销预算（元）</text>
+      <input class="form-input" type="number" placeholder="如 4000" value="{{formBudget}}" bindinput="onBudgetInput" />
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">隐私锁</text>
+      <picker range="{{privacyOptions}}" value="{{privacyIndex}}" bindchange="onPrivacyChange">
+        <view class="form-input picker-val">{{privacyOptions[privacyIndex]}}</view>
+      </picker>
+    </view>
+
+    <view class="form-item recycle-entry" bindtap="openRecycle">
+      <text class="form-label">回收站</text>
+      <view class="recycle-link">已删记录保留 30 天 ›</view>
+    </view>
+
+    <view class="sheet-actions">
+      <view class="btn btn-primary" bindtap="saveProfile">保存设置</view>
+      <view class="btn btn-danger clear-btn" bindtap="clearData">重置全部数据</view>
+    </view>
+  </view>
+
+  <!-- 月度账单分享弹层 -->
+  <view wx:if="{{showShare}}" class="mask {{showShareClosing ? 'mask-out' : ''}}" bindtap="closeShare"></view>
+  <view wx:if="{{showShare}}" class="share-pop {{showShareClosing ? 'share-pop-out' : ''}}">
+    <canvas type="2d" id="shareCanvas" class="share-canvas"></canvas>
+    <view class="share-actions">
+      <view class="btn btn-share" bindtap="saveShareImage">保存到相册</view>
+      <view class="btn btn-primary" bindtap="shareToFriend">分享给好友</view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,217 @@
+.page {
+  padding-bottom: 160rpx;
+}
+
+/* 顶部账单汇总 */
+.bill-summary {
+  display: flex;
+  align-items: stretch;
+  background: var(--card);
+  border-radius: 24rpx;
+  padding: 28rpx 12rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 8rpx 24rpx rgba(20, 48, 79, 0.06);
+}
+
+.bs-item {
+  flex: 1;
+  text-align: center;
+  min-width: 0;
+}
+
+.bs-label {
+  font-size: 22rpx;
+  color: var(--text-sub);
+  margin-bottom: 8rpx;
+}
+
+.bs-val {
+  font-size: 34rpx;
+  font-weight: 800;
+  color: var(--navy-700);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bs-val.bs-warn {
+  color: var(--danger);
+}
+
+.bs-sub {
+  font-size: 20rpx;
+  color: var(--text-mute);
+  margin-top: 6rpx;
+}
+
+/* 信用卡卡片：待还款 = 深蓝卡面，已还清 = 白底细线 */
+.card.cc-active {
+  background: linear-gradient(135deg, var(--navy-700), var(--navy-900));
+  color: #fff;
+  border: none;
+  box-shadow: 0 16rpx 40rpx rgba(20, 48, 79, 0.22);
+}
+
+.card.cc-paid {
+  background: var(--card);
+  border-left: 6rpx solid var(--navy-700);
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20rpx;
+}
+
+.bank-name {
+  font-size: 32rpx;
+  font-weight: 700;
+}
+.cc-active .bank-name { color: #fff; }
+.cc-paid .bank-name { color: var(--text); }
+
+.card-body {
+  display: flex;
+  align-items: center;
+}
+
+.amount-block {
+  flex: 1;
+}
+
+.amount-label {
+  font-size: 24rpx;
+  margin-bottom: 4rpx;
+}
+.cc-active .amount-label { color: rgba(255, 255, 255, 0.65); }
+.cc-paid .amount-label { color: var(--text-sub); }
+
+.amount {
+  font-size: 48rpx;
+  font-weight: 800;
+  font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+}
+.cc-active .amount { color: var(--gold); }
+.cc-paid .amount { color: var(--text); }
+
+.info-block {
+  text-align: right;
+}
+
+.info-line {
+  font-size: 26rpx;
+  margin-top: 6rpx;
+}
+.cc-active .info-line { color: rgba(255, 255, 255, 0.85); }
+.cc-paid .info-line { color: var(--text); }
+
+.cc-active .info-line.sub,
+.cc-paid .info-line.sub {
+  color: var(--text-sub);
+  font-size: 24rpx;
+}
+
+/* 深蓝卡面上的状态标签：固定正常高度，内容垂直居中 */
+.cc-active .tag {
+  display: inline-flex;
+  align-items: center;
+  height: 44rpx;
+  line-height: 44rpx;
+  padding: 0 20rpx;
+  border-radius: 999rpx;
+  border: 1rpx solid currentColor;
+  box-sizing: border-box;
+  background: transparent !important;
+}
+.cc-active .tag-red {
+  color: #F8B4B4;
+  border-color: rgba(248, 180, 180, 0.55);
+  background: rgba(201, 64, 64, 0.12) !important;
+}
+.cc-active .tag-yellow {
+  color: #EAD49B;
+  border-color: rgba(234, 212, 155, 0.5);
+  background: rgba(200, 160, 77, 0.12) !important;
+}
+.cc-active .tag-gray {
+  color: rgba(255, 255, 255, 0.82);
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+.cc-active .tag-green {
+  color: #A8E6C3;
+  border-color: rgba(168, 230, 195, 0.45);
+  background: rgba(39, 174, 96, 0.12) !important;
+}
+
+.overdue-text {
+  color: #F8B4B4 !important;
+  font-weight: 700;
+}
+
+.card-actions {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 24rpx;
+  flex-wrap: wrap;
+}
+
+.cc-active .btn-primary {
+  background: linear-gradient(135deg, var(--gold), var(--gold-700));
+  color: var(--navy-900);
+  box-shadow: 0 8rpx 24rpx rgba(200, 160, 77, 0.35);
+}
+
+.cc-active .btn-ghost {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+.cc-active .btn-ghost:active {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.cc-active .btn-danger {
+  background: rgba(201, 64, 64, 0.16);
+  color: #F8B4B4;
+}
+.cc-active .btn-danger:active {
+  background: rgba(201, 64, 64, 0.26);
+}
+
+/* 悬浮添加 */
+.fab {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(48rpx + env(safe-area-inset-bottom));
+  background: linear-gradient(135deg, var(--navy-700), var(--navy-900));
+  color: #fff;
+  font-size: 30rpx;
+  font-weight: 600;
+  padding: 24rpx 56rpx;
+  border-radius: 999rpx;
+  box-shadow: 0 12rpx 32rpx rgba(20, 48, 79, 0.28);
+  z-index: 50;
+}
+.fab:active {
+  transform: translateX(-50%) scale(0.98);
+  opacity: 0.94;
+}
+
+.picker-val {
+  display: flex;
+  align-items: center;
+  color: var(--text);
+}
+
+.edit-tip {
+  font-size: 24rpx;
+  color: var(--text-sub);
+  text-align: center;
+  margin-top: -8rpx;
+}
+
+.sheet-actions {
+  margin-top: 32rpx;
+}

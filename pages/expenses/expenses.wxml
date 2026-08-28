@@ -1,0 +1,201 @@
+<view class="page">
+  <!-- 骨架屏 -->
+  <view wx:if="{{loading}}" class="sk-wrap">
+    <view class="sk-card">
+      <view class="sk-block sk-w30"></view>
+      <view class="sk-block sk-w70 sk-xl sk-mt"></view>
+      <view class="sk-block sk-w100 sk-mt round" style="height: 16rpx;"></view>
+      <view class="sk-block sk-w40 sk-mt"></view>
+    </view>
+    <view class="sk-card">
+      <view class="sk-block sk-w30 sk-mb"></view>
+      <view wx:for="{{[1,2,3,4]}}" wx:key="*this" class="sk-row">
+        <view class="sk-block sk-w20 sk-h round"></view>
+        <view class="sk-block sk-w50"></view>
+        <view class="sk-block sk-w30 sk-l"></view>
+      </view>
+    </view>
+    <view class="sk-card">
+      <view class="sk-block sk-w30 sk-mb"></view>
+      <view wx:for="{{[1,2,3]}}" wx:key="*this" class="sk-row">
+        <view class="sk-block sk-w40"></view>
+        <view class="sk-block sk-w30 sk-l"></view>
+      </view>
+    </view>
+  </view>
+
+  <block wx:else>
+    <!-- 月度总览 + 预算进度 -->
+    <view class="card">
+      <view class="month-head">
+        <view class="month-arrow" bindtap="goPrevMonth">‹</view>
+        <view class="month-title">{{monthText}} 开销</view>
+        <view class="month-arrow {{isThisMonth ? 'disabled' : ''}}" bindtap="goNextMonth">›</view>
+      </view>
+      <view class="month-total">{{monthTotal}}</view>
+      <view class="budget-row">
+        <text class="budget-label">月预算 ¥{{budget}}</text>
+        <text class="budget-label {{budgetOver ? 'over' : ''}}">{{budgetOver ? '已超支' : budgetPercent + '%'}}</text>
+      </view>
+      <view class="budget-bar">
+        <view class="budget-fill {{budgetOver ? 'over' : ''}}" style="width: {{budgetPercent}}%"></view>
+      </view>
+      <view wx:if="{{budgetOver}}" class="over-tip">⚠️ 已超支 {{overAmount}}</view>
+      <view class="compare-row">上月同期：{{lastMonthTotal}}</view>
+    </view>
+
+    <!-- 分类占比 -->
+    <view class="card">
+      <view class="card-title">分类占比</view>
+      <view wx:for="{{catStats}}" wx:key="name" class="cat-row" wx:if="{{item.amount > 0}}">
+        <view class="cat-name">{{item.name}}</view>
+        <view class="cat-bar">
+          <view class="cat-fill" style="width: {{item.percent}}%"></view>
+        </view>
+        <view class="cat-amount">¥{{item.amountText}} ({{item.percent}}%)</view>
+      </view>
+      <view wx:if="{{!monthTotal || monthTotal === '0.00'}}" class="empty">{{isThisMonth ? '本月' : '该月'}}还没有开销记录</view>
+    </view>
+
+    <!-- 固定支出 -->
+    <view class="card recur-card" bindtap="openRecur">
+      <view class="card-title">每月固定支出</view>
+      <view class="recur-summary">
+        <view class="recur-total">¥{{recurTotal}}</view>
+        <view class="recur-sub">{{recurCount}} 项 · 付了才点确认</view>
+      </view>
+      <view class="recur-hint">设成模板，每月支付后点一下「记入本月」，不自动记账 ›</view>
+    </view>
+
+    <!-- 流水列表 -->
+    <view class="card">
+      <view class="card-title">{{monthText}} 流水</view>
+      <block wx:if="{{list.length}}">
+        <view wx:for="{{list}}" wx:key="_id" class="row">
+          <view class="row-left">
+            <view class="row-top">
+              <view class="tag tag-navy">{{item.category}}</view>
+              <text class="row-note" wx:if="{{item.note}}">{{item.note}}</text>
+            </view>
+            <view class="row-date">{{item.date}}</view>
+          </view>
+          <view class="row-right">
+            <view class="row-amount">¥{{item.amountText}}</view>
+            <view class="row-del" bindtap="removeExpense" data-id="{{item._id}}" data-date="{{item.date}}" data-amount="{{item.amountText}}">删除</view>
+          </view>
+        </view>
+      </block>
+      <view wx:else class="empty">{{isThisMonth ? '本月还没有开销记录，点下方记一笔' : '该月没有开销记录'}}</view>
+    </view>
+
+    <!-- 悬浮添加 -->
+    <view class="fab" bindtap="openForm">＋ 记一笔</view>
+  </block>
+
+  <!-- 记账表单 -->
+  <view wx:if="{{showForm}}" class="mask {{showFormClosing ? 'mask-out' : ''}}" bindtap="closeForm"></view>
+  <view wx:if="{{showForm}}" class="sheet {{showFormClosing ? 'sheet-out' : ''}}">
+    <view class="sheet-title">记一笔开销</view>
+
+    <view class="form-item">
+      <text class="form-label">金额（元）</text>
+      <input class="form-input amount-input" type="digit" placeholder="0.00" value="{{formAmount}}" bindinput="onAmountInput" focus="{{true}}" adjust-position="{{false}}" hold-keyboard="{{true}}" />
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">分类</text>
+      <view class="cat-chips">
+        <view
+          wx:for="{{categories}}"
+          wx:key="*this"
+          class="chip {{formCategory === item ? 'chip-active' : ''}}"
+          bindtap="onCategoryTap"
+          data-cat="{{item}}"
+        >{{item}}</view>
+      </view>
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">日期</text>
+      <picker mode="date" value="{{formDate}}" bindchange="onDateChange">
+        <view class="form-input picker-val">{{formDate}}</view>
+      </picker>
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">备注（可选）</text>
+      <input class="form-input" placeholder="如：午餐 / 地铁" value="{{formNote}}" bindinput="onNoteInput" />
+    </view>
+
+    <view class="sheet-actions">
+      <view class="btn btn-primary" bindtap="saveExpense">保存</view>
+    </view>
+  </view>
+
+  <!-- 固定支出管理弹层 -->
+  <view wx:if="{{showRecur}}" class="mask {{showRecurClosing ? 'mask-out' : ''}}" bindtap="closeRecur"></view>
+  <view wx:if="{{showRecur}}" class="sheet {{showRecurClosing ? 'sheet-out' : ''}}">
+    <view class="sheet-title">每月固定支出</view>
+    <view class="recur-tip">模板不会自动记账，每月实际支付后点「记入本月」</view>
+
+    <block wx:if="{{recurList.length}}">
+      <view wx:for="{{recurList}}" wx:key="_id" class="recur-row">
+        <view class="recur-info">
+          <view class="recur-name">{{item.name}}</view>
+          <view class="recur-meta">{{item.category}}<text wx:if="{{item.recordedThisMonth}}" class="recur-done-text"> · 本月已记 ✓</text></view>
+        </view>
+        <view class="recur-right">
+          <view class="recur-amount">¥{{item.amountText}}</view>
+          <view
+            class="recur-record {{item.recordedThisMonth ? 'done' : ''}}"
+            bindtap="recordRecurringItem"
+            data-id="{{item._id}}"
+            data-name="{{item.name}}"
+            data-amount="{{item.amountText}}"
+            data-recorded="{{item.recordedThisMonth}}"
+          >{{item.recordedThisMonth ? '已记' : '记入本月'}}</view>
+        </view>
+        <view class="recur-del" bindtap="removeRecurringItem" data-id="{{item._id}}" data-name="{{item.name}}">删除</view>
+      </view>
+    </block>
+    <view wx:else class="empty">还没有固定支出，点下方添加</view>
+
+    <view class="sheet-actions">
+      <view class="btn btn-primary" bindtap="openRecurForm">＋ 添加固定支出</view>
+    </view>
+  </view>
+
+  <!-- 固定支出发布表单 -->
+  <view wx:if="{{showRecurForm}}" class="mask {{showRecurFormClosing ? 'mask-out' : ''}}" bindtap="closeRecurForm"></view>
+  <view wx:if="{{showRecurForm}}" class="sheet {{showRecurFormClosing ? 'sheet-out' : ''}}">
+    <view class="sheet-title">添加固定支出</view>
+    <view class="recur-tip">仅保存为模板，不会自动记账，每月支付后再手动确认</view>
+
+    <view class="form-item">
+      <text class="form-label">名称</text>
+      <input class="form-input" placeholder="如：视频会员 / 物业管理费" value="{{rName}}" bindinput="onRNameInput" />
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">金额（元 / 每月）</text>
+      <input class="form-input" type="digit" placeholder="0.00" value="{{rAmount}}" bindinput="onRAmountInput" />
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">分类</text>
+      <view class="cat-chips">
+        <view
+          wx:for="{{categories}}"
+          wx:key="*this"
+          class="chip {{rCategory === item ? 'chip-active' : ''}}"
+          bindtap="onRCategoryTap"
+          data-cat="{{item}}"
+        >{{item}}</view>
+      </view>
+    </view>
+
+    <view class="sheet-actions">
+      <view class="btn btn-primary" bindtap="saveRecurring">{{recurSaving ? '保存中…' : '保存'}}</view>
+    </view>
+  </view>
+</view>
