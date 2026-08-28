@@ -113,17 +113,24 @@
 /* 操作按钮 */
 .rc-actions {
   display: flex;
-  gap: 16rpx;
+  gap: 12rpx;
   justify-content: flex-end;
 }
 
 .rc-actions .btn {
+  flex: 0 0 auto;
+  min-width: 144rpx;        /* 两按钮等宽:以较长文字 "彻底删除" 自然宽度为基准 */
+  height: 48rpx;            /* 显式定高,不被 padding / line-height 撑大 */
   font-size: 24rpx;
-  padding: 10rpx 28rpx;
-  border-radius: 14rpx;
+  padding: 0 16rpx;
+  border-radius: 12rpx;
   text-align: center;
-  line-height: 1.4;
+  line-height: 1;
   border: 1rpx solid transparent;
+  box-sizing: border-box;   /* border 计入高度,避免 1rpx 让按钮多出 2rpx */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn-restore {
