@@ -20,6 +20,7 @@ Page({
   },
 
   onShow() {
+    util.checkLock()
     this.loadData()
   },
 

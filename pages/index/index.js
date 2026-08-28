@@ -27,6 +27,7 @@ Page({
   },
 
   onShow() {
+    util.checkLock()
     this.loadData()
   },
 
@@ -327,7 +328,7 @@ Page({
       return
     }
     wx.checkIsSoterEnrolledInDevice({
-      checkAuthMode: 'fingerprint',
+      checkAuthMode: 'fingerPrint',
       success: async (res) => {
         if (!res.isEnrolled) {
           this.setData({ privacyIndex: this.privacyIndexOf(cur) })
@@ -344,7 +345,8 @@ Page({
           wx.showToast({ title: '操作失败', icon: 'none' })
         }
       },
-      fail: () => {
+      fail: (err) => {
+        console.error('SOTER enroll check failed', err)
         this.setData({ privacyIndex: this.privacyIndexOf(cur) })
         wx.showToast({ title: '本机不支持指纹验证', icon: 'none' })
       }

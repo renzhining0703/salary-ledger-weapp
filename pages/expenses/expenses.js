@@ -38,6 +38,7 @@ Page({
   },
 
   onShow() {
+    util.checkLock()
     this.loadData()
     // 记一笔快捷入口：其他页点「＋」跳转过来时，自动弹开记账表单
     const app = getApp()

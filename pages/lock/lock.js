@@ -193,6 +193,7 @@ Page({
     const saved = (user && user.gesturePattern) || []
     const same = saved.length === pattern.length && saved.every((v, i) => v === pattern[i])
     if (same) {
+      app.globalData.lastUnlockTs = Date.now()
       wx.showToast({ title: '解锁成功', icon: 'success', duration: 400 })
       setTimeout(() => wx.switchTab({ url: '/pages/index/index' }), 350)
     } else {
@@ -229,6 +230,8 @@ Page({
       if (app.globalData.user) {
         app.globalData.user = { ...app.globalData.user, privacyLock: 'gesture', gesturePattern: this._setFirst }
       }
+      // 设置完成 = 已经过两次手势验证,记为最近一次解锁
+      app.globalData.lastUnlockTs = Date.now()
       wx.showToast({ title: '隐私锁已开启', icon: 'success' })
       setTimeout(() => wx.navigateBack(), 500)
     } catch (e) {
@@ -259,8 +262,10 @@ Page({
 
   startFingerAuth() {
     this.setData({ fingerTip: '请验证设备指纹' })
+    const app = getApp()
     const finish = (ok, msg) => {
       if (ok) {
+        app.globalData.lastUnlockTs = Date.now()
         wx.showToast({ title: '解锁成功', icon: 'success', duration: 400 })
         setTimeout(() => wx.switchTab({ url: '/pages/index/index' }), 350)
       } else {
@@ -271,15 +276,16 @@ Page({
       finish(false, '当前微信版本不支持指纹验证，请升级微信')
       return
     }
+    // WeChat 文档合法值是 'fingerPrint'(驼峰),用 'fingerprint' 会直接 fail 误判「本机不支持」
     wx.checkIsSoterEnrolledInDevice({
-      checkAuthMode: 'fingerprint',
+      checkAuthMode: 'fingerPrint',
       success: (res) => {
         if (!res.isEnrolled) {
           finish(false, '本机未录入指纹，请在手机系统设置中录入后重试')
           return
         }
         wx.startSoterAuthentication({
-          requestAuthModes: ['fingerprint'],
+          requestAuthModes: ['fingerPrint'],
           challenge: String(Date.now()),
           authContent: '解锁薪账本',
           success: () => finish(true),
@@ -289,7 +295,10 @@ Page({
           }
         })
       },
-      fail: () => finish(false, '本机不支持指纹验证，请在系统设置中录入后重试')
+      fail: (err) => {
+        console.error('SOTER enroll check failed', err)
+        finish(false, '本机不支持指纹验证，请在系统设置中录入后重试')
+      }
     })
   },
 

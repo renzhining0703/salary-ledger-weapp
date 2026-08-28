@@ -10,7 +10,8 @@ App({
     openid: '',
     user: null,
     env: config.CLOUD_ENV,
-    loginReady: false
+    loginReady: false,
+    lastUnlockTs: 0 // 最近一次成功解锁/设置的时间戳,守卫用
   },
 
   onLaunch() {
@@ -39,7 +40,7 @@ App({
   },
 
   onHide() {
-    this._hideTs = Date.now()
+    // 保留钩子以便后续需要(例如统计时长);不再用于守卫判断
   },
 
   onShow() {
@@ -47,17 +48,15 @@ App({
   },
 
   /**
-   * 隐私锁守卫：开启后冷启动、或切后台超过 30 秒回来，需重新解锁。
-   * 解锁本身在 pages/lock/lock 完成。
+   * 隐私锁守卫：开启后冷启动、或切后台回来、或超过 60 秒没解锁,需重新解锁。
+   * 解锁本身在 pages/lock/lock 完成。Tab 页 onShow 也调用 util.checkLock() 拦截。
    */
   async checkPrivacyLock() {
     await this.ready()
     const u = this.globalData.user
     if (!u || !u.privacyLock || u.privacyLock === 'off') return
-    // 30 秒内的来回切换不打扰
-    const need = !this._hideTs || Date.now() - this._hideTs > 30 * 1000
-    if (!need) return
-    this._hideTs = null
+    // 60 秒内解锁过的不打扰
+    if (Date.now() - (this.globalData.lastUnlockTs || 0) < 60 * 1000) return
     // 已在锁页则不重复跳
     const pages = getCurrentPages()
     const cur = pages[pages.length - 1]

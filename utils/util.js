@@ -206,6 +206,23 @@ function errTip(e, fallback) {
 }
 
 /**
+ * 隐私锁守卫：开启手势/指纹锁后,每次进入页面都检查;解锁过 60 秒内不打扰,
+ * 超过 60 秒 reLaunch 到锁页。需在每个 Tab 页 onShow 调用。
+ */
+function checkLock() {
+  const app = getApp()
+  const u = app && app.globalData && app.globalData.user
+  if (!u || !u.privacyLock || u.privacyLock === 'off') return
+  const lastTs = (app.globalData && app.globalData.lastUnlockTs) || 0
+  if (Date.now() - lastTs < 60 * 1000) return  // 60 秒内解锁过的,放行
+  // 已在锁页不重复跳(避免 onShow 互相触发 reLaunch 死循环)
+  const pages = getCurrentPages()
+  const cur = pages[pages.length - 1]
+  if (cur && cur.route === 'pages/lock/lock') return
+  wx.reLaunch({ url: '/pages/lock/lock' })
+}
+
+/**
  * 每天最多一次的静默订阅授权请求（累计「一次授权一次推送」的可用次数）
  * 微信硬限制：requestSubscribeMessage 必须由用户点击行为触发，
  * 因此只能在 tap 事件（或其冒泡回调）里调用，不能在 onShow/onLaunch 直接调。
@@ -247,5 +264,6 @@ module.exports = {
   closeSheet,
   animateNumber,
   tryDailySubscribe,
-  errTip
+  errTip,
+  checkLock
 }
