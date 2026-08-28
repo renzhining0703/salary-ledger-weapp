@@ -372,3 +372,227 @@
 .recur-done-text {
   color: var(--gold);
 }
+
+/* ---------- 月度总览卡「查看本月账单」入口 ---------- */
+.statement-link {
+  margin-top: 18rpx;
+  text-align: center;
+  font-size: 24rpx;
+  font-weight: 600;
+  color: var(--navy-700);
+  padding: 14rpx 0;
+  border-top: 1rpx solid var(--border-light);
+}
+
+/* ---------- 本月账单 sheet ---------- */
+.statement-sheet {
+  /* 让 sheet 更高,容纳饼图 + 分类明细 + 解读 */
+  max-height: 90vh;
+}
+
+.stmt-row {
+  display: flex;
+  gap: 12rpx;
+  margin-bottom: 18rpx;
+}
+
+.stmt-cell {
+  flex: 1;
+  text-align: center;
+  background: var(--input-bg);
+  border-radius: 16rpx;
+  padding: 18rpx 8rpx;
+}
+
+.stmt-cell-label {
+  font-size: 22rpx;
+  color: var(--text-sub);
+}
+
+.stmt-cell-num {
+  font-size: 28rpx;
+  font-weight: 800;
+  font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+  margin-top: 6rpx;
+}
+.stmt-cell-num.income { color: var(--navy-700); }
+.stmt-cell-num.expense { color: var(--text); }
+.stmt-cell-num.pos { color: var(--gold); }
+.stmt-cell-num.neg { color: var(--danger); }
+
+.stmt-savings {
+  text-align: center;
+  font-size: 24rpx;
+  color: var(--text-sub);
+  margin-bottom: 20rpx;
+}
+
+.stmt-savings-num {
+  font-weight: 800;
+  font-size: 30rpx;
+  margin-left: 6rpx;
+}
+.stmt-savings-num.good { color: var(--success); }
+.stmt-savings-num.mid { color: var(--warn); }
+.stmt-savings-num.bad { color: var(--danger); }
+
+.stmt-compare {
+  display: flex;
+  gap: 12rpx;
+  margin-bottom: 24rpx;
+}
+
+.stmt-cmp-item {
+  flex: 1;
+  text-align: center;
+  padding: 14rpx 8rpx;
+  border: 1rpx solid var(--border-light);
+  border-radius: 14rpx;
+}
+
+.stmt-cmp-label {
+  font-size: 22rpx;
+  color: var(--text-sub);
+}
+
+.stmt-cmp-val {
+  font-size: 28rpx;
+  font-weight: 700;
+  font-family: "DIN Alternate", sans-serif;
+  margin-top: 4rpx;
+}
+.stmt-cmp-val.muted {
+  color: var(--text-mute);
+  font-family: inherit;
+  font-weight: 500;
+}
+
+.stmt-cmp-pct {
+  font-size: 20rpx;
+  font-weight: 600;
+  margin-top: 2rpx;
+}
+.stmt-cmp-pct.up { color: var(--danger); }
+.stmt-cmp-pct.down { color: var(--success); }
+.stmt-cmp-pct.flat { color: var(--text-mute); }
+.stmt-cmp-pct.muted { color: var(--text-mute); font-weight: 400; }
+
+.stmt-pie-wrap {
+  display: flex;
+  justify-content: center;
+  margin: 20rpx 0 24rpx;
+}
+
+.stmt-pie-canvas {
+  width: 340rpx;
+  height: 340rpx;
+}
+
+.stmt-cats {
+  margin-bottom: 24rpx;
+}
+
+.stmt-cat-row {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  padding: 14rpx 0;
+  border-bottom: 1rpx solid var(--border-light);
+}
+.stmt-cat-row:last-child { border-bottom: none; }
+
+.stmt-cat-dot {
+  width: 16rpx;
+  height: 16rpx;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.stmt-cat-name {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--text);
+  width: 96rpx;
+  flex-shrink: 0;
+}
+
+.stmt-cat-bar {
+  flex: 1;
+  height: 12rpx;
+  background: var(--fill-bg);
+  border-radius: 999rpx;
+  overflow: hidden;
+}
+
+.stmt-cat-fill {
+  height: 100%;
+  border-radius: 999rpx;
+}
+
+.stmt-cat-amt {
+  font-size: 24rpx;
+  font-weight: 700;
+  color: var(--text);
+  font-family: "DIN Alternate", sans-serif;
+  min-width: 140rpx;
+  text-align: right;
+}
+
+.stmt-cat-over {
+  font-size: 18rpx;
+  font-weight: 700;
+  color: var(--danger);
+  background: var(--danger-bg);
+  padding: 4rpx 10rpx;
+  border-radius: 6rpx;
+  flex-shrink: 0;
+}
+
+.stmt-insight {
+  background: linear-gradient(135deg, var(--navy-700), var(--navy-900));
+  color: #fff;
+  border-radius: 20rpx;
+  padding: 24rpx 28rpx;
+  margin-top: 8rpx;
+  box-shadow: 0 8rpx 24rpx var(--shadow-strong);
+}
+
+.stmt-insight-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12rpx;
+}
+
+.stmt-insight-title {
+  font-size: 26rpx;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.stmt-insight-src {
+  font-size: 20rpx;
+  color: rgba(255, 255, 255, 0.72);
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+}
+
+.stmt-insight-refresh {
+  color: var(--gold);
+  font-weight: 600;
+  padding: 4rpx 12rpx;
+  border: 1rpx solid var(--gold);
+  border-radius: 999rpx;
+  font-size: 20rpx;
+}
+.stmt-insight-refresh:active {
+  opacity: 0.8;
+}
+
+.stmt-insight-body {
+  font-size: 26rpx;
+  line-height: 1.65;
+  white-space: pre-line;
+  color: rgba(255, 255, 255, 0.92);
+}

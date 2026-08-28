@@ -313,6 +313,21 @@ async function purgeExpired() {
 }
 
 /* ---------------- helper ---------------- */
+
+/**
+ * 失效 finReports 当月缓存（用户改了本月数据 → AI 解读过期，需重生成）
+ * 失败静默：缓存失效不该阻塞用户操作
+ */
+async function invalidateFinCache(month) {
+  if (!month || !/^\d{4}-\d{2}$/.test(month)) return
+  try {
+    await db.collection('finReports').where({ month }).remove()
+  } catch (e) {
+    if (e && (e.errCode === -502005 || /not exist/i.test(e.errMsg || ''))) return
+    console.warn('失效 AI 解读缓存失败', month, e)
+  }
+}
+
 function monthNext(monthStr) {
   const [y, m] = monthStr.split('-').map(Number)
   const d = new Date(y, m, 1)
@@ -357,5 +372,6 @@ module.exports = {
   destroyDoc,
   clearRecycle,
   purgeExpired,
-  clearAllData
+  clearAllData,
+  invalidateFinCache
 }

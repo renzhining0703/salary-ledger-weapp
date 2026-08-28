@@ -32,7 +32,7 @@
         <view class="month-title">{{monthText}} 开销</view>
         <view class="month-arrow {{isThisMonth ? 'disabled' : ''}}" bindtap="goNextMonth">›</view>
       </view>
-      <view class="month-total">{{monthTotal}}</view>
+      <view class="month-total" bindtap="openStatement">{{monthTotal}}</view>
       <view class="budget-row">
         <text class="budget-label">月预算 ¥{{budget}}</text>
         <text class="budget-label {{budgetOver ? 'over' : ''}}">{{budgetOver ? '已超支' : budgetPercent + '%'}}</text>
@@ -42,6 +42,7 @@
       </view>
       <view wx:if="{{budgetOver}}" class="over-tip">⚠️ 已超支 {{overAmount}}</view>
       <view class="compare-row">上月同期：{{lastMonthTotal}}</view>
+      <view class="statement-link" bindtap="openStatement">📊 查看本月账单 ›</view>
     </view>
 
     <!-- 分类占比 -->
@@ -196,6 +197,88 @@
 
     <view class="sheet-actions">
       <view class="btn btn-primary" bindtap="saveRecurring">{{recurSaving ? '保存中…' : '保存'}}</view>
+    </view>
+  </view>
+
+  <!-- 本月账单 sheet -->
+  <view wx:if="{{showStatement}}" class="mask {{showStatementClosing ? 'mask-out' : ''}}" bindtap="closeStatement"></view>
+  <view wx:if="{{showStatement}}" class="sheet statement-sheet {{showStatementClosing ? 'sheet-out' : ''}}">
+    <view class="sheet-title">{{statement.monthText}} 账单</view>
+
+    <!-- 收支三栏 -->
+    <view class="stmt-row">
+      <view class="stmt-cell">
+        <view class="stmt-cell-label">收入</view>
+        <view class="stmt-cell-num income">¥{{statement.incomeText}}</view>
+      </view>
+      <view class="stmt-cell">
+        <view class="stmt-cell-label">支出</view>
+        <view class="stmt-cell-num expense">¥{{statement.expenseText}}</view>
+      </view>
+      <view class="stmt-cell">
+        <view class="stmt-cell-label">结余</view>
+        <view class="stmt-cell-num {{statement.balanceSign === '+' ? 'pos' : 'neg'}}">{{statement.balanceSign}}¥{{statement.balanceText}}</view>
+      </view>
+    </view>
+    <view class="stmt-savings">
+      储蓄率 <text class="stmt-savings-num {{statement.savingsLevel}}">{{statement.savingsRateText}}</text>
+    </view>
+
+    <!-- 同比环比 -->
+    <view class="stmt-compare">
+      <view class="stmt-cmp-item">
+        <view class="stmt-cmp-label">上月支出</view>
+        <view class="stmt-cmp-val">¥{{statement.momText}}</view>
+        <view wx:if="{{statement.momDelta}}" class="stmt-cmp-pct {{statement.momDelta.dir}}">
+          {{statement.momDelta.arrow}}{{statement.momDelta.pctText}}
+        </view>
+      </view>
+      <view class="stmt-cmp-item">
+        <view class="stmt-cmp-label">去年同月</view>
+        <view wx:if="{{statement.hasPrevYear}}" class="stmt-cmp-val">¥{{statement.yoyText}}</view>
+        <view wx:else class="stmt-cmp-val muted">—</view>
+        <view wx:if="{{statement.hasPrevYear && statement.yoyDelta}}" class="stmt-cmp-pct {{statement.yoyDelta.dir}}">
+          {{statement.yoyDelta.arrow}}{{statement.yoyDelta.pctText}}
+        </view>
+        <view wx:elif="{{!statement.hasPrevYear}}" class="stmt-cmp-pct muted">暂无历史</view>
+      </view>
+    </view>
+
+    <!-- 分类饼图 -->
+    <view class="stmt-pie-wrap">
+      <canvas type="2d" id="statementPie" class="stmt-pie-canvas"></canvas>
+    </view>
+
+    <!-- 分类明细 -->
+    <view class="stmt-cats">
+      <view wx:for="{{statement.categories}}" wx:key="name" class="stmt-cat-row">
+        <view class="stmt-cat-dot" style="background: {{item.color}};"></view>
+        <view class="stmt-cat-name">{{item.name}}</view>
+        <view class="stmt-cat-bar">
+          <view class="stmt-cat-fill" style="width: {{item.percent}}%; background: {{item.color}};"></view>
+        </view>
+        <view class="stmt-cat-amt">¥{{item.amountText}}</view>
+        <view wx:if="{{item.over}}" class="stmt-cat-over">超</view>
+      </view>
+    </view>
+
+    <!-- AI 解读卡 -->
+    <view class="stmt-insight">
+      <view class="stmt-insight-head">
+        <view class="stmt-insight-title">账本君说</view>
+        <view class="stmt-insight-src">
+          <text wx:if="{{statement.insightSource === 'cache'}}">缓存</text>
+          <text wx:elif="{{statement.insightSource === 'llm'}}">AI</text>
+          <text wx:elif="{{statement.insightSource === 'template-pending'}}">本地生成</text>
+          <text wx:elif="{{statement.insightSource === 'template'}}">本地生成</text>
+          <text wx:if="{{statement.insightSource === 'cache' || statement.insightSource === 'llm'}}" class="stmt-insight-refresh" bindtap="forceRegen">换一段</text>
+        </view>
+      </view>
+      <view class="stmt-insight-body">{{statement.insightText || '算账中…'}}</view>
+    </view>
+
+    <view class="sheet-actions">
+      <view class="btn btn-primary" bindtap="closeStatement">收下</view>
     </view>
   </view>
 </view>

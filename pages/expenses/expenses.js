@@ -1,6 +1,7 @@
 const config = require('../../utils/config')
 const util = require('../../utils/util')
 const dbApi = require('../../utils/db')
+const finTemplate = require('../../utils/finTemplate')
 
 Page({
   data: {
@@ -34,7 +35,16 @@ Page({
     recurSaving: false,
     rName: '',
     rAmount: '',
-    rCategory: '居住'
+    rCategory: '居住',
+    // 本月账单 sheet
+    showStatement: false,
+    showStatementClosing: false,
+    statementLoading: false,
+    statement: null      // { month, monthText, income, expense, balance, savingsRate,
+                         //   prevMonthExpense, prevYearExpense, hasPrevYear,
+                         //   categories:[{name,amount,budget,over,pct}], recurTotal,
+                         //   overCategories, budgetOver, budgetNear,
+                         //   insightText, insightSource: 'cache'|'llm'|'template' }
   },
 
   onShow() {
@@ -45,6 +55,26 @@ Page({
     if (app.globalData.quickExpense) {
       app.globalData.quickExpense = false
       setTimeout(() => this.openForm(), 120)
+    }
+    // 主题切换重绘本月账单饼图（颜色取自主题）
+    if (this._stmtThemeHandler) wx.offThemeChange(this._stmtThemeHandler)
+    this._stmtThemeHandler = () => {
+      const a = getApp()
+      a.syncTheme()
+      a.applyNavBarColor()
+      if (this.data.showStatement) {
+        const stmt = this._buildStatementData()
+        this.setData({ statement: { ...stmt, insightText: this.data.statement.insightText, insightSource: this.data.statement.insightSource } })
+        setTimeout(() => this.drawStatementPie(), 80)
+      }
+    }
+    wx.onThemeChange(this._stmtThemeHandler)
+  },
+
+  onUnload() {
+    if (this._stmtThemeHandler) {
+      wx.offThemeChange(this._stmtThemeHandler)
+      this._stmtThemeHandler = null
     }
   },
 
@@ -70,13 +100,17 @@ Page({
     const month = this.data.viewMonth || util.thisMonthStr()
     const thisMonth = util.thisMonthStr()
     const prev = this.prevMonth(month)
+    const prevYear = this.shiftMonth(month, -12)
     if (!this._loaded) this.setData({ loading: true })
     try {
-      const [user, list, lastList, recurList] = await Promise.all([
+      const [user, list, lastList, recurList, salaryList, prevYearList, cards] = await Promise.all([
         dbApi.getMyUser(force),
         dbApi.listExpenses(month, force),
         dbApi.listExpenses(prev, force),
-        dbApi.listRecurring(force)
+        dbApi.listRecurring(force),
+        dbApi.listSalary(force),
+        dbApi.listExpenses(prevYear, force),
+        dbApi.listCards(force)
       ])
 
       const recurTotal = recurList
@@ -86,8 +120,30 @@ Page({
       const budget = (user && user.budget) || 0
       const monthTotal = list.reduce((s, x) => s + (x.amount || 0), 0)
       const lastMonthTotal = lastList.reduce((s, x) => s + (x.amount || 0), 0)
+      const prevYearTotal = prevYearList.reduce((s, x) => s + (x.amount || 0), 0)
       const percent = budget > 0 ? Math.round((monthTotal / budget) * 100) : 0
       const overAmount = budget > 0 && monthTotal > budget ? monthTotal - budget : 0
+
+      // 收入 / 还款：仅本月（按 payDate 归月，与首页一致口径）
+      const income = salaryList
+        .filter((s) => (s.payDate || '').startsWith(month))
+        .reduce((s, x) => s + (x.amount || 0), 0)
+      const repayByMonth = {}
+      cards.forEach((c) => {
+        const hist = c.history || []
+        if (hist.length) {
+          hist.forEach((h) => {
+            const m = (h.date || '').slice(0, 7)
+            if (m) repayByMonth[m] = (repayByMonth[m] || 0) + (h.amount || 0)
+          })
+        } else if (c.status === 'paid' && c.repayDate) {
+          const m = c.repayDate.slice(0, 7)
+          repayByMonth[m] = (repayByMonth[m] || 0) + (c.amount || 0)
+        }
+      })
+      const repay = repayByMonth[month] || 0
+      const balance = income - monthTotal - repay
+      const savingsRate = income > 0 ? (balance / income) * 100 : 0
 
       // 分类统计
       const catMap = {}
@@ -126,6 +182,7 @@ Page({
         budget,
         budgetPercent: Math.min(percent, 100),
         budgetOver: percent > 100,
+        budgetNear: !!(budget > 0 && percent >= 80 && percent <= 100),
         overAmount: util.moneyThousand(overAmount),
         recurList: recurList.map((r) => ({
           ...r,
@@ -138,7 +195,14 @@ Page({
         // 动画用原始数值
         _monthTotalNum: monthTotal,
         _lastMonthTotalNum: lastMonthTotal,
-        _overAmountNum: overAmount
+        _overAmountNum: overAmount,
+        // 本月账单 sheet 用（不 setData,留给 statement 拼数据）
+        _stmtIncome: income,
+        _stmtRepay: repay,
+        _stmtBalance: balance,
+        _stmtSavingsRate: savingsRate,
+        _stmtPrevYearTotal: prevYearTotal,
+        _stmtHasPrevYear: prevYearList.length > 0
       })
 
       // 数字滚动动画
@@ -165,6 +229,13 @@ Page({
   nextMonth(monthStr) {
     const [y, m] = monthStr.split('-').map(Number)
     const d = new Date(y, m, 1)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  },
+
+  /** 通用月份位移：delta 可正可负,绝对值不限（用于去年同月 delta=-12） */
+  shiftMonth(monthStr, delta) {
+    const [y, m] = monthStr.split('-').map(Number)
+    const d = new Date(y, m - 1 + delta, 1)
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
   },
 
@@ -235,6 +306,8 @@ Page({
       util.closeSheet(this, 'showForm')
       // 切到新纪录所在月份，保存后立即可见
       this.setData({ viewMonth: formDate.slice(0, 7) })
+      // 失效当月 AI 解读缓存(用户改了数据 → 上次的解读过期)
+      dbApi.invalidateFinCache(formDate.slice(0, 7))
       this.loadData()
     } catch (e) {
       wx.showToast({ title: '保存失败', icon: 'none' })
@@ -255,6 +328,8 @@ Page({
         try {
           await dbApi.removeExpense(id)
           wx.showToast({ title: '已移入回收站', icon: 'success' })
+          // 失效当月 AI 解读缓存
+          dbApi.invalidateFinCache((date || '').slice(0, 7))
           this.loadData()
         } catch (err) {
           wx.showToast({ title: '删除失败', icon: 'none' })
@@ -348,6 +423,8 @@ Page({
           } else {
             wx.showToast({ title: '已记账', icon: 'success' })
           }
+          // 失效本月 AI 解读缓存
+          dbApi.invalidateFinCache(util.thisMonthStr())
           this.loadData()
         } catch (err) {
           console.error('固定支出记账失败', err)
@@ -374,5 +451,274 @@ Page({
         }
       }
     })
+  },
+
+  /* ---------- 本月账单 sheet ---------- */
+  openStatement() {
+    if (!this.data.catStats.length) {
+      wx.showToast({ title: '本月还没有数据', icon: 'none' })
+      return
+    }
+    if (this._stmtCloseTimer) { clearTimeout(this._stmtCloseTimer); this._stmtCloseTimer = null }
+    util.openSheet(this, 'showStatement')
+    // 拼好基础数据(数字 / 分类 / 同比环比),AI 解读异步填
+    const stmt = this._buildStatementData()
+    this.setData({ statement: stmt, statementLoading: true })
+    this.loadStatement(false)
+    // 等 sheet 动画 + canvas 挂载后再画饼图
+    setTimeout(() => this.drawStatementPie(), 280)
+  },
+
+  closeStatement() {
+    this._stmtCloseTimer = util.closeSheet(this, 'showStatement')
+  },
+
+  /** 把 loadData 算出的字段组装成 sheet 要渲染的对象（包含所有展示用的预格式化字符串） */
+  _buildStatementData() {
+    const month = this.data.viewMonth
+    const monthTotal = this.data._monthTotalNum || 0
+    const income = this.data._stmtIncome || 0
+    const repay = this.data._stmtRepay || 0
+    const balance = this.data._stmtBalance || 0
+    const savingsRate = this.data._stmtSavingsRate || 0
+    const prevMonthExpense = this.data._lastMonthTotalNum || 0
+    const prevYearExpense = this.data._stmtPrevYearTotal || 0
+    const hasPrevYear = !!this.data._stmtHasPrevYear
+    const recurTotal = (this.data.recurList || [])
+      .filter((r) => r.active !== false)
+      .reduce((s, r) => s + (r.amount || 0), 0)
+
+    // 分类,带上预算对照 + 颜色 + 格式化字符串
+    const palette = ['#14304F', '#C8A04D', '#C94040', '#C98A2D', '#2F9B6B', '#4A6B8A']
+    const paletteDark = ['#8AA4C2', '#E5C26B', '#E55858', '#E0A055', '#4FB78A', '#8AA4C2']
+    const app = getApp()
+    const isDark = app && app.globalData && app.globalData.theme === 'dark'
+    const colors = isDark ? paletteDark : palette
+    const budgetMap = (this.data.user && this.data.user.budgets) || {}
+    const categories = (this.data.catStats || [])
+      .filter((c) => c.amount > 0)
+      .map((c, idx) => {
+        const b = budgetMap[c.name]
+        const over = typeof b === 'number' && b > 0 && c.amount > b
+        return {
+          name: c.name,
+          amount: c.amount,
+          amountText: util.moneyThousand(c.amount),
+          percent: c.percent,
+          budget: typeof b === 'number' ? b : 0,
+          over,
+          color: colors[idx % colors.length]
+        }
+      })
+    const overCategories = categories.filter((c) => c.over).map((c) => c.name)
+
+    // 同比环比 — 预格式化方向 + 百分比字符串(WXML 不能用 Math.abs)
+    const buildDelta = (cur, prev) => {
+      if (!prev || !cur) return null
+      const diff = cur - prev
+      const pct = (diff / prev) * 100
+      return {
+        dir: diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat',
+        pctText: Math.abs(pct).toFixed(1) + '%',
+        arrow: diff > 0 ? '↑' : diff < 0 ? '↓' : '·'
+      }
+    }
+    const mom = buildDelta(monthTotal, prevMonthExpense)
+    const yoy = hasPrevYear ? buildDelta(monthTotal, prevYearExpense) : null
+
+    return {
+      month,
+      monthText: `${Number(month.slice(0, 4))}年${Number(month.slice(5, 7))}月`,
+      incomeText: util.moneyThousand(income),
+      expenseText: util.moneyThousand(monthTotal),
+      balanceText: util.moneyThousand(Math.abs(balance)),
+      balanceSign: balance >= 0 ? '+' : '-',
+      savingsRateText: savingsRate.toFixed(0) + '%',
+      savingsLevel: savingsRate >= 20 ? 'good' : savingsRate >= 0 ? 'mid' : 'bad',
+      momText: util.moneyThousand(prevMonthExpense),
+      momDelta: mom,
+      yoyText: hasPrevYear ? util.moneyThousand(prevYearExpense) : '—',
+      yoyDelta: yoy,
+      hasPrevYear,
+      categories,
+      recurTotal,
+      recurTotalText: util.moneyThousand(recurTotal),
+      overCategories,
+      budgetOver: this.data.budgetOver,
+      budgetNear: this.data.budgetNear,
+      insightText: '',
+      insightSource: ''
+    }
+  },
+
+  /**
+   * 拉 AI 解读
+   *  - 缓存命中: 直接显示
+   *  - 否则: 云函数 finReport,8s 超时降级到模板
+   *  - force=true: 跳过缓存,云函数强制重生成
+   */
+  async loadStatement(force) {
+    const stmt = this.data.statement
+    if (!stmt) return
+    this.setData({ statementLoading: true })
+
+    // 1. 先本地模板兜底,任何时候都能立刻出字
+    const tplText = finTemplate.build({
+      monthText: stmt.monthText,
+      income: stmt.income,
+      expense: stmt.expense,
+      balance: stmt.balance,
+      savingsRate: stmt.savingsRate,
+      prevMonthExpense: stmt.prevMonthExpense,
+      prevYearExpense: stmt.hasPrevYear ? stmt.prevYearExpense : undefined,
+      hasPrevYear: stmt.hasPrevYear,
+      recurTotal: stmt.recurTotal,
+      categories: stmt.categories,
+      budgetOver: stmt.budgetOver,
+      budgetNear: stmt.budgetNear,
+      overCategories: stmt.overCategories
+    })
+    this._renderInsight(tplText, force ? '' : 'template-pending')
+
+    // 2. 调云函数(超时 8s 自动放弃,保留模板)
+    try {
+      const res = await this._callFinReport(stmt, force)
+      if (res && res.text) {
+        this._renderInsight(res.text, res.source || 'llm')
+      }
+    } catch (e) {
+      console.warn('AI 解读失败,保留模板', e)
+    } finally {
+      this.setData({ statementLoading: false })
+    }
+  },
+
+  /** 调云函数带超时 */
+  _callFinReport(stmt, force) {
+    return new Promise((resolve, reject) => {
+      let settled = false
+      const timer = setTimeout(() => {
+        if (settled) return
+        settled = true
+        reject(new Error('云函数超时'))
+      }, 8000)
+      wx.cloud.callFunction({
+        name: 'finReport',
+        data: {
+          month: stmt.month,
+          force: !!force,
+          data: {
+            monthText: stmt.monthText,
+            income: stmt.income,
+            expense: stmt.expense,
+            balance: stmt.balance,
+            savingsRate: stmt.savingsRate,
+            prevMonthExpense: stmt.prevMonthExpense,
+            prevYearExpense: stmt.hasPrevYear ? stmt.prevYearExpense : undefined,
+            hasPrevYear: stmt.hasPrevYear,
+            recurTotal: stmt.recurTotal,
+            categories: stmt.categories.map((c) => ({
+              name: c.name,
+              amount: c.amount,
+              budget: c.budget || 0,
+              over: !!c.over
+            })),
+            budgetOver: stmt.budgetOver,
+            budgetNear: stmt.budgetNear,
+            overCategories: stmt.overCategories
+          }
+        },
+        success: (r) => {
+          if (settled) return
+          settled = true
+          clearTimeout(timer)
+          const result = r && r.result
+          if (!result) return reject(new Error('云函数返回空'))
+          if (result.code) return reject(new Error(result.msg || result.code))
+          resolve({ text: result.text, source: result.source })
+        },
+        fail: (e) => {
+          if (settled) return
+          settled = true
+          clearTimeout(timer)
+          reject(e)
+        }
+      })
+    })
+  },
+
+  _renderInsight(text, source) {
+    const stmt = this.data.statement || {}
+    this.setData({
+      statement: { ...stmt, insightText: text, insightSource: source }
+    })
+  },
+
+  /** 强制重新生成（清缓存 + 调 AI） */
+  async forceRegen() {
+    if (!this.data.statement || this.data.statementLoading) return
+    this.loadStatement(true)
+  },
+
+  /** 画分类饼图（弹层 wx:if 挂载完成后再调） */
+  drawStatementPie() {
+    if (!this.data.showStatement || !this.data.statement) return
+    const query = this.createSelectorQuery()
+    query.select('#statementPie')
+      .fields({ node: true, size: true })
+      .exec((res) => {
+        if (!res || !res[0] || !res[0].node) return
+        const canvas = res[0].node
+        const W = res[0].width
+        const H = res[0].height
+        const dpr = (wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync()).pixelRatio || 2
+        canvas.width = W * dpr
+        canvas.height = H * dpr
+        const ctx = canvas.getContext('2d')
+        ctx.scale(dpr, dpr)
+        ctx.clearRect(0, 0, W, H)
+
+        const cats = (this.data.statement.categories || []).filter((c) => c.amount > 0)
+        if (!cats.length) return
+
+        const total = cats.reduce((s, c) => s + c.amount, 0)
+        const cx = W / 2
+        const cy = H / 2
+        const r = Math.min(W, H) / 2 - 6
+        const innerR = r * 0.58
+
+        const app = getApp()
+        const isDark = app && app.globalData && app.globalData.theme === 'dark'
+        // 6 个分类按 config.CATEGORIES 顺序固定取色
+        const paletteLight = ['#14304F', '#C8A04D', '#C94040', '#C98A2D', '#2F9B6B', '#4A6B8A']
+        const paletteDark = ['#8AA4C2', '#E5C26B', '#E55858', '#E0A055', '#4FB78A', '#8AA4C2']
+        const colors = isDark ? paletteDark : paletteLight
+
+        let start = -Math.PI / 2
+        cats.forEach((c, i) => {
+          const angle = (c.amount / total) * Math.PI * 2
+          ctx.beginPath()
+          ctx.moveTo(cx, cy)
+          ctx.arc(cx, cy, r, start, start + angle)
+          ctx.closePath()
+          ctx.fillStyle = colors[i % colors.length]
+          ctx.fill()
+          start += angle
+        })
+        // 中心挖空（甜甜圈样式）
+        ctx.beginPath()
+        ctx.arc(cx, cy, innerR, 0, Math.PI * 2)
+        ctx.fillStyle = isDark ? '#1A2532' : '#FFFFFF'
+        ctx.fill()
+        // 中心文字
+        ctx.fillStyle = isDark ? '#A8B4C5' : '#657183'
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.font = '500 20px sans-serif'
+        ctx.fillText('总支出', cx, cy - 16)
+        ctx.fillStyle = isDark ? '#E8EDF3' : '#151E2B'
+        ctx.font = 'bold 28px "DIN Alternate", sans-serif'
+        ctx.fillText('¥' + total.toFixed(0), cx, cy + 14)
+      })
   }
 })

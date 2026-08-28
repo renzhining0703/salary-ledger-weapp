@@ -75,10 +75,31 @@ utils/config.js
 开发者工具左侧资源管理器：
 1. 右键 `cloudfunctions/login` → **上传并部署：云端安装依赖**
 2. 右键 `cloudfunctions/remind` → **上传并部署：云端安装依赖**
+3. 右键 `cloudfunctions/finReport` → **上传并部署：云端安装依赖**（本月账单 AI 解读，可选）
 
 部署后提醒功能自动生效（定时触发器每天 09:00 执行，见 `config.json`）。
 
-### 2.3 隐私保护指引（审核必查）
+### 2.3 配置 AI 解读（可选）
+
+`finReport` 云函数默认关闭，需要时按以下步骤开启：
+
+1. **申请 DeepSeek API key**：https://platform.deepseek.com → 注册 → API keys → 创建。充 1 元够用一年。
+2. **配置环境变量**：云开发控制台 → 云函数 → `finReport` → 配置 → 环境变量，添加：
+   - `LLM_API_KEY` = `sk-xxx`（你的 key，**不要写进代码**）
+   - `LLM_BASE_URL` = `https://api.deepseek.com`（可选，默认就是这个）
+   - `LLM_MODEL` = `deepseek-chat`（可选）
+3. **创建数据库集合**：云开发控制台 → 数据库 → 添加集合 → 输入 `finReports` → 权限「仅创建者可读写」（用于缓存每月解读）。
+4. **重新部署** `finReport` 云函数一次（让环境变量生效）。
+
+不开也能用：用户在「记账」Tab 点月度总览卡，会先用本地模板生成一段朴素的财务小结；8 秒内 AI 没回就保留模板版。
+
+#### 成本与安全
+
+- 每次调用约 500 字输入 + 200 字输出，DeepSeek 单次约 0.0003 元，每月一次几乎免费。
+- API key 只放云函数环境变量，代码里写 `process.env.LLM_API_KEY`。
+- **定期 rotate**：若 key 不慎泄露（聊天记录 / 截图 / 公开仓库），去 DeepSeek 控制台「删除」该 key 再建一个新的，然后在云函数环境变量里换掉，重新部署即可。
+
+### 2.4 隐私保护指引（审核必查）
 
 小程序后台 → 设置 → **用户隐私保护指引** → 声明：
 
