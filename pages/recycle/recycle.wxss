@@ -118,29 +118,32 @@
 }
 
 .rc-actions .btn {
-  font-size: 22rpx;
-  padding: 8rpx 32rpx;
-  border-radius: 999rpx;
+  font-size: 24rpx;
+  padding: 10rpx 28rpx;
+  border-radius: 14rpx;
   text-align: center;
-  line-height: 1.6;
+  line-height: 1.4;
+  border: 1rpx solid transparent;
 }
 
 .btn-restore {
-  background: var(--navy-700);
-  color: #fff;
+  background: rgba(20, 48, 79, 0.06);
+  color: var(--navy-700);
   font-weight: 600;
+  border-color: rgba(20, 48, 79, 0.18);
 }
 .btn-restore:active {
-  opacity: 0.92;
+  background: rgba(20, 48, 79, 0.14);
 }
 
 .btn-destroy {
   background: var(--danger-bg);
   color: var(--danger);
   font-weight: 600;
+  border-color: rgba(201, 64, 64, 0.22);
 }
 .btn-destroy:active {
-  opacity: 0.88;
+  background: #F5DFDF;
 }
 
 /* 类型标签色 */
