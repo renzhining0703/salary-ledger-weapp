@@ -8,33 +8,13 @@
  * 3. 体验版联调推送时把 miniprogramState 改为 'trial'，正式发布后保持 'formal'
  */
 const cloud = require('wx-server-sdk')
+const { fmtDate, calcDueDate } = require('./lib/date')
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
 const _ = db.command
 
 const TEMPLATE_ID = 'wA_ZPWiHPGe4kD17FfpT2HFKPEHBOXmMXDi03viQczM'
-
-/* ---- 与前端 utils/util.js 相同的日期逻辑（云函数独立运行，需自带） ---- */
-function pad(n) {
-  return n < 10 ? '0' + n : '' + n
-}
-function fmtDate(d) {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
-function dayInMonth(y, m, day) {
-  return Math.min(day, new Date(y, m + 1, 0).getDate())
-}
-function calcDueDate(repayDay, status, today) {
-  const t = today || new Date()
-  const y = t.getFullYear()
-  const m = t.getMonth()
-  if (status === 'paid') {
-    const nm = m + 1
-    return fmtDate(new Date(y, nm, dayInMonth(y, nm, repayDay)))
-  }
-  return fmtDate(new Date(y, m, dayInMonth(y, m, repayDay)))
-}
 
 exports.main = async () => {
   if (TEMPLATE_ID.indexOf('请填入') === 0) {

@@ -96,11 +96,14 @@ Page({
           id: c._id,
           bank: c.bank,
           amount: util.moneyThousand(c.amount),
+          days,
           dueText,
           level,
           canPay: true
         })
       })
+      // 按到期天数升序:逾期 N 天 → 今天 → 明天(更靠前越紧急)
+      todoList.sort((a, b) => a.days - b.days)
 
       // 保留原始 cards，供 markPaid 组装还款历史用
       this._cards = cards
@@ -203,7 +206,7 @@ Page({
       ]
     } catch (e) {
       console.error('加载首页数据失败', e)
-      wx.showToast({ title: '加载失败，请下拉重试', icon: 'none' })
+      wx.showToast({ title: util.errTip(e, '加载失败，请下拉重试'), icon: 'none' })
     }
   },
 
@@ -360,8 +363,6 @@ Page({
     util.closeSheet(this, 'showProfile')
     wx.navigateTo({ url: '/pages/recycle/recycle' })
   },
-
-  noop() {},
 
   onChooseAvatar(e) {
     this.setData({ formAvatar: e.detail.avatarUrl })

@@ -323,10 +323,6 @@
   font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
 }
 
-.recur-ops {
-  transform: scale(0.8);
-}
-
 .recur-del {
   font-size: 24rpx;
   color: #E5484D;

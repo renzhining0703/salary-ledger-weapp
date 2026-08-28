@@ -47,6 +47,14 @@ Page({
     }
   },
 
+  onHide() {
+    // 切走页面时停掉数字滚动动画，避免后台空转
+    if (this._cancelAnim) {
+      this._cancelAnim.forEach((fn) => fn())
+      this._cancelAnim = null
+    }
+  },
+
   async onPullDownRefresh() {
     try {
       await this.loadData(true)
@@ -143,7 +151,7 @@ Page({
       this._loaded = true
       this.setData({ loading: false })
       console.error('加载记账失败', e)
-      wx.showToast({ title: '加载失败，请下拉重试', icon: 'none' })
+      wx.showToast({ title: util.errTip(e, '加载失败，请下拉重试'), icon: 'none' })
     }
   },
 
@@ -194,8 +202,6 @@ Page({
   closeForm() {
     this._closeTimer = util.closeSheet(this, 'showForm')
   },
-
-  noop() {},
 
   onAmountInput(e) {
     this.setData({ formAmount: e.detail.value })

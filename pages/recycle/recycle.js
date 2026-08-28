@@ -35,7 +35,7 @@ Page({
         let typeText = '开销'
         let typeClass = 'tag-gray'
         let title = d.note || d.name || ''
-        let amountText = util.moneyThousand(d.amount || 0)
+        let amountText = d.amount ? util.moneyThousand(d.amount) : ''
         if (d._col === 'salary') {
           typeText = '工资'
           typeClass = 'tag-blue'
@@ -67,7 +67,7 @@ Page({
       this._loaded = true
       this.setData({ loading: false })
       console.error('加载回收站失败', e)
-      wx.showToast({ title: '加载失败，请下拉重试', icon: 'none' })
+      wx.showToast({ title: util.errTip(e, '加载失败，请下拉重试'), icon: 'none' })
     }
   },
 

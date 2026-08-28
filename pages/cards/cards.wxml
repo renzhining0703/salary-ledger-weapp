@@ -59,7 +59,6 @@
       <view class="card-actions">
         <view wx:if="{{item.status === 'pending'}}" class="btn btn-sm btn-primary" bindtap="markPaid" data-id="{{item._id}}">标记已还</view>
         <view wx:else class="btn btn-sm btn-ghost" bindtap="openEdit" data-id="{{item._id}}" data-bank="{{item.bank}}" data-amount="{{item.amount}}" data-repay-day="{{item.repayDay}}" data-bill-day="{{item.billDay || 0}}">更新本期</view>
-        <view class="btn btn-sm btn-ghost" bindtap="openEdit" data-id="{{item._id}}" data-bank="{{item.bank}}" data-amount="{{item.amount}}" data-repay-day="{{item.repayDay}}" data-bill-day="{{item.billDay || 0}}">改金额</view>
         <view class="btn btn-sm btn-danger" bindtap="removeCard" data-id="{{item._id}}" data-bank="{{item.bank}}">删除</view>
       </view>
     </view>

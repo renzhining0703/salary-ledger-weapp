@@ -192,6 +192,20 @@ function animateNumber(page, key, target, opts) {
 }
 
 /**
+ * 把云函数/网络异常转成用户能看懂的简短提示
+ * @param {Error|object} e 异常对象（wx.cloud 通常挂在 errMsg；wx.request 失败含 request:fail）
+ * @param {string} [fallback] 默认文案（按场景传「加载失败」「保存失败」等）
+ * @returns {string}
+ */
+function errTip(e, fallback) {
+  if (e && e.isCollectionMissing) return e.message  // 集合未创建等业务自定义提示
+  const msg = (e && (e.errMsg || e.message)) || ''
+  if (/request:fail|network|timeout/i.test(msg)) return '网络异常，请重试'
+  if (/quota|limit|exceed/i.test(msg)) return '云开发额度已用完，请稍后再试'
+  return fallback || '操作失败，请重试'
+}
+
+/**
  * 每天最多一次的静默订阅授权请求（累计「一次授权一次推送」的可用次数）
  * 微信硬限制：requestSubscribeMessage 必须由用户点击行为触发，
  * 因此只能在 tap 事件（或其冒泡回调）里调用，不能在 onShow/onLaunch 直接调。
@@ -232,5 +246,6 @@ module.exports = {
   openSheet,
   closeSheet,
   animateNumber,
-  tryDailySubscribe
+  tryDailySubscribe,
+  errTip
 }

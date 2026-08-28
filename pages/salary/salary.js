@@ -63,7 +63,7 @@ Page({
       this._loaded = true
       this.setData({ loading: false })
       console.error('加载工资失败', e)
-      wx.showToast({ title: '加载失败，请下拉重试', icon: 'none' })
+      wx.showToast({ title: util.errTip(e, '加载失败，请下拉重试'), icon: 'none' })
     }
   },
 
@@ -113,8 +113,6 @@ Page({
   closeForm() {
     this._closeTimer = util.closeSheet(this, 'showForm')
   },
-
-  noop() {},
 
   onDateChange(e) {
     this.setData({ formDate: e.detail.value })
