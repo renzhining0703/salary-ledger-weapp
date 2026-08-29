@@ -207,4 +207,62 @@
       <view class="btn btn-primary" bindtap="closeOptimalSheet">收下</view>
     </view>
   </view>
+
+  <!-- 账本君 AI 助理（独立 sheet，不跳页） -->
+  <view wx:if="{{showAiChat}}" class="mask {{showAiChatClosing ? 'mask-out' : ''}}" bindtap="closeAiChat"></view>
+  <view wx:if="{{showAiChat}}" class="sheet ai-chat-sheet {{showAiChatClosing ? 'sheet-out' : ''}}">
+    <view class="sheet-title ai-chat-title">
+      <view class="ai-chat-avatar">账</view>
+      <view class="ai-chat-title-text">
+        <view class="ai-chat-title-main">账本君</view>
+        <view class="ai-chat-title-sub">你的 AI 财务助理</view>
+      </view>
+      <view class="ai-chat-clear" bindtap="clearAiChat">清空</view>
+    </view>
+
+    <!-- 上次会话摘要（热启动；本次新提问后自动隐藏） -->
+    <view wx:if="{{chatStorage.shown && chatStorage.last.length}}" class="ai-chat-last">
+      <view class="ai-chat-last-label">上次你问了</view>
+      <block wx:for="{{chatStorage.last}}" wx:key="ts" wx:for-item="m">
+        <view class="ai-chat-last-msg {{m.role === 'user' ? 'mine' : 'his'}}">
+          <view wx:if="{{m.role === 'assistant'}}" class="chat-avatar-sm">账</view>
+          <text class="ai-chat-last-bubble">{{m.content}}</text>
+        </view>
+      </block>
+    </view>
+
+    <!-- 主对话区 -->
+    <scroll-view class="ai-chat-history" scroll-y="{{true}}" scroll-top="{{aiScrollTop}}" enhanced="{{true}}" bounces="{{false}}">
+      <block wx:for="{{chatMessages}}" wx:key="ts" wx:for-item="m">
+        <view id="msg-{{m.ts}}" class="ai-chat-msg {{m.role === 'user' ? 'mine' : 'his'}}">
+          <view wx:if="{{m.role === 'assistant'}}" class="chat-avatar">账</view>
+          <text class="ai-chat-bubble">{{m.content}}</text>
+        </view>
+      </block>
+      <view wx:if="{{chatSending}}" id="msg-sending" class="ai-chat-msg his loading">
+        <view class="chat-avatar">账</view>
+        <view class="ai-chat-spinner"></view>
+        <text>账本君在想…</text>
+      </view>
+      <view id="ai-chat-bottom" style="height: 1rpx;"></view>
+    </scroll-view>
+
+    <view class="ai-chat-input-row">
+      <input
+        class="ai-chat-input"
+        value="{{chatInput}}"
+        maxlength="60"
+        placeholder="问问账本君…"
+        bindinput="onAiInput"
+        bindfocus="onAiFocus"
+        bindconfirm="sendAiChat"
+        confirm-type="send"
+        adjust-position="{{true}}"
+        cursor-spacing="20"
+        hold-keyboard="{{true}}"
+      />
+      <view class="ai-chat-send {{chatSending || !chatInput.trim() ? 'disabled' : ''}}" bindtap="sendAiChat">发送</view>
+    </view>
+    <view wx:if="{{chatRateError}}" class="ai-chat-error">{{chatRateError}}</view>
+  </view>
 </view>

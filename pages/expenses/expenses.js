@@ -2,6 +2,7 @@ const config = require('../../utils/config')
 const util = require('../../utils/util')
 const dbApi = require('../../utils/db')
 const finTemplate = require('../../utils/finTemplate')
+const aiChat = require('../../utils/aiChat')
 
 /**
  * 构造 GitHub 风格 grid：7 行 × N 列,补齐首末日附近的空格,确保每列是完整周（周日→周六）。
@@ -178,21 +179,6 @@ Page({
     if (app.globalData.quickExpense) {
       app.globalData.quickExpense = false
       setTimeout(() => this.openForm(), 120)
-    }
-    // 首页「问问账本君」入口：开账单 sheet + 自动展开 chat
-    // 等 loadData 把本月 catStats 算出来再调 openStatement，否则会被空数据挡掉
-    if (app.globalData.openChatAfterLoad) {
-      app.globalData.openChatAfterLoad = false
-      setTimeout(() => {
-        if (!this.data.catStats.length) {
-          wx.showToast({ title: '本月还没有数据', icon: 'none' })
-          return
-        }
-        this.openStatement()
-        // 等 sheet 弹起动画（240ms）+ AI 解读开始后再展开 chat
-        // openChat 内部会 stmtScrollTop 滚到底，让输入框进入可视区
-        setTimeout(() => this.openChat(), 350)
-      }, 600)
     }
     // 主题切换重绘本月账单饼图（颜色取自主题）
     if (this._stmtThemeHandler) wx.offThemeChange(this._stmtThemeHandler)
@@ -842,67 +828,20 @@ Page({
       stmtScrollTop: this._bumpScrollTop(99999)
     })
 
-    // 3. 调云函数 + 8s 超时
-    let result = null
-    let timedOut = false
-    try {
-      result = await new Promise((resolve, reject) => {
-        let settled = false
-        const timer = setTimeout(() => {
-          if (settled) return
-          settled = true
-          timedOut = true
-          reject(new Error('云函数超时'))
-        }, 8000)
-        wx.cloud.callFunction({
-          name: 'finChat',
-          data: { month: stmt.month, question: q, data: this._stmtForChat() },
-          success: (r) => {
-            if (settled) return
-            settled = true
-            clearTimeout(timer)
-            resolve((r && r.result) || null)
-          },
-          fail: (e) => {
-            if (settled) return
-            settled = true
-            clearTimeout(timer)
-            reject(e)
-          }
-        })
-      })
-    } catch (e) {
-      console.warn('finChat 失败', e)
-    }
+    // 3. 委托给 aiChat.send(云函数 / 节流兜底 / 模板兜底全在 utils/aiChat.js)
+    const result = await aiChat.send({
+      month: stmt.month,
+      stmt,
+      recentList: this.data.list || [],
+      question: q
+    })
 
     // 4. 拼 assistant 气泡
-    let assistant
-    const code = result && result.code
-    if (result && result.text) {
-      assistant = { role: 'assistant', content: result.text, ts: Date.now(), source: 'llm' }
-    } else if (code === 'RATE_LIMIT') {
-      assistant = { role: 'assistant', content: result.msg || '问得有点急,稍等再问', ts: Date.now(), source: 'local' }
-    } else if (code === 'NO_KEY' || timedOut) {
-      // 本地模板兜底
-      const tpl = finTemplate.build({
-        monthText: stmt.monthText,
-        income: stmt.income,
-        expense: stmt.expense,
-        balance: stmt.balance,
-        savingsRate: stmt.savingsRate,
-        prevMonthExpense: stmt.prevMonthExpense,
-        prevYearExpense: stmt.hasPrevYear ? stmt.prevYearExpense : undefined,
-        hasPrevYear: stmt.hasPrevYear,
-        recurTotal: stmt.recurTotal,
-        categories: stmt.categories,
-        budgetOver: stmt.budgetOver,
-        budgetNear: stmt.budgetNear,
-        overCategories: stmt.overCategories
-      })
-      const prefix = timedOut ? '账本君想了太久,先回你本地版:' : '账本君还没拿到口粮,先用本地话答你:'
-      assistant = { role: 'assistant', content: `${prefix}\n${tpl}`, ts: Date.now(), source: 'local' }
-    } else {
-      assistant = { role: 'assistant', content: '账本君暂时没想明白,稍后再问', ts: Date.now(), source: 'local' }
+    const assistant = {
+      role: 'assistant',
+      content: result.text,
+      ts: Date.now(),
+      source: result.source
     }
 
     this.setData({
@@ -915,52 +854,9 @@ Page({
     })
   },
 
-  /** 序列化 statement 给云函数,只传 LLM 需要的字段 */
+  /** 兼容旧引用,序列化已迁移到 utils/aiChat.js 的内部 */
   _stmtForChat() {
-    const s = this.data.statement
-    if (!s) return null
-
-    // 对话数据增强:在 _stmtForChat 里现算,不污染 _buildStatementData / loadData
-    // 1) 最近 30 条明细(按金额倒序)— 解决"买烟哪天"这类问题
-    const recentList = (this.data.list || [])
-      .slice()
-      .sort((a, b) => (b.amount || 0) - (a.amount || 0))
-      .slice(0, 30)
-      .map((x) => ({
-        date: x.date || '',
-        category: x.category || '其他',
-        amount: x.amount || 0,
-        note: (x.note || '').trim()
-      }))
-
-    // 2) 近 3 个月趋势 — 阶段 2 再补 income/savingsRate,这里先只算 expense(只塞当月数据)
-    //    阶段 2 改造:在 loadData 里加 trendMonths 字段,这里直接读
-    const recentMonths = [{ month: s.month, expense: s.expense }]
-
-    return {
-      month: s.month,
-      monthText: s.monthText,
-      income: s.income,
-      expense: s.expense,
-      balance: s.balance,
-      savingsRate: s.savingsRate,
-      prevMonthExpense: s.prevMonthExpense,
-      prevYearExpense: s.hasPrevYear ? s.prevYearExpense : undefined,
-      hasPrevYear: s.hasPrevYear,
-      recurTotal: s.recurTotal,
-      categories: (s.categories || []).map((c) => ({
-        name: c.name,
-        amount: c.amount,
-        budget: c.budget || 0,
-        over: !!c.over,
-        topNotes: c.topNotes || []
-      })),
-      budgetOver: s.budgetOver,
-      budgetNear: s.budgetNear,
-      overCategories: s.overCategories,
-      recentList,
-      recentMonths
-    }
+    return null
   },
 
   /** 把 loadData 算出的字段组装成 sheet 要渲染的对象（包含原始数字 + 展示字符串 + 分类备注） */

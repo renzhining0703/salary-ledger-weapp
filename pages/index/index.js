@@ -1,6 +1,8 @@
 const config = require('../../utils/config')
 const util = require('../../utils/util')
 const dbApi = require('../../utils/db')
+const aiChat = require('../../utils/aiChat')
+const chatStorage = require('../../utils/chatStorage')
 
 Page({
   data: {
@@ -28,7 +30,17 @@ Page({
     optimalPreview: null,    // { pendingCount, subText, first: { bank, amountText, dueText } }
     optimalFull: null,       // { pendingCount, order: [], savedInterestText }
     showOptimalSheet: false,
-    showOptimalSheetClosing: false
+    showOptimalSheetClosing: false,
+    // 账本君 AI 助理 chat sheet（独立,不需要跳页）
+    showAiChat: false,
+    showAiChatClosing: false,
+    aiScrollTop: 0,
+    chatMessages: [],        // 全局同步 getApp().globalData.chatMessages
+    chatInput: '',
+    chatSending: false,
+    chatRateError: '',
+    chatStorage: { last: [], shown: false },  // 上次会话摘要(冷启动展示)
+    recentExpenses: []       // 给 aiChat.send 用,本月最近流水
   },
 
   onShow() {
@@ -216,7 +228,10 @@ Page({
         board,
         budgetAlert,
         trend,
-        trendEmpty
+        trendEmpty,
+        // 账本君 AI 用:本月分类统计 + 最近 30 条明细
+        catStats: this._buildCatStats(expenses, expense),
+        recentExpenses: expenses.slice(0, 60)  // 多存点,_buildAiStmt 里再截 30
       })
 
       if (!trendEmpty) {
@@ -288,12 +303,203 @@ Page({
   },
 
   /**
-   * 首页「问问账本君」入口：写一次性 flag，记账页 onShow 检测到后会自动开账单 sheet + 展开 chat。
-   * 复用 quickExpense 的 switchTab + globalData 模式（已有经验证）。
+   * 首页「问问账本君」入口：直接弹首页 chat sheet（不跳页）。
+   * 从 chatStorage 恢复上次会话摘要(热启动);本次会话已有消息则不展示摘要。
    */
   goAskAI() {
-    getApp().globalData.openChatAfterLoad = true
-    wx.switchTab({ url: '/pages/expenses/expenses' })
+    const stored = chatStorage.load()
+    const app = getApp()
+    const hasCurrent = app.globalData.chatMessages.length > 0
+    this.setData({
+      showAiChat: true,
+      chatMessages: app.globalData.chatMessages.slice(),
+      chatInput: app.globalData.chatInput || '',
+      chatSending: app.globalData.chatSending || false,
+      chatRateError: '',
+      chatStorage: {
+        last: stored,
+        shown: !hasCurrent && stored.length > 0
+      },
+      aiScrollTop: 0
+    })
+  },
+
+  closeAiChat() {
+    if (this._aiCloseTimer) { clearTimeout(this._aiCloseTimer); this._aiCloseTimer = null }
+    this._aiCloseTimer = util.closeSheet(this, 'showAiChat')
+  },
+
+  /** 清空当前会话 + storage */
+  clearAiChat() {
+    const app = getApp()
+    app.globalData.chatMessages = []
+    app.globalData.chatInput = ''
+    chatStorage.clear()
+    this.setData({
+      chatMessages: [],
+      chatInput: '',
+      chatStorage: { last: [], shown: false }
+    })
+    wx.showToast({ title: '已清空', icon: 'none' })
+  },
+
+  onAiInput(e) {
+    const v = e.detail.value || ''
+    getApp().globalData.chatInput = v
+    this.setData({ chatInput: v })
+  },
+
+  /** 输入框聚焦：80ms 后滚到底,避免键盘遮挡输入框 */
+  onAiFocus() {
+    setTimeout(() => {
+      this.setData({ aiScrollTop: this._bumpAiScroll(99999) })
+    }, 80)
+  },
+
+  /**
+   * 发送问题:节流 → 拼 user 气泡 → 调 aiChat.send → 拼 assistant 气泡 → 持久化
+   * 状态同步到 app.globalData,记账页打开账单 sheet 时也能看到历史
+   */
+  async sendAiChat() {
+    const app = getApp()
+    const q = (this.data.chatInput || '').trim()
+    if (!q || this.data.chatSending) return
+
+    // 1. 空数据兜底(本月还没记过账)
+    if (!this.data.catStats || !this.data.catStats.length) {
+      this.setData({ chatRateError: '本月还没有数据,先记几笔吧' })
+      setTimeout(() => this.setData({ chatRateError: '' }), 2000)
+      return
+    }
+
+    // 2. 节流:每分钟 ≤6 次
+    const now = Date.now()
+    this._chatTs = (this._chatTs || []).filter((t) => now - t < 60000)
+    if (this._chatTs.length >= 6) {
+      this.setData({ chatRateError: '一分钟最多问 6 次,稍等再问' })
+      setTimeout(() => this.setData({ chatRateError: '' }), 2000)
+      return
+    }
+    this._chatTs.push(now)
+
+    // 3. 算 statement(用首页已有数据)
+    const stmt = this._buildAiStmt()
+    const recentList = (this.data.recentExpenses || []).slice(0, 30)
+
+    // 4. push user 消息 + 立刻滚动到底
+    const userMsg = { role: 'user', content: q, ts: now }
+    app.globalData.chatMessages = [...app.globalData.chatMessages, userMsg]
+    app.globalData.chatInput = ''
+    app.globalData.chatSending = true
+    this.setData({
+      chatMessages: app.globalData.chatMessages.slice(),
+      chatInput: '',
+      chatSending: true,
+      chatStorage: { ...this.data.chatStorage, shown: false }, // 隐藏上次摘要
+      aiScrollTop: this._bumpAiScroll(99999)
+    })
+
+    // 5. 调核心 aiChat.send
+    const result = await aiChat.send({
+      month: stmt.month,
+      stmt,
+      recentList,
+      question: q
+    })
+
+    // 6. push assistant 消息
+    const assistant = {
+      role: 'assistant',
+      content: result.text,
+      ts: Date.now(),
+      source: result.source
+    }
+    app.globalData.chatMessages = [...app.globalData.chatMessages, assistant]
+    app.globalData.chatSending = false
+    this.setData({
+      chatMessages: app.globalData.chatMessages.slice(),
+      chatSending: false,
+      aiScrollTop: this._bumpAiScroll(99999)
+    })
+
+    // 7. 持久化最近 2 条
+    chatStorage.save(app.globalData.chatMessages)
+  },
+
+  _bumpAiScroll(target) {
+    this._aiScrollBump = (this._aiScrollBump || 0) + 1
+    return target + this._aiScrollBump
+  },
+
+  /**
+   * 从本月 expenses 算出分类占比,给账本君 AI 用
+   * 输出形如 [{ name, amount, percent, over }],over 标志用于预算对比
+   */
+  _buildCatStats(expenses, totalExpense) {
+    const byCat = {}
+    ;(expenses || []).forEach((x) => {
+      const k = x.category || '其他'
+      byCat[k] = (byCat[k] || 0) + (x.amount || 0)
+    })
+    const budgetMap = (this.data.user && this.data.user.budgets) || {}
+    return Object.keys(byCat)
+      .map((name) => {
+        const amount = byCat[name]
+        const percent = totalExpense > 0 ? Math.round((amount / totalExpense) * 100) : 0
+        const b = budgetMap[name]
+        const over = typeof b === 'number' && b > 0 && amount > b
+        return { name, amount, percent, over }
+      })
+      .sort((a, b) => b.amount - a.amount)
+  },
+
+  /**
+   * 从首页已有数据构造 stmt,供 aiChat.send 使用
+   * 不依赖 expenses 的 _buildStatementData,首页独立可用
+   */
+  _buildAiStmt() {
+    const board = this.data.board || {}
+    const viewMonth = this.data.boardMonth || util.thisMonthStr()
+    const catStats = this.data.catStats || []
+    const recentList = this.data.recentExpenses || []
+
+    // 备注聚合 top-3
+    const noteByCat = {}
+    recentList.forEach((x) => {
+      const n = (x.note || '').trim()
+      if (!n) return
+      const k = x.category || '其他'
+      if (!noteByCat[k]) noteByCat[k] = new Map()
+      const m = noteByCat[k]
+      m.set(n, (m.get(n) || 0) + (x.amount || 0))
+    })
+    const categories = catStats
+      .filter((c) => c.amount > 0)
+      .map((c) => {
+        const topNotes = noteByCat[c.name]
+          ? [...noteByCat[c.name].entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n]) => n)
+          : []
+        return { name: c.name, amount: c.amount, percent: c.percent, topNotes, over: c.over }
+      })
+    const expense = board._expenseNum || 0
+    const income = board._incomeNum || 0
+    const balance = (board._balanceNum || 0) * (board.balancePositive ? 1 : -1)
+    const savingsRate = income > 0 ? Math.max(0, Math.round((balance / income) * 100)) : 0
+    return {
+      month: viewMonth,
+      monthText: `${Number(viewMonth.slice(0, 4))}年${Number(viewMonth.slice(5, 7))}月`,
+      income,
+      expense,
+      balance,
+      savingsRate,
+      prevMonthExpense: 0,  // 首页没存上月数据,LLM 拿不到环比也能答
+      hasPrevYear: false,
+      recurTotal: 0,
+      categories,
+      budgetOver: this.data.budgetOver || false,
+      budgetNear: this.data.budgetNear || false,
+      overCategories: categories.filter((c) => c.over).map((c) => c.name)
+    }
   },
 
   /* ---------- 最优还款顺序 ---------- */
