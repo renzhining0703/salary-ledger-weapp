@@ -644,6 +644,28 @@ Page({
     }
   },
 
+  /**
+   * 分享给好友：showShareImageMenu 调起的「图片分享菜单」必须配合页面级
+   * onShareAppMessage 才能开启「分享给朋友」入口（否则该项置灰）。
+   * 这里是纯图片分享，直接返回当前 path，微信会用 showShareImageMenu 的图片。
+   * 同时也是右上角菜单「转发」按钮的兜底回调。
+   */
+  onShareAppMessage() {
+    const monthText = (this.data.board && this.data.board.monthText) || ''
+    return {
+      title: monthText ? `${monthText} 账单` : '我的月度账单',
+      path: '/pages/index/index'
+    }
+  },
+
+  /** 分享到朋友圈（微信要求每个页面单独声明，不能靠 app.js 兜底） */
+  onShareTimeline() {
+    const monthText = (this.data.board && this.data.board.monthText) || ''
+    return {
+      title: monthText ? `${monthText} 账单` : '我的月度账单'
+    }
+  },
+
   /* ---------- 近 6 个月收支趋势图 ---------- */
   /** canvas 2d 绘制：收入/支出双柱 + 结余折线（金色，可跌破零轴），带生长动画 */
   async drawTrend() {
