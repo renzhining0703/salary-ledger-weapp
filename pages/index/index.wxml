@@ -12,25 +12,22 @@
     <view class="remind-btn" bindtap="subscribeRemind">还款提醒</view>
   </view>
 
-  <!-- 今天要处理（置顶） -->
-  <view class="card">
+  <!-- 今天要处理（置顶；无事项时整张卡隐藏，避免噪音） -->
+  <view wx:if="{{todoList.length}}" class="card">
     <view class="card-title">今天要处理</view>
-    <block wx:if="{{todoList.length}}">
-      <view wx:for="{{todoList}}" wx:key="id" class="todo-item {{item.level}}">
-        <view class="todo-main">
-          <view class="todo-top">
-            <text class="todo-bank">{{item.bank}}</text>
-            <view class="tag tag-red" wx:if="{{item.level === 'overdue'}}">逾期</view>
-            <view class="tag tag-red" wx:elif="{{item.level === 'today'}}">今天</view>
-            <view class="tag tag-yellow" wx:else>明天</view>
-          </view>
-          <view class="todo-amount">¥{{item.amount}}</view>
-          <view class="todo-due">{{item.dueText}}</view>
+    <view wx:for="{{todoList}}" wx:key="id" class="todo-item {{item.level}}">
+      <view class="todo-main">
+        <view class="todo-top">
+          <text class="todo-bank">{{item.bank}}</text>
+          <view class="tag tag-red" wx:if="{{item.level === 'overdue'}}">逾期</view>
+          <view class="tag tag-red" wx:elif="{{item.level === 'today'}}">今天</view>
+          <view class="tag tag-yellow" wx:else>明天</view>
         </view>
-        <view class="btn btn-sm btn-primary pay-btn" bindtap="markPaid" data-id="{{item.id}}" wx:if="{{item.canPay}}">标记已还</view>
+        <view class="todo-amount">¥{{item.amount}}</view>
+        <view class="todo-due">{{item.dueText}}</view>
       </view>
-    </block>
-    <view wx:else class="empty">今天没有要处理的事项</view>
+      <view class="btn btn-sm btn-primary pay-btn" bindtap="markPaid" data-id="{{item.id}}" wx:if="{{item.canPay}}">标记已还</view>
+    </view>
   </view>
 
   <!-- 预算超支预警 -->
