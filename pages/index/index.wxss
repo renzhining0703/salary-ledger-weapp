@@ -382,6 +382,48 @@
   margin-left: 12rpx;
 }
 
+/* 问问账本君 入口卡（让用户发现 AI 能力） */
+.ai-card {
+  display: flex;
+  align-items: center;
+}
+.ai-card-ico {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--gold), #E8B85E);
+  color: var(--navy-900);
+  font-size: 30rpx;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 20rpx;
+  flex-shrink: 0;
+  box-shadow: 0 4rpx 12rpx rgba(200, 160, 77, 0.3);
+}
+.ai-card-body {
+  flex: 1;
+  min-width: 0;
+}
+.ai-card-title {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4rpx;
+}
+.ai-card-sub {
+  font-size: 22rpx;
+  color: var(--text-sub);
+}
+.ai-card-arrow {
+  font-size: 40rpx;
+  color: var(--text-mute);
+  line-height: 1;
+  padding-left: 16rpx;
+  flex-shrink: 0;
+}
+
 /* 预算预警 */
 .budget-alert {
   display: flex;

@@ -12,7 +12,10 @@ App({
     env: config.CLOUD_ENV,
     loginReady: false,
     lastUnlockTs: 0, // 最近一次成功解锁/设置的时间戳,守卫用
-    theme: 'light' // 系统主题 'light' | 'dark'
+    theme: 'light', // 系统主题 'light' | 'dark'
+    // 跨页一次性 flag:首页「问问账本君」入口置 true,记账页 onShow 消费后置 false
+    openChatAfterLoad: false,
+    quickExpense: false // 首页「+」记账按钮置 true,记账页 onShow 消费后置 false
   },
 
   onLaunch() {

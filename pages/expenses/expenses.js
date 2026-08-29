@@ -179,6 +179,21 @@ Page({
       app.globalData.quickExpense = false
       setTimeout(() => this.openForm(), 120)
     }
+    // 首页「问问账本君」入口：开账单 sheet + 自动展开 chat
+    // 等 loadData 把本月 catStats 算出来再调 openStatement，否则会被空数据挡掉
+    if (app.globalData.openChatAfterLoad) {
+      app.globalData.openChatAfterLoad = false
+      setTimeout(() => {
+        if (!this.data.catStats.length) {
+          wx.showToast({ title: '本月还没有数据', icon: 'none' })
+          return
+        }
+        this.openStatement()
+        // 等 sheet 弹起动画（240ms）+ AI 解读开始后再展开 chat
+        // openChat 内部会 stmtScrollTop 滚到底，让输入框进入可视区
+        setTimeout(() => this.openChat(), 350)
+      }, 600)
+    }
     // 主题切换重绘本月账单饼图（颜色取自主题）
     if (this._stmtThemeHandler) wx.offThemeChange(this._stmtThemeHandler)
     this._stmtThemeHandler = () => {

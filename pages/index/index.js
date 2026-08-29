@@ -287,6 +287,15 @@ Page({
     wx.switchTab({ url: '/pages/expenses/expenses' })
   },
 
+  /**
+   * 首页「问问账本君」入口：写一次性 flag，记账页 onShow 检测到后会自动开账单 sheet + 展开 chat。
+   * 复用 quickExpense 的 switchTab + globalData 模式（已有经验证）。
+   */
+  goAskAI() {
+    getApp().globalData.openChatAfterLoad = true
+    wx.switchTab({ url: '/pages/expenses/expenses' })
+  },
+
   /* ---------- 最优还款顺序 ---------- */
   /**
    * 派生 optimalPreview / optimalFull 写入 data。

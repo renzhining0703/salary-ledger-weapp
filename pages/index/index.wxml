@@ -101,6 +101,16 @@
     <view wx:elif="{{trendEmpty}}" class="empty">近 6 个月暂无收支数据</view>
   </view>
 
+  <!-- 问问账本君：让用户发现 AI 问答功能（核心差异化能力） -->
+  <view class="card ai-card" bindtap="goAskAI">
+    <view class="ai-card-ico">账</view>
+    <view class="ai-card-body">
+      <view class="ai-card-title">问问账本君</view>
+      <view class="ai-card-sub">问个问题，了解你的消费习惯</view>
+    </view>
+    <view class="ai-card-arrow">›</view>
+  </view>
+
   <!-- 记一笔快捷入口 -->
   <view class="quick-add" catchtap="quickExpense">＋</view>
 
