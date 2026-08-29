@@ -141,6 +141,100 @@ function thisMonthStr() {
   return `${t.getFullYear()}-${pad(t.getMonth() + 1)}`
 }
 
+/** todayStr + N 天,返回 'YYYY-MM-DD' */
+function offsetDate(todayStr, n) {
+  const d = parseDate(todayStr)
+  d.setDate(d.getDate() + n)
+  return fmtDate(d)
+}
+
+/**
+ * 多卡最优还款顺序(纯函数,首页「最优还款顺序」用)
+ * 算法:
+ *   主排序 key = daysLeft 升序(逾期 → 今天 → 越近越前)
+ *   次排序 key = freeDays 升序(同日时免息期短的先还,让长的多躺几天)
+ *   suggestDate 按到期天数启发式给出(逾期/今天→立即;1-3→前1天;4-13→前2天;≥14→前3天)
+ *
+ * @param {Array} cards 全部卡(含 paid 也行,内部过滤)
+ * @param {string} today 'YYYY-MM-DD'
+ * @returns {{ pendingCount: number, order: Array, savedInterestText: string }}
+ *   卡片不足时返回 pendingCount=0、order=[]
+ */
+function calcOptimalRepayOrder(cards, today) {
+  const pending = (cards || []).filter((c) => c && c.status !== 'paid' && c.repayDay)
+  if (!pending.length) return { pendingCount: 0, order: [], savedInterestText: '' }
+
+  const rows = pending.map((c) => {
+    const dueDate = calcDueDate(c.repayDay, 'pending')
+    const daysLeft = daysBetween(today, dueDate)
+    const freeDays = interestFreeDays(c.billDay, c.repayDay)
+    return {
+      id: c._id,
+      bank: c.bank,
+      amount: c.amount || 0,
+      dueDate,
+      daysLeft,
+      freeDays
+    }
+  })
+
+  // 主排序 + 次排序
+  rows.sort((a, b) => {
+    if (a.daysLeft !== b.daysLeft) return a.daysLeft - b.daysLeft
+    return a.freeDays - b.freeDays
+  })
+
+  // 派生文案 + 建议还款日 + level(影响左侧色条)
+  rows.forEach((r) => {
+    r.amountText = moneyThousand(r.amount)
+    if (r.daysLeft < 0) {
+      r.dueText = `已逾期 ${-r.daysLeft} 天`
+      r.level = 'overdue'
+      r.suggestDate = today
+      r.suggestText = '今天立即还(已逾期)'
+    } else if (r.daysLeft === 0) {
+      r.dueText = '今天还款'
+      r.level = 'urgent'
+      r.suggestDate = today
+      r.suggestText = '今天还款日前还'
+    } else if (r.daysLeft <= 3) {
+      r.dueText = `${r.daysLeft} 天后到期`
+      r.level = 'urgent'
+      r.suggestDate = offsetDate(today, r.daysLeft - 1) // 到期前 1 天
+      r.suggestText = `${r.suggestDate} 还(到期前 1 天)`
+    } else if (r.daysLeft <= 13) {
+      r.dueText = `${r.daysLeft} 天后到期`
+      r.level = 'soon'
+      r.suggestDate = offsetDate(today, r.daysLeft - 2)
+      r.suggestText = `${r.suggestDate} 还(到期前 2 天)`
+    } else {
+      r.dueText = `${r.daysLeft} 天后到期`
+      r.level = 'normal'
+      r.suggestDate = offsetDate(today, r.daysLeft - 3)
+      r.suggestText = `${r.suggestDate} 还(到期前 3 天)`
+    }
+  })
+
+  // 估算节省:日息万五 × 总金额 × 平均延后天数
+  let totalAmount = 0
+  let totalDelay = 0
+  rows.forEach((r) => {
+    totalAmount += r.amount
+    totalDelay += Math.max(0, daysBetween(today, r.suggestDate))
+  })
+  const avgDelay = rows.length ? totalDelay / rows.length : 0
+  const saved = totalAmount * 0.0005 * avgDelay
+  const savedInterestText = avgDelay >= 0.5
+    ? `约节省 ¥${moneyThousand(Math.round(saved))} 利息`
+    : '本期无明显节省空间'
+
+  return {
+    pendingCount: rows.length,
+    order: rows,
+    savedInterestText
+  }
+}
+
 /**
  * 打开底部弹层（重置关闭状态，播放滑入动画）
  * @param {Page} page 页面实例（需有 setData）
@@ -282,6 +376,8 @@ module.exports = {
   money,
   moneyThousand,
   thisMonthStr,
+  offsetDate,
+  calcOptimalRepayOrder,
   openSheet,
   closeSheet,
   animateNumber,

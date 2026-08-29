@@ -196,6 +196,192 @@
   margin-left: 16rpx;
 }
 
+/* 最优还款顺序（多卡用户专属入口） */
+.opt-card {
+  /* 复用 .card */
+}
+.opt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14rpx;
+}
+.opt-titles {
+  flex: 1;
+  min-width: 0;
+}
+.opt-sub {
+  font-size: 22rpx;
+  color: var(--text-sub);
+  margin-top: 4rpx;
+}
+.opt-arrow {
+  font-size: 40rpx;
+  color: var(--text-mute);
+  line-height: 1;
+  padding-left: 16rpx;
+}
+
+.opt-preview-row {
+  display: flex;
+  align-items: center;
+  background: var(--input-bg);
+  border-radius: 18rpx;
+  padding: 18rpx 22rpx;
+}
+.opt-prev-rank {
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--navy-700), var(--navy-900));
+  color: #fff;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 16rpx;
+  font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+  flex-shrink: 0;
+}
+.opt-prev-info {
+  flex: 1;
+  min-width: 0;
+}
+.opt-prev-bank {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.opt-prev-amount {
+  font-size: 24rpx;
+  color: var(--text-sub);
+  margin-top: 2rpx;
+  font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+}
+.opt-prev-due {
+  font-size: 24rpx;
+  color: var(--danger);
+  font-weight: 600;
+  flex-shrink: 0;
+  margin-left: 12rpx;
+}
+
+/* 完整 sheet */
+.opt-tip {
+  background: var(--input-bg);
+  border-radius: 14rpx;
+  padding: 18rpx 22rpx;
+  font-size: 24rpx;
+  color: var(--text-sub);
+  line-height: 1.55;
+  margin-bottom: 16rpx;
+}
+.opt-tip-saved {
+  color: var(--gold);
+  font-weight: 700;
+  margin-left: 4rpx;
+}
+
+.opt-list {
+  max-height: 60vh;
+  /* scroll-view 需要显式高度才能滚动 */
+  height: 60vh;
+}
+.opt-row {
+  display: flex;
+  align-items: center;
+  background: var(--input-bg);
+  border-radius: 18rpx;
+  padding: 22rpx;
+  margin-bottom: 14rpx;
+  border-left: 8rpx solid transparent;
+}
+.opt-row:last-child {
+  margin-bottom: 0;
+}
+.opt-row.overdue {
+  border-left-color: var(--danger);
+  background: var(--danger-bg);
+}
+.opt-row.urgent {
+  border-left-color: var(--gold);
+  background: var(--gold-light);
+}
+.opt-row.soon {
+  border-left-color: var(--warn);
+  background: var(--warn-bg);
+}
+.opt-row.normal {
+  border-left-color: var(--navy-300);
+}
+
+.opt-rank {
+  width: 48rpx;
+  height: 48rpx;
+  border-radius: 50%;
+  background: var(--card-bg);
+  border: 2rpx solid var(--navy-300);
+  color: var(--text);
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 18rpx;
+  font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+  flex-shrink: 0;
+}
+.opt-row.overdue .opt-rank {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+.opt-row.urgent .opt-rank {
+  background: var(--gold);
+  color: #fff;
+  border-color: var(--gold);
+}
+
+.opt-row-main {
+  flex: 1;
+  min-width: 0;
+}
+.opt-row-top {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  flex-wrap: wrap;
+}
+.opt-row-bank {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: var(--text);
+}
+.opt-row-amt {
+  font-size: 32rpx;
+  font-weight: 800;
+  margin-top: 6rpx;
+  font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+  color: var(--text);
+}
+.opt-row-meta {
+  font-size: 22rpx;
+  color: var(--text-sub);
+  margin-top: 4rpx;
+}
+.opt-row-suggest {
+  font-size: 22rpx;
+  color: var(--gold);
+  font-weight: 600;
+  margin-top: 6rpx;
+}
+.opt-row-btn {
+  flex-shrink: 0;
+  margin-left: 12rpx;
+}
+
 /* 预算预警 */
 .budget-alert {
   display: flex;

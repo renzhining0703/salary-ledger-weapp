@@ -23,7 +23,12 @@ Page({
     showShare: false,
     showShareClosing: false,
     shareImagePath: '',
-    shareBusy: false
+    shareBusy: false,
+    // 最优还款顺序（≥3 张未还卡时显示入口卡）
+    optimalPreview: null,    // { pendingCount, subText, first: { bank, amountText, dueText } }
+    optimalFull: null,       // { pendingCount, order: [], savedInterestText }
+    showOptimalSheet: false,
+    showOptimalSheetClosing: false
   },
 
   onShow() {
@@ -126,6 +131,9 @@ Page({
 
       // 保留原始 cards，供 markPaid 组装还款历史用
       this._cards = cards
+
+      // 多卡最优还款顺序(纯函数,无副作用)。<3 张未还时给 null,入口卡不显示
+      this._computeOptimal(cards, today)
 
       // 各月还款金额（现金流口径）：
       // 新数据用 history（每次还款一条，跨月准确）；旧数据回退 repayDate + 当前金额
@@ -277,6 +285,41 @@ Page({
   quickExpense() {
     getApp().globalData.quickExpense = true
     wx.switchTab({ url: '/pages/expenses/expenses' })
+  },
+
+  /* ---------- 最优还款顺序 ---------- */
+  /**
+   * 派生 optimalPreview / optimalFull 写入 data。
+   * 触发条件：≥3 张未还卡才显示入口卡。<3 时给 null，UI 自动隐藏。
+   */
+  _computeOptimal(cards, today) {
+    const result = util.calcOptimalRepayOrder(cards, today)
+    if (!result.pendingCount) {
+      this.setData({ optimalPreview: null, optimalFull: null })
+      return
+    }
+    const first = result.order[0]
+    this.setData({
+      optimalPreview: {
+        pendingCount: result.pendingCount,
+        subText: `当前 ${result.pendingCount} 张卡未还，建议先还「${first.bank}」`,
+        first: {
+          bank: first.bank,
+          amountText: first.amountText,
+          dueText: first.dueText
+        }
+      },
+      optimalFull: result
+    })
+  },
+
+  openOptimalSheet() {
+    if (this._optCloseTimer) { clearTimeout(this._optCloseTimer); this._optCloseTimer = null }
+    util.openSheet(this, 'showOptimalSheet')
+  },
+
+  closeOptimalSheet() {
+    this._optCloseTimer = util.closeSheet(this, 'showOptimalSheet')
   },
 
   /* ---------- 设置弹层 ---------- */
