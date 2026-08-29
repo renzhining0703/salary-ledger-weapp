@@ -31,6 +31,7 @@ const finTemplate = require('./finTemplate')
 async function send({ month, stmt, recentList, question }) {
   let result = null
   let timedOut = false
+  let transportError = null  // 捕获 wx.cloud.callFunction fail 回调里的 error(没部署/网络/鉴权时无 result.msg)
   try {
     result = await new Promise((resolve, reject) => {
       let settled = false
@@ -62,7 +63,8 @@ async function send({ month, stmt, recentList, question }) {
       })
     })
   } catch (e) {
-    console.warn('finChat 失败', e)
+    transportError = e
+    console.warn('finChat 调用失败', e)
   }
 
   const code = result && result.code
@@ -92,7 +94,26 @@ async function send({ month, stmt, recentList, question }) {
     const prefix = timedOut ? '账本君想了太久,先回你本地版:' : '账本君还没拿到口粮,先用本地话答你:'
     return { text: `${prefix}\n${tpl}`, source: 'local' }
   }
-  return { text: '账本君暂时没想明白,稍后再问', source: 'local' }
+  // 其他失败(LLM_FAIL / LLM_EMPTY / result 为空 / 未知 code 等):
+  // 把云函数返回的 msg 或 transport 层 error 透传给用户,避免"黑盒"——
+  // HTTP 401/500、超时、限流、没部署、网络问题,用户和开发者都能立刻看到原因。
+  // 截断到 60 字防气泡被错误信息撑爆;带 code 前缀便于一眼看出是云函数报错而非 LLM 内容。
+  console.warn('finChat 返回异常 result=', result, 'timedOut=', timedOut, 'transportError=', transportError) // vConsole 看完整堆栈
+  const cloudMsg = (result && result.msg) ? result.msg.slice(0, 60) : ''
+  const cloudCode = (result && result.code) ? `${result.code}: ` : ''
+  const transportCode = (transportError && transportError.errCode != null) ? `${transportError.errCode} ` : ''
+  const transportMsg = transportError ? String(transportError.errMsg || transportError.message || transportError).slice(0, 60) : ''
+  const detail = cloudMsg
+    ? `${cloudCode}${cloudMsg}`
+    : transportMsg
+      ? `调用失败: ${transportCode}${transportMsg}`.replace(/\s+/g, ' ').trim()
+      : ''
+  return {
+    text: detail
+      ? `账本君这次没接通(${detail}),稍后再问`
+      : '账本君暂时没想明白,稍后再问',
+    source: 'local'
+  }
 }
 
 /**

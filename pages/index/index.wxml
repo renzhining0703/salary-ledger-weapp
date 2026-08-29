@@ -97,7 +97,7 @@
         <view class="lg"><view class="dot dot-balance"></view>结余</view>
       </view>
     </view>
-    <canvas type="2d" id="trendCanvas" class="trend-canvas" wx:if="{{!trendEmpty && !showProfile && !showShare}}"></canvas>
+    <canvas type="2d" id="trendCanvas" class="trend-canvas" wx:if="{{!trendEmpty && !showProfile && !showShare && !showAiChat}}"></canvas>
     <view wx:elif="{{trendEmpty}}" class="empty">近 6 个月暂无收支数据</view>
   </view>
 
@@ -210,7 +210,7 @@
 
   <!-- 账本君 AI 助理（独立 sheet，不跳页） -->
   <view wx:if="{{showAiChat}}" class="mask {{showAiChatClosing ? 'mask-out' : ''}}" bindtap="closeAiChat"></view>
-  <view wx:if="{{showAiChat}}" class="sheet ai-chat-sheet {{showAiChatClosing ? 'sheet-out' : ''}}">
+  <view wx:if="{{showAiChat}}" class="sheet ai-chat-sheet {{showAiChatClosing ? 'sheet-out' : ''}}" style="transform: {{aiSheetTransform}};">
     <view class="sheet-title ai-chat-title">
       <view class="ai-chat-avatar">账</view>
       <view class="ai-chat-title-text">
@@ -218,6 +218,7 @@
         <view class="ai-chat-title-sub">你的 AI 财务助理</view>
       </view>
       <view class="ai-chat-clear" bindtap="clearAiChat">清空</view>
+      <view class="ai-chat-close" bindtap="closeAiChat">✕</view>
     </view>
 
     <!-- 上次会话摘要（热启动；本次新提问后自动隐藏） -->
@@ -232,7 +233,7 @@
     </view>
 
     <!-- 主对话区 -->
-    <scroll-view class="ai-chat-history" scroll-y="{{true}}" scroll-top="{{aiScrollTop}}" enhanced="{{true}}" bounces="{{false}}">
+    <scroll-view class="ai-chat-history" scroll-y="{{true}}" scroll-into-view="{{aiScrollIntoView}}" scroll-top="{{aiScrollTop}}" scroll-with-animation="{{true}}" enhanced="{{true}}" bounces="{{false}}">
       <block wx:for="{{chatMessages}}" wx:key="ts" wx:for-item="m">
         <view id="msg-{{m.ts}}" class="ai-chat-msg {{m.role === 'user' ? 'mine' : 'his'}}">
           <view wx:if="{{m.role === 'assistant'}}" class="chat-avatar">账</view>
@@ -255,6 +256,8 @@
         placeholder="问问账本君…"
         bindinput="onAiInput"
         bindfocus="onAiFocus"
+        bindblur="onAiBlur"
+        bindkeyboardheightchange="onAiKeyboardChange"
         bindconfirm="sendAiChat"
         confirm-type="send"
         adjust-position="{{true}}"

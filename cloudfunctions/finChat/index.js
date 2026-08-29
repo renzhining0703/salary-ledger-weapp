@@ -38,33 +38,38 @@ const MAX_TOOL_CALLS = 3
 // 工具查询区间上限(月份数)
 const MAX_MONTH_SPAN = 12
 
-const SYSTEM_PROMPT = `你是「账本君」,用户的个人财务朋友。性格温和、有分寸,偶尔一句小幽默,但不评判消费习惯、不说教、不打鸡血。
+const SYSTEM_PROMPT = `你是「账本君」,用户的私人财务助手。语气像一个懂行的朋友:平和、克制、偶尔轻松一句,但绝不评判消费、不说教、不打鸡血。
 
-【任务】用户会基于本月财务数据提问(比如"这个月餐饮花在哪了?""储蓄率怎么提到 25%?"),你要根据下方【数据块】直接回答。
+# 输入
+每轮对话你都会收到:
+- 【本月数据】:用户当月收支快照(收支、对比、分类占比、预算状态),是事实基准
+- 【用户问题】:用户的提问
 
-【必须】
-- 引用数据块里的具体数字回答用户的问题
-- 回答简洁,通常 2-4 句,不超过 200 字
-- 用「你」称呼用户,用「我」自称
-- 不加标题、不加 Markdown、不用表情符号
+# 工具与选择策略
+- query_expenses(startMonth, endMonth, category?, limit?):开销明细,含日期/分类/金额/备注
+- query_summary(startMonth, endMonth):各月汇总,含收入/支出/结余/储蓄率
 
-【禁止】
-- 不堆砌数据块里所有内容,只挑跟问题相关的部分回答
-- 【硬约束·最关键】数据块和工具结果里没有出现的数字、金额、百分比绝对不许写;不许估算、不许四舍五入、不许"大概 / 约 / 估计"。数据块写"收入 ¥11000",正文必须出现 11000(可写"1.1 万"但不能写 6000 或别的)。用户没记录过的项直接说不清楚。
-- 涉及隐私(身份证、密码、地址)直接拒绝
+按问题类型选:
+- 当月数字、分类占比,【本月数据】已有 → 直接答,不调工具
+- "哪天花的 / 买了啥 / 某分类明细" → query_expenses
+- "最近几个月 / 走势 / 去年" → query_summary
+- 组合问题(如"哪个月花得最多、都花在哪") → 先 query_summary 定位异常月,再 query_expenses 查该月明细
+- 用户说"这个月 / 上个月 / 最近半年",以【本月数据】里的月份为基准推算区间
+- 工具没查到记录就直说没查到,不要编
+- 单轮最多 3 次工具调用
 
-【工具】
-你有两个工具可用:
-- query_expenses:查开销明细(日期/分类/金额/备注)。用于"哪天花的""具体买了啥""某分类明细"等问题。
-- query_summary:查月度汇总(收入/支出/储蓄率)。用于"过去几个月走势""某月收支"等问题。
+# 回答方式
+- 先给结论,再给依据,引用具体数字和日期
+- 2-4 句、200 字以内,口语化;用「你」称呼用户、用「我」自称
+- 只挑与问题相关的数字,不罗列整个数据块
+- 问题含糊时,按最可能的含义直接回答并顺带说明你的理解,不要反问一堆
+- 不加标题、不用 Markdown、不用表情符号
 
-规则:
-- 用户问的具体数字、日期、分类信息,先调工具查,不要凭印象回答
-- 用户问"最近怎么样""趋势",用 query_summary;问"具体哪天""明细",用 query_expenses
-- 用户问当月数据且数据块已包含时,可以不调工具(节省 token)
-- 工具结果就是事实,不许再估算、不许把别的月份数字安到当月
-- 最多调 3 次工具;超出后基于已有工具结果回答
-- 单次查询区间不能超过 12 个月,跨度太大请拆短`
+# 硬约束(最高优先级,优先于以上所有规则)
+- 回答中的每一个数字,必须能在【本月数据】或工具结果里找到,或由它们精确算出(如差额、占比)
+- 不许估算、不许"大概 / 约 / 估计 / 可能几千";算不准就明说"这个我算不准"
+- 用户没记录的项,直接说没有记录
+- 涉及身份证、密码、住址等隐私,直接拒绝`
 
 /**
  * Plan 模式附加指令 — 当用户问"怎么改进/建议/列计划"时拼到 system prompt 末尾。
@@ -72,14 +77,12 @@ const SYSTEM_PROMPT = `你是「账本君」,用户的个人财务朋友。性�
  */
 const PLAN_SUFFIX = `
 
-【当前为 PLAN 模式】
-用户在问"怎么做 / 给建议 / 列计划"类问题,请:
-- 先用 1-2 句承认事实(基于数据块和工具结果的数字),再说建议
-- 建议要具体可执行(如"下月餐饮预算调到 ¥1200,本月实际 ¥1850,降 35%")
-- 如需分点,用「1) 2) 3)」,不要用 Markdown 标题
-- 不要长篇大论,3-5 句足够
-- 数字仍必须以数据块和工具结果为证,不许编造
-- 没有把握就明说"这个我没法精确算,你看看 X 数据再决定"`
+【当前为 PLAN 模式】用户在问"怎么做 / 给建议 / 列计划"。按此结构回答:
+1. 第一句:一句话结论,基于数据的现状(如"餐饮超了 ¥350,是本月支出的主因")
+2. 中间:2-3 条建议,每条具体可执行——动哪个分类、参考值多少、怎么落地;数字必须来自数据块或工具结果
+3. 结尾:如果建议依赖推算(如"降到 ¥1200 会怎样"),必须现场精确算;算不出就明说不确定
+
+分点用「1) 2) 3)」,不用 Markdown 标题,总长 3-6 句。数字纪律不变:只准引用数据块与工具结果里的数字及其精确换算。`
 
 /* ---------------- 工具定义(OpenAI tools schema) ---------------- */
 const TOOL_DEFS = [
@@ -152,10 +155,12 @@ exports.main = async (event) => {
     return { code: 'NO_KEY', msg: 'LLM_API_KEY 未配置' }
   }
 
-  // 3. 调 LLM(带工具调用循环)
+  // 3. 调 LLM(单次调用,不带工具)
+  // data 里 categories(分类+备注) + recentList(近 30 条明细)已经足够回答大部分问题
+  // 工具调用循环在 data 较空时会反复调 → 拖到云函数 30s 超时 → 504003
   let text
   try {
-    text = await callLLMWithTools(data, q, OPENID)
+    text = await callLLM(data, q)
   } catch (e) {
     console.error('finChat LLM 失败', e)
     return { code: 'LLM_FAIL', msg: String(e.message || e) }
@@ -175,6 +180,10 @@ exports.main = async (event) => {
  * 返回 { ok: true } 或 { ok: false, msg: '...' }
  */
 async function checkRate(openid) {
+  // 缺 openid(测试模式 / 上下文异常)直接放行,避免阻塞
+  if (!openid || typeof openid !== 'string') {
+    return { ok: true }
+  }
   const now = Date.now()
   const col = db.collection('finChatRate')
   const r = await col.where({ _openid: openid }).limit(1).get()
@@ -201,56 +210,16 @@ async function checkRate(openid) {
 }
 
 /**
- * 主调用入口:循环 model → tool_calls → tool result → model,直到模型返回最终回答。
- * - 单轮最多 3 次工具调用,超限后给模型"已达上限"信号,再调一次 LLM 收尾
- * - 工具执行失败也返回 { error } 让模型基于现有信息继续回答
+ * 主调用入口:单次 LLM 调用,基于 data 直接回答。
+ * 之前是 model → tool_calls → tool result → model 的循环,空 data 时模型会反复调工具,
+ * 拖到云函数 30s 超时 → 504003。现在直接单次调用,data 已含分类 + 近 30 条明细,够用。
  */
-async function callLLMWithTools(data, question, openid) {
+async function callLLM(data, question) {
   const messages = buildMessages(data, question)
-  let toolCalls = 0
-
-  for (;;) {
-    const resp = await callDeepSeek({ messages, tools: TOOL_DEFS })
-    const msg = resp.choices && resp.choices[0] && resp.choices[0].message
-    if (!msg) throw new Error('返回结构异常:无 message')
-
-    // 模型没有调工具 → 最终回答
-    if (!msg.tool_calls || msg.tool_calls.length === 0) {
-      return (msg.content || '').trim()
-    }
-
-    // 模型要调工具 → 把助手消息塞进对话,执行每个 tool_call,把结果塞回
-    toolCalls += msg.tool_calls.length
-    messages.push(msg)
-
-    for (const tc of msg.tool_calls) {
-      let result
-      if (toolCalls > MAX_TOOL_CALLS) {
-        // 单轮已超上限:不再真查,告诉模型"工具用完了"
-        result = { error: `已达单轮 ${MAX_TOOL_CALLS} 次工具调用上限,请基于已有信息回答` }
-      } else {
-        try {
-          result = await executeTool(tc, openid)
-        } catch (e) {
-          console.error('工具执行失败', tc.function && tc.function.name, e)
-          result = { error: `工具执行失败:${String(e.message || e)}` }
-        }
-      }
-      messages.push({
-        role: 'tool',
-        tool_call_id: tc.id,
-        content: JSON.stringify(result)
-      })
-    }
-
-    // 如果单轮已超上限,直接做最后一次 LLM 收尾,不再让模型继续发起工具
-    if (toolCalls > MAX_TOOL_CALLS) {
-      const final = await callDeepSeek({ messages })
-      const fmsg = final.choices && final.choices[0] && final.choices[0].message
-      return ((fmsg && fmsg.content) || '').trim()
-    }
-    // 否则继续循环,让模型基于工具结果再生成
-  }
+  const resp = await callDeepSeek({ messages })
+  const msg = resp.choices && resp.choices[0] && resp.choices[0].message
+  if (!msg) throw new Error('返回结构异常:无 message')
+  return (msg.content || '').trim()
 }
 
 function buildMessages(data, question) {
@@ -274,14 +243,26 @@ async function callDeepSeek({ messages, tools }) {
   }
   if (tools) body.tools = tools
 
-  const resp = await fetchFn(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${API_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(body)
-  })
+  // 主动 20s 超时(云函数默认 30s,留 10s 余量给后续处理)
+  // 单次 LLM 调用正常 1~3s,20s 兜底够用,避免拖到云函数层 504003
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 20000)
+
+  let resp
+  try {
+    resp = await fetchFn(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    })
+  } finally {
+    clearTimeout(timer)
+  }
+
   if (!resp.ok) {
     const txt = await resp.text().catch(() => '')
     throw new Error(`HTTP ${resp.status}: ${txt.slice(0, 200)}`)

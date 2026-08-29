@@ -34,13 +34,15 @@ Page({
     // 账本君 AI 助理 chat sheet（独立,不需要跳页）
     showAiChat: false,
     showAiChatClosing: false,
-    aiScrollTop: 0,
+    aiScrollIntoView: '',    // 滚到底用,绑定哨兵节点 #ai-chat-bottom(立即响应)
+    aiScrollTop: 0,          // scroll-top 兜底:_bumpScrollTop 累加器保证每次值唯一,scroll-into-view 同值不触发时用它
     chatMessages: [],        // 全局同步 getApp().globalData.chatMessages
     chatInput: '',
     chatSending: false,
     chatRateError: '',
     chatStorage: { last: [], shown: false },  // 上次会话摘要(冷启动展示)
-    recentExpenses: []       // 给 aiChat.send 用,本月最近流水
+    recentExpenses: [],      // 给 aiChat.send 用,本月最近流水
+    aiSheetTransform: 'translateY(0)'  // 键盘弹起时上移 sheet,让输入框始终在键盘上方
   },
 
   onShow() {
@@ -320,13 +322,19 @@ Page({
         last: stored,
         shown: !hasCurrent && stored.length > 0
       },
+      aiScrollIntoView: '',
       aiScrollTop: 0
     })
+    // 有历史消息时滚到底(wx:if 刚挂载 scroll-view,需要等布局 ready)
+    if (app.globalData.chatMessages.length > 0 || stored.length > 0) {
+      setTimeout(() => this._scrollChatToBottom(), 120)
+    }
   },
 
   closeAiChat() {
     if (this._aiCloseTimer) { clearTimeout(this._aiCloseTimer); this._aiCloseTimer = null }
     this._aiCloseTimer = util.closeSheet(this, 'showAiChat')
+    this.redrawTrendAfterPopup()
   },
 
   /** 清空当前会话 + storage */
@@ -349,11 +357,30 @@ Page({
     this.setData({ chatInput: v })
   },
 
-  /** 输入框聚焦：80ms 后滚到底,避免键盘遮挡输入框 */
+  /** 输入框聚焦：滚到底,避免键盘遮挡输入框 */
   onAiFocus() {
-    setTimeout(() => {
-      this.setData({ aiScrollTop: this._bumpAiScroll(99999) })
-    }, 80)
+    // _scrollChatToBottom 内部已有 16ms/80ms 多重延迟,这里不再套 setTimeout
+    this._scrollChatToBottom()
+  },
+
+  /**
+   * 输入框失焦：键盘收起,还原 sheet 位置。
+   * 主要兜底用 —— bindkeyboardheightchange 在快速切走时可能不触发最终 0。
+   */
+  onAiBlur() {
+    this.setData({ aiSheetTransform: 'translateY(0)' })
+  },
+
+  /**
+   * 键盘高度变化:实时把 sheet 往上挪,让 sheet 底部跟着键盘顶走,输入框始终在键盘上方。
+   * 关键:微信 position:fixed 是相对布局视口(键盘弹起时不收缩),所以不能靠缩 max-height,
+   * 必须 translateY。整个 sheet 上升,标题/摘要可能被裁掉(可接受,chat 时不需要)。
+   */
+  onAiKeyboardChange(e) {
+    const h = (e && e.detail && e.detail.height) || 0
+    this.setData({
+      aiSheetTransform: h === 0 ? 'translateY(0)' : `translateY(-${h}px)`
+    })
   },
 
   /**
@@ -395,9 +422,9 @@ Page({
       chatMessages: app.globalData.chatMessages.slice(),
       chatInput: '',
       chatSending: true,
-      chatStorage: { ...this.data.chatStorage, shown: false }, // 隐藏上次摘要
-      aiScrollTop: this._bumpAiScroll(99999)
+      chatStorage: { ...this.data.chatStorage, shown: false } // 隐藏上次摘要
     })
+    this._scrollChatToBottom()
 
     // 5. 调核心 aiChat.send
     const result = await aiChat.send({
@@ -418,17 +445,39 @@ Page({
     app.globalData.chatSending = false
     this.setData({
       chatMessages: app.globalData.chatMessages.slice(),
-      chatSending: false,
-      aiScrollTop: this._bumpAiScroll(99999)
+      chatSending: false
     })
+    this._scrollChatToBottom()
 
     // 7. 持久化最近 2 条
     chatStorage.save(app.globalData.chatMessages)
   },
 
-  _bumpAiScroll(target) {
+  /**
+   * 累加器:每次调用返回唯一值,避免 scroll-top 同值不触发。
+   * 记账页 _bumpScrollTop 同款实现,已验证可靠。
+   */
+  _bumpScrollTop(target) {
     this._aiScrollBump = (this._aiScrollBump || 0) + 1
     return target + this._aiScrollBump
+  },
+
+  /**
+   * 滚 chat-history 到底。三层保险:
+   * 1) scroll-into-view 立即指向哨兵,首屏/快速响应
+   * 2) 重置 scroll-into-view 为空绕开「同值不触发」
+   * 3) 80ms 后用 scroll-top + _bumpScrollTop 累加器兜底,确保 DOM/layout ready 且值唯一
+   */
+  _scrollChatToBottom() {
+    // 先重置(空串),下一帧再设回目标,触发 scroll-view 重定位
+    this.setData({ aiScrollIntoView: '' })
+    setTimeout(() => {
+      this.setData({ aiScrollIntoView: 'ai-chat-bottom' })
+    }, 16)
+    // scroll-top 兜底:DOM 更新完(80ms)后再 setData,scroll-top 值每次都唯一
+    setTimeout(() => {
+      this.setData({ aiScrollTop: this._bumpScrollTop(99999) })
+    }, 80)
   },
 
   /**
@@ -564,7 +613,7 @@ Page({
     if (this.data.trendEmpty) return
     // 关闭动画 240ms,等 wx:if 重新挂载 canvas 后再画;中途若用户又打开弹层则放弃
     setTimeout(() => {
-      if (this.data.showProfile || this.data.showShare) return
+      if (this.data.showProfile || this.data.showShare || this.data.showAiChat) return
       this.drawTrend()
     }, 280)
   },
