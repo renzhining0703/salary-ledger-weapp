@@ -4,6 +4,7 @@
  * AppID: wx7326e353b2996845
  */
 const config = require('./utils/config')
+const chatStorage = require('./utils/chatStorage')
 
 App({
   globalData: {
@@ -14,11 +15,14 @@ App({
     lastUnlockTs: 0, // 最近一次成功解锁/设置的时间戳,守卫用
     theme: 'light', // 系统主题 'light' | 'dark'
     // 账本君对话状态(首页 chat sheet + 记账页账单 sheet 内 chat 共用)
-    chatMessages: [],
+    // 冷启动从 storage 恢复最近 50 条,会话跨启动延续(撤销临时字段已在 save 时剥离)
+    chatMessages: chatStorage.load(),
     chatInput: '',
     chatSending: false,
     // 首页「+」记账按钮置 true,记账页 onShow 消费后置 false
-    quickExpense: false
+    quickExpense: false,
+    // 订阅消息(salaryReminder)点击进入时,onShow 透传到首页 → 自动打开账本君 sheet
+    pendingAiQuestionFromNotif: false
   },
 
   onLaunch() {
@@ -56,13 +60,17 @@ App({
     // 保留钩子以便后续需要(例如统计时长);不再用于守卫判断
   },
 
-  onShow() {
+  onShow(options) {
     // 每次回到前台再同步一次主题(系统设置可能在后台被改)
     this.syncTheme()
     this.applyNavBarColor()
     this.checkPrivacyLock()
     // 自动落账扫描：当月已扫过则跳过,避免每次切 tab 都查库
     this.maybeSweepAutoRecord()
+    // 订阅消息(salary_reminder)点击进入,透传 query 到首页消费
+    if (options && options.query && options.query.from === 'salary_reminder') {
+      this.globalData.pendingAiQuestionFromNotif = true
+    }
   },
 
   /**

@@ -4,6 +4,22 @@ const dbApi = require('../../utils/db')
 const aiChat = require('../../utils/aiChat')
 const chatStorage = require('../../utils/chatStorage')
 
+/**
+ * 账本君首次打招呼(空聊天时自动展示一次)。
+ * 简洁自我介绍 + 能力清单 + 引导示例问题,让用户知道能问什么。
+ * 用换行让排版清晰,bubble 样式 white-space:pre-wrap 已经支持。
+ */
+const WELCOME_MESSAGE = `你好,我是账本君,你的 AI 财务助理 
+
+我能基于你真实的记账数据,帮你:
+• 看收支、找超支的分类
+• 给具体的规划建议(数字都来自你的账)
+• 查具体某笔开销
+
+试试问:
+「这个月哪个分类花最多?」
+「我该如何规划下个月开销?」`
+
 Page({
   data: {
     user: null,
@@ -42,12 +58,21 @@ Page({
     chatRateError: '',
     chatStorage: { last: [], shown: false },  // 上次会话摘要(冷启动展示)
     recentExpenses: [],      // 给 aiChat.send 用,本月最近流水
-    aiSheetTransform: 'translateY(0)'  // 键盘弹起时上移 sheet,让输入框始终在键盘上方
+    aiSheetTransform: 'translateY(0)',  // 保留兼容(目前已用 max-height 收缩,这个不动)
+    aiSheetMaxHeight: '80vh',          // 键盘弹起时收缩 sheet 高度 = windowHeight - 键盘高度,让 sheet 底部贴键盘顶
+    aiSheetPaddingBottom: 'env(safe-area-inset-bottom)',  // 键盘弹起时设为 0(键盘就是底),关闭时还原
+    // 账本君主动询问(云函数 salaryReminder 推送后写入,本地兜底在 chatStorage)
+    pendingAiQuestion: null,           // { text, ts, round }
+    aiUnread: 0,                       // 入口卡未读红点计数(单条询问 = 1)
+    showAiAskPrompt: false,            // 首次进入 sheet 引导用户订阅的提示卡
+    quickChips: ['哪个分类花最多', '还剩多少预算', '最近买了啥']  // 输入框上方常驻 chip,点一下即发
   },
 
-  onShow() {
+  onShow(options) {
     util.checkLock()
-    this.loadData()
+    // force=true:切到首页时强制重查。云函数写库(账本君记账)不触发 dbApi 缓存失效,
+    // 不 force 的话会拿到旧的 expenses / salary 缓存,首页流水 / 预算条不更新
+    this.loadData(true)
     // 监听系统主题变化：canvas 颜色不跟随 CSS 变量，需手动重绘
     if (this._themeChangeHandler) {
       wx.offThemeChange(this._themeChangeHandler)
@@ -59,6 +84,31 @@ Page({
       this.drawTrend()
     }
     wx.onThemeChange(this._themeChangeHandler)
+
+    // 账本君主动询问:不论是否从订阅消息进入,都先加载未读问题
+    // (订阅消息点击场景:app.js onShow 写 globalData.pendingAiQuestionFromNotif=true,
+    //  此处消费后自动打开 sheet;普通进入场景只 load,展示红点但不打扰)
+    this._loadPendingQuestion()
+    const fromNotif = (options && options.query && options.query.from === 'salary_reminder') ||
+                       getApp().globalData.pendingAiQuestionFromNotif
+    if (fromNotif) {
+      getApp().globalData.pendingAiQuestionFromNotif = false
+      // 用户从推送点进来 → 直接打开 sheet 让他看到气泡
+      this.goAskAI()
+    }
+  },
+
+  /**
+   * 从本地 chatStorage 读取账本君未回应询问。
+   * 仅展示/计数,**不清除**(用户主动 dismiss 或发送消息才清),
+   * 这样关闭 sheet 后下次进入仍能看到气泡,直到他回应为止。
+   */
+  _loadPendingQuestion() {
+    const q = chatStorage.loadPendingQuestion()
+    this.setData({
+      pendingAiQuestion: q,
+      aiUnread: q ? 1 : 0
+    })
   },
 
   onHide() {
@@ -73,6 +123,10 @@ Page({
     if (this._themeChangeHandler) {
       wx.offThemeChange(this._themeChangeHandler)
       this._themeChangeHandler = null
+    }
+    if (this._undoTimer) {
+      clearInterval(this._undoTimer)
+      this._undoTimer = null
     }
   },
 
@@ -305,16 +359,58 @@ Page({
   },
 
   /**
-   * 首页「问问账本君」入口：直接弹首页 chat sheet（不跳页）。
-   * 从 chatStorage 恢复上次会话摘要(热启动);本次会话已有消息则不展示摘要。
+   * 首页「问问账本君」入口：直接弹首页 chat sheet(不跳页)。
+   * - 从 chatStorage 恢复上次会话摘要(热启动);本次会话已有消息则不展示摘要
+   * - 首次打开(空聊天 + 无历史摘要 + 未欢迎过)→ 自动插入一条助手欢迎消息,
+   *   介绍自己 + 列出能力 + 给示例问题,帮用户知道能问什么
    */
   goAskAI() {
-    const stored = chatStorage.load()
+    const stored = chatStorage.loadSummary()
     const app = getApp()
-    const hasCurrent = app.globalData.chatMessages.length > 0
+    let messages = app.globalData.chatMessages.slice()
+    const pendingQ = this.data.pendingAiQuestion
+
+    // 主动询问气泡去重:同一条 question 已经塞过就不再塞
+    // (避免用户关闭-重开 sheet 时堆叠重复气泡)
+    if (pendingQ && !messages.find((m) => m.isPendingQuestion && m.ts === pendingQ.ts)) {
+      const questionBubble = {
+        role: 'assistant',
+        content: pendingQ.text,
+        ts: pendingQ.ts,
+        source: 'bot-question',
+        isPendingQuestion: true,
+        pendingRound: pendingQ.round
+      }
+      messages = [questionBubble, ...messages]
+      app.globalData.chatMessages = messages.slice()
+    }
+
+    // 首次打开 + 空聊天 + 未欢迎过 → 自动插入欢迎消息
+    // (注意:有询问气泡时不再插欢迎消息,以免两条 assistant 气泡堆叠)
+    if (
+      messages.length === 0 &&
+      stored.length === 0 &&
+      !chatStorage.isWelcomed()
+    ) {
+      messages = [{
+        role: 'assistant',
+        content: WELCOME_MESSAGE,
+        ts: Date.now(),
+        source: 'local'
+      }]
+      chatStorage.markWelcomed()
+      app.globalData.chatMessages = messages.slice()
+    }
+
+    // 首次引导卡:进入 sheet 时,如果用户还没订阅,提示一次
+    // (有询问气泡时不再提示 — 说明已经订阅过,无需打扰)
+    const user = app.globalData.user || {}
+    const showAiAskPrompt = !pendingQ && user.salaryRemindSubscribed !== true
+
+    const hasCurrent = messages.length > 0
     this.setData({
       showAiChat: true,
-      chatMessages: app.globalData.chatMessages.slice(),
+      chatMessages: messages,
       chatInput: app.globalData.chatInput || '',
       chatSending: app.globalData.chatSending || false,
       chatRateError: '',
@@ -322,11 +418,14 @@ Page({
         last: stored,
         shown: !hasCurrent && stored.length > 0
       },
+      showAiAskPrompt,
+      // 进入 sheet 即清未读红点(用户已经看见入口)
+      aiUnread: 0,
       aiScrollIntoView: '',
       aiScrollTop: 0
     })
-    // 有历史消息时滚到底(wx:if 刚挂载 scroll-view,需要等布局 ready)
-    if (app.globalData.chatMessages.length > 0 || stored.length > 0) {
+    // 有消息(欢迎/询问气泡也算)就滚到底(wx:if 刚挂载 scroll-view,需要等布局 ready)
+    if (messages.length > 0) {
       setTimeout(() => this._scrollChatToBottom(), 120)
     }
   },
@@ -343,10 +442,15 @@ Page({
     app.globalData.chatMessages = []
     app.globalData.chatInput = ''
     chatStorage.clear()
+    // 主动询问气泡独立存储,一并清掉避免下次打开 sheet 又冒出来
+    chatStorage.clearPendingQuestion()
+    dbApi.updateMyUser({ unreadQuestion: null, unreadQuestionCount: 0 }).catch(() => {})
     this.setData({
       chatMessages: [],
       chatInput: '',
-      chatStorage: { last: [], shown: false }
+      chatStorage: { last: [], shown: false },
+      pendingAiQuestion: null,
+      aiUnread: 0
     })
     wx.showToast({ title: '已清空', icon: 'none' })
   },
@@ -355,6 +459,20 @@ Page({
     const v = e.detail.value || ''
     getApp().globalData.chatInput = v
     this.setData({ chatInput: v })
+  },
+
+  /**
+   * 快捷问题 chip:填入输入框并立即发送。
+   * - 避免让用户从欢迎消息里手抄示例,降低首次使用门槛
+   * - chatSending 时不响应(防止重复请求 + 旧 chip 状态错乱)
+   * - 写入 globalData 与手动输入走同一路径(让 onShow 切回时恢复输入)
+   */
+  onQuickChipTap(e) {
+    const text = e.currentTarget.dataset.text
+    if (!text || this.data.chatSending) return
+    this.setData({ chatInput: text })
+    getApp().globalData.chatInput = text
+    this.sendAiChat()
   },
 
   /** 输入框聚焦：滚到底,避免键盘遮挡输入框 */
@@ -368,52 +486,85 @@ Page({
    * 主要兜底用 —— bindkeyboardheightchange 在快速切走时可能不触发最终 0。
    */
   onAiBlur() {
-    this.setData({ aiSheetTransform: 'translateY(0)' })
+    this.setData({
+      aiSheetMaxHeight: '80vh',
+      aiSheetPaddingBottom: 'env(safe-area-inset-bottom)'
+    })
   },
 
   /**
-   * 键盘高度变化:实时把 sheet 往上挪,让 sheet 底部跟着键盘顶走,输入框始终在键盘上方。
-   * 关键:微信 position:fixed 是相对布局视口(键盘弹起时不收缩),所以不能靠缩 max-height,
-   * 必须 translateY。整个 sheet 上升,标题/摘要可能被裁掉(可接受,chat 时不需要)。
+   * 键盘高度变化:动态调整 sheet 高度。
+   *
+   * iOS 微信 position:fixed bottom:0 在键盘弹起时会自动避开键盘(sheet 底部自动上移到
+   * 键盘顶部),所以不需要 transform。
+   *
+   * sheet 高度策略:50vh(iPhone ≈ 426px),不撑满可视区:
+   * - 关闭键盘:80vh(顶部留 20vh mask 区关闭)
+   * - 键盘弹起:50vh(sheet 顶部在状态栏底 29px 之下 → 标题完整可见;
+   *   sheet 底部在键盘顶之下 ~80px → input 不紧贴键盘但完全可见,不被挡)
+   *
+   * 之前的 height = screenHeight - safeArea.top - h(占满可视区 ≈ 455px)虽然 input 紧贴键盘,
+   * 但 sheet 占满整个可视区看起来太满。
    */
   onAiKeyboardChange(e) {
     const h = (e && e.detail && e.detail.height) || 0
+    if (h === 0) {
+      this.setData({
+        aiSheetMaxHeight: '80vh',
+        aiSheetPaddingBottom: 'env(safe-area-inset-bottom)'
+      })
+      return
+    }
+    const win = wx.getWindowInfo()
+    // 键盘弹起时 sheet 高度固定 50vh,不撑满可视区
+    // 上限:可视区高度(screenHeight - safeArea.top - h),防止 sheet 顶部出屏幕
+    // 下限:280px,保证能看到聊天 + 输入框
+    const visibleH = win.screenHeight - win.safeArea.top - h
+    const desiredH = win.screenHeight * 0.5
+    const maxH = Math.max(280, Math.min(visibleH, desiredH))
     this.setData({
-      aiSheetTransform: h === 0 ? 'translateY(0)' : `translateY(-${h}px)`
+      aiSheetMaxHeight: maxH + 'px',
+      aiSheetPaddingBottom: '0px'
     })
   },
 
   /**
    * 发送问题:节流 → 拼 user 气泡 → 调 aiChat.send → 拼 assistant 气泡 → 持久化
    * 状态同步到 app.globalData,记账页打开账单 sheet 时也能看到历史
+   *
+   * mode='record':启用账本君记账工具。允许用户空白月(本月 expense=0)发问记账——
+   * 把原来的「空数据兜底」拿掉,改成走云函数(云函数对 mode='record' 不短路 NO_DATA)。
    */
   async sendAiChat() {
     const app = getApp()
     const q = (this.data.chatInput || '').trim()
     if (!q || this.data.chatSending) return
 
-    // 1. 空数据兜底(本月还没记过账)
-    if (!this.data.catStats || !this.data.catStats.length) {
-      this.setData({ chatRateError: '本月还没有数据,先记几笔吧' })
-      setTimeout(() => this.setData({ chatRateError: '' }), 2000)
-      return
+    // ★ 用户回应了账本君的主动询问 → 清掉未读状态(本地 + 云端)
+    // (失败静默:不影响主要提问功能,下次 cron 来时重置即可)
+    if (this.data.pendingAiQuestion) {
+      chatStorage.clearPendingQuestion()
+      dbApi.updateMyUser({ unreadQuestion: null, unreadQuestionCount: 0 }).catch(() => {})
+      this.setData({ pendingAiQuestion: null })
     }
 
-    // 2. 节流:每分钟 ≤6 次
+    // 1. 节流:每分钟 ≤10 次(账本君记账后从 6 提到 10)
     const now = Date.now()
     this._chatTs = (this._chatTs || []).filter((t) => now - t < 60000)
-    if (this._chatTs.length >= 6) {
-      this.setData({ chatRateError: '一分钟最多问 6 次,稍等再问' })
+    if (this._chatTs.length >= 10) {
+      this.setData({ chatRateError: '一分钟最多问 10 次,稍等再问' })
       setTimeout(() => this.setData({ chatRateError: '' }), 2000)
       return
     }
     this._chatTs.push(now)
 
-    // 3. 算 statement(用首页已有数据)
+    // 2. 算 statement(用首页已有数据;空白月也允许通过,stmt.expense=0)
     const stmt = this._buildAiStmt()
     const recentList = (this.data.recentExpenses || []).slice(0, 30)
 
-    // 4. push user 消息 + 立刻滚动到底
+    // 3. push user 消息 + 立刻滚动到底
+    // (history 在 push 前取:不含本条问题,云端拼成多轮上下文,追问"那上个月呢"可被理解)
+    const history = aiChat.buildHistory(app.globalData.chatMessages)
     const userMsg = { role: 'user', content: q, ts: now }
     app.globalData.chatMessages = [...app.globalData.chatMessages, userMsg]
     app.globalData.chatInput = ''
@@ -426,21 +577,32 @@ Page({
     })
     this._scrollChatToBottom()
 
-    // 5. 调核心 aiChat.send
+    // 4. 调核心 aiChat.send(mode='record' 启用 addExpense 工具)
     const result = await aiChat.send({
       month: stmt.month,
       stmt,
       recentList,
-      question: q
+      question: q,
+      mode: 'record',
+      history
     })
 
-    // 6. push assistant 消息
+    // 5. push assistant 消息
     const assistant = {
       role: 'assistant',
       content: result.text,
       ts: Date.now(),
       source: result.source
     }
+
+    // 5a. 账本君记账成功 → 加 undoable 标记 + 15s 撤销窗口(带倒计时)
+    if (result.toolResult && result.toolResult.added && result.toolResult.id) {
+      assistant.toolResult = result.toolResult  // { added, expense, id }
+      assistant.undoable = true
+      assistant.undoExpireAt = Date.now() + 15000  // 到期时间戳
+      assistant.undoCountdown = 15                  // 倒计时初始值(秒)
+    }
+
     app.globalData.chatMessages = [...app.globalData.chatMessages, assistant]
     app.globalData.chatSending = false
     this.setData({
@@ -449,8 +611,51 @@ Page({
     })
     this._scrollChatToBottom()
 
-    // 7. 持久化最近 2 条
+    // 5b. 启动倒计时 setInterval(每秒更新 m.undoCountdown)+ 写库后立即刷新首页
+    if (assistant.undoable) {
+      this._startUndoCountdown()
+      this.loadData(true)  // 立刻刷新首页数据(force 跳过缓存;云函数写库不触发 dbApi.invalidate)
+    }
+
+    // 6. 持久化前先截断 globalData(恒 ≤50 条,与 chatStorage 上限一致),
+    //    保证冷启动恢复 / 两页共享 / 撤销倒计时索引三处一致
+    app.globalData.chatMessages = app.globalData.chatMessages.slice(-50)
     chatStorage.save(app.globalData.chatMessages)
+  },
+
+  /**
+   * 撤销账本君刚记的那一笔(15s 撤销窗口内的气泡)
+   * 按 toolResult.type 路由:
+   * - salary → dbApi.removeSalary (写 salary collection)
+   * - expense → dbApi.removeExpense (写 expenses collection)
+   * 软删除对应记录,更新消息内容 + undone 标记,刷新首页数据
+   */
+  async onUndoAiRecord(e) {
+    const ts = e.currentTarget.dataset.msgTs
+    const app = getApp()
+    const msgs = (app.globalData.chatMessages || []).slice()
+    const idx = msgs.findIndex((m) => m.ts === ts)
+    if (idx < 0) return
+    const msg = msgs[idx]
+    if (!msg.toolResult || !msg.toolResult.id || msg.undone) return
+    const isSalary = msg.toolResult.type === 'salary'
+    try {
+      if (isSalary) {
+        await dbApi.removeSalary(msg.toolResult.id)
+      } else {
+        await dbApi.removeExpense(msg.toolResult.id)
+      }
+      msg.undoable = false
+      msg.undone = true
+      msg.content = (msg.content || '') + ' · ✓ 已撤销'
+      app.globalData.chatMessages = msgs
+      this.setData({ chatMessages: msgs.slice() })
+      chatStorage.save(msgs)  // 同步持久化,记账页 / 冷启动重开也是"已撤销"状态
+      this.loadData(true)  // 顶部预算条 / 分类 chip 重新算(force 跳过缓存)
+    } catch (err) {
+      console.error('撤销失败', err)
+      wx.showToast({ title: '撤销失败', icon: 'none' })
+    }
   },
 
   /**
@@ -478,6 +683,54 @@ Page({
     setTimeout(() => {
       this.setData({ aiScrollTop: this._bumpScrollTop(99999) })
     }, 80)
+  },
+
+  /**
+   * 撤销气泡倒计时:每秒扫描 chatMessages,更新所有 undoable 消息的 undoCountdown。
+   * - 到期(undoExpireAt 已过):自动 undoable=false,气泡消失
+   * - 所有 undoable 都处理完(撤销 or 到期):清 timer,避免空转
+   * - setData 走精确路径(chatMessages[i].undoCountdown),不重渲染整个列表
+   *
+   * 多个消息同时在 15s 窗口:timer 只起一次(去重),所有 m 一起倒计时
+   */
+  _startUndoCountdown() {
+    if (this._undoTimer) return  // 已有 timer 在跑,不重复起
+    const app = getApp()
+    this._undoTimer = setInterval(() => {
+      const msgs = (app.globalData.chatMessages || []).slice()
+      const now = Date.now()
+      const updates = {}
+      let stillRunning = false
+      msgs.forEach((m, i) => {
+        if (!m.undoable || m.undone) return
+        if (!m.undoExpireAt) {
+          stillRunning = true
+          return
+        }
+        if (now >= m.undoExpireAt) {
+          // 到期
+          m.undoable = false
+          updates[`chatMessages[${i}].undoable`] = false
+        } else {
+          // 还在窗口内
+          const remain = Math.max(0, Math.ceil((m.undoExpireAt - now) / 1000))
+          if (m.undoCountdown !== remain) {
+            m.undoCountdown = remain
+            updates[`chatMessages[${i}].undoCountdown`] = remain
+          }
+          stillRunning = true
+        }
+      })
+      if (Object.keys(updates).length > 0) {
+        app.globalData.chatMessages = msgs
+        this.setData(updates)
+      }
+      // 没消息在跑 → 清 timer
+      if (!stillRunning) {
+        clearInterval(this._undoTimer)
+        this._undoTimer = null
+      }
+    }, 1000)
   },
 
   /**
@@ -534,6 +787,15 @@ Page({
     const income = board._incomeNum || 0
     const balance = (board._balanceNum || 0) * (board.balancePositive ? 1 : -1)
     const savingsRate = income > 0 ? Math.max(0, Math.round((balance / income) * 100)) : 0
+    const trend = (this.data.trend || []).map((t) => ({
+      month: t.month,
+      income: t.income,
+      expense: t.expense,
+      balance: t.balance
+    }))
+    // 上月支出从 trend 倒数第 2 位取(trend 末位 = 当前查看月),环比对比行恢复可用
+    const prev = trend.length >= 2 ? trend[trend.length - 2] : null
+    const prevMonthExpense = prev ? prev.expense : 0
     return {
       month: viewMonth,
       monthText: `${Number(viewMonth.slice(0, 4))}年${Number(viewMonth.slice(5, 7))}月`,
@@ -541,10 +803,14 @@ Page({
       expense,
       balance,
       savingsRate,
-      prevMonthExpense: 0,  // 首页没存上月数据,LLM 拿不到环比也能答
+      // 近 6 个月趋势(loadData 现成算好的 trend 数组透传):
+      // 让 AI 不用工具就能答"最近几个月走势 / 上个月花了多少"类问题
+      trend,
+      prevMonthExpense,
       hasPrevYear: false,
       recurTotal: 0,
       categories,
+      budget: (this.data.user && this.data.user.budget) || 0,  // 总预算,让 AI 能算出"剩多少能花"
       budgetOver: this.data.budgetOver || false,
       budgetNear: this.data.budgetNear || false,
       overCategories: categories.filter((c) => c.over).map((c) => c.name)
@@ -1132,6 +1398,100 @@ Page({
   },
 
   /* ---------- 订阅消息 ---------- */
+  /**
+   * 用户在询问气泡点「忽略」:清掉气泡 + 未读 + 云端字段
+   * (云端 unreadQuestion 清掉,云函数下次推送时还能写新值,但本月不会重复推)
+   */
+  onDismissPendingQuestion() {
+    chatStorage.clearPendingQuestion()
+    dbApi.updateMyUser({ unreadQuestion: null, unreadQuestionCount: 0 }).catch(() => {})
+    const app = getApp()
+    const msgs = (app.globalData.chatMessages || []).filter((m) => !m.isPendingQuestion)
+    app.globalData.chatMessages = msgs
+    this.setData({
+      pendingAiQuestion: null,
+      aiUnread: 0,
+      chatMessages: msgs
+    })
+  },
+
+  /**
+   * 账本君主动询问订阅授权(发薪日推送)。
+   * 复用 subscribeRemind 的 error-code 映射,只是模板 ID 不同。
+   * 成功 → 写 users.salaryRemindSubscribed=true,云函数会开始给该用户推送。
+   */
+  subscribeAiAsk() {
+    const tid = config.SALARY_REMIND_TEMPLATE_ID
+    if (tid.indexOf('请填入') === 0) {
+      wx.showModal({
+        title: '提醒未开启',
+        content: '需要先在 utils/config.js 填入订阅消息模板 ID,才能收到工资到账询问。',
+        showCancel: false
+      })
+      return
+    }
+    // 标记今天已请求过,避免同一天重复弹授权(同模式 tryDailySubscribe)
+    wx.setStorageSync('xz_subscribe_ask_date', util.todayStr())
+    wx.requestSubscribeMessage({
+      tmplIds: [tid],
+      success: async (res) => {
+        if (res[tid] === 'accept') {
+          try {
+            await dbApi.updateMyUser({ salaryRemindSubscribed: true })
+            this.syncUser({ salaryRemindSubscribed: true })
+            this.setData({ showAiAskPrompt: false })
+            wx.showToast({ title: '账本君会主动关心你', icon: 'success' })
+          } catch (e) {
+            wx.showToast({ title: '保存失败,请重试', icon: 'none' })
+          }
+        } else {
+          wx.showToast({ title: '未授权,收不到推送', icon: 'none' })
+        }
+      },
+      fail: (err) => {
+        const msg = (err && err.errMsg) || ''
+        let tip = '授权失败,请重试'
+        if (msg.indexOf('20001') >= 0) tip = '订阅消息主开关已关闭,请到设置中开启'
+        else if (msg.indexOf('20004') >= 0) tip = '模板 ID 无效,请核对小程序后台'
+        wx.showToast({ title: tip, icon: 'none' })
+      }
+    })
+  },
+
+  /** 关闭首次引导卡(以后再说):本次会话不再出现 */
+  dismissAiAskPrompt() {
+    this.setData({ showAiAskPrompt: false })
+  },
+
+  /**
+   * profile 设置里的「账本君主动询问」开关:
+   - 开启 → 走订阅授权;关闭 → 直接清云端字段,云函数不再推送
+   */
+  async onSalaryRemindToggle(e) {
+    const newVal = e.detail.value === true
+    const u = this.data.user || {}
+    if (u.salaryRemindSubscribed === newVal) return
+    if (newVal) {
+      this.subscribeAiAsk()  // 内部 success 后会 syncUser + setData
+      return
+    }
+    // 关闭
+    try {
+      await dbApi.updateMyUser({ salaryRemindSubscribed: false })
+      this.syncUser({ salaryRemindSubscribed: false })
+      // 顺手清未读 — 用户主动关了,提示也没意义
+      chatStorage.clearPendingQuestion()
+      dbApi.updateMyUser({ unreadQuestion: null, unreadQuestionCount: 0 }).catch(() => {})
+      this.setData({
+        pendingAiQuestion: null,
+        aiUnread: 0
+      })
+      wx.showToast({ title: '已关闭账本君主动询问', icon: 'none' })
+    } catch (err) {
+      wx.showToast({ title: '操作失败', icon: 'none' })
+    }
+  },
+
   subscribeRemind() {
     const tid = config.SUBSCRIBE_TEMPLATE_ID
     if (tid.indexOf('请填入') === 0) {

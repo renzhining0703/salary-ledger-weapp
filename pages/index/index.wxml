@@ -87,6 +87,17 @@
     <view class="share-btn" bindtap="openShare">生成账单卡片</view>
   </view>
 
+  <!-- 问问账本君：让用户发现 AI 问答功能（核心差异化能力，置于趋势图之前保证首屏可见） -->
+  <view class="card ai-card" bindtap="goAskAI">
+    <view class="ai-card-ico">账</view>
+    <view class="ai-card-body">
+      <view class="ai-card-title">跟账本君说</view>
+      <view class="ai-card-sub">记账 · 分析 · 查明细，一句话搞定</view>
+    </view>
+    <view wx:if="{{aiUnread > 0}}" class="ai-card-badge">{{aiUnread > 9 ? '9+' : aiUnread}}</view>
+    <view wx:else class="ai-card-arrow">›</view>
+  </view>
+
   <!-- 近 6 个月收支趋势 -->
   <view class="card">
     <view class="trend-head">
@@ -99,16 +110,6 @@
     </view>
     <canvas type="2d" id="trendCanvas" class="trend-canvas" wx:if="{{!trendEmpty && !showProfile && !showShare && !showAiChat}}"></canvas>
     <view wx:elif="{{trendEmpty}}" class="empty">近 6 个月暂无收支数据</view>
-  </view>
-
-  <!-- 问问账本君：让用户发现 AI 问答功能（核心差异化能力） -->
-  <view class="card ai-card" bindtap="goAskAI">
-    <view class="ai-card-ico">账</view>
-    <view class="ai-card-body">
-      <view class="ai-card-title">问问账本君</view>
-      <view class="ai-card-sub">问个问题，了解你的消费习惯</view>
-    </view>
-    <view class="ai-card-arrow">›</view>
   </view>
 
   <!-- 记一笔快捷入口 -->
@@ -150,6 +151,13 @@
         <view class="form-input picker-val">{{privacyOptions[privacyIndex]}}</view>
       </picker>
     </view>
+
+    <view class="form-item">
+      <text class="form-label">账本君主动询问</text>
+      <switch checked="{{user.salaryRemindSubscribed === true}}"
+              bindchange="onSalaryRemindToggle" color="#C8A04D" />
+    </view>
+    <view class="form-tip">发薪日附近账本君会主动问你工资到账没,可随时关闭</view>
 
     <view class="form-item recycle-entry" bindtap="openRecycle">
       <text class="form-label">回收站</text>
@@ -210,7 +218,7 @@
 
   <!-- 账本君 AI 助理（独立 sheet，不跳页） -->
   <view wx:if="{{showAiChat}}" class="mask {{showAiChatClosing ? 'mask-out' : ''}}" bindtap="closeAiChat"></view>
-  <view wx:if="{{showAiChat}}" class="sheet ai-chat-sheet {{showAiChatClosing ? 'sheet-out' : ''}}" style="transform: {{aiSheetTransform}};">
+  <view wx:if="{{showAiChat}}" class="sheet ai-chat-sheet {{showAiChatClosing ? 'sheet-out' : ''}}" style="height: {{aiSheetMaxHeight}}; padding-bottom: {{aiSheetPaddingBottom}};">
     <view class="sheet-title ai-chat-title">
       <view class="ai-chat-avatar">账</view>
       <view class="ai-chat-title-text">
@@ -219,6 +227,26 @@
       </view>
       <view class="ai-chat-clear" bindtap="clearAiChat">清空</view>
       <view class="ai-chat-close" bindtap="closeAiChat">✕</view>
+    </view>
+
+    <!-- 账本君主动询问气泡(订阅消息推送后展示,用户可回应或忽略) -->
+    <view wx:if="{{pendingAiQuestion}}" class="ai-chat-pending">
+      <view class="ai-chat-pending-label">
+        <text class="ai-chat-pending-tag">💬 账本君想问</text>
+        <view class="ai-chat-pending-dismiss" bindtap="onDismissPendingQuestion">忽略</view>
+      </view>
+      <view class="ai-chat-pending-bubble">{{pendingAiQuestion.text}}</view>
+      <view class="ai-chat-pending-hint">跟账本君说一句话就能记录 ✓</view>
+    </view>
+
+    <!-- 首次引导卡:从未订阅时提示一次,让账本君主动关心 -->
+    <view wx:if="{{showAiAskPrompt}}" class="ai-chat-prompt-card">
+      <view class="ai-chat-prompt-title">💡 让账本君主动关心你</view>
+      <view class="ai-chat-prompt-desc">发薪日附近,账本君会主动问你工资到账没。</view>
+      <view class="ai-chat-prompt-actions">
+        <view class="btn btn-sm btn-primary" bindtap="subscribeAiAsk">开启询问</view>
+        <view class="btn btn-sm ai-chat-prompt-later" bindtap="dismissAiAskPrompt">以后再说</view>
+      </view>
     </view>
 
     <!-- 上次会话摘要（热启动；本次新提问后自动隐藏） -->
@@ -237,7 +265,16 @@
       <block wx:for="{{chatMessages}}" wx:key="ts" wx:for-item="m">
         <view id="msg-{{m.ts}}" class="ai-chat-msg {{m.role === 'user' ? 'mine' : 'his'}}">
           <view wx:if="{{m.role === 'assistant'}}" class="chat-avatar">账</view>
-          <text class="ai-chat-bubble">{{m.content}}</text>
+          <view class="ai-chat-bubble-wrap">
+            <text class="ai-chat-bubble">{{m.content}}</text>
+            <!-- 账本君记账成功 → 15s 倒计时撤销窗口(气泡显示金额/分类/剩余秒数) -->
+            <view wx:if="{{m.undoable && !m.undone}}" class="ai-chat-undo"
+                  bindtap="onUndoAiRecord" data-msg-ts="{{m.ts}}" hover-class="ai-chat-undo-hover">
+              <text wx:if="{{m.toolResult.type === 'salary' && m.toolResult.salary.source === 'side'}}">副业 ¥{{m.toolResult.salary.amount}} · {{m.undoCountdown}}s 内撤销</text>
+              <text wx:elif="{{m.toolResult.type === 'salary'}}">工资 ¥{{m.toolResult.salary.amount}} · {{m.undoCountdown}}s 内撤销</text>
+              <text wx:elif="{{m.toolResult.expense}}">{{m.toolResult.expense.category}} ¥{{m.toolResult.expense.amount}} · {{m.undoCountdown}}s 内撤销</text>
+            </view>
+          </view>
         </view>
       </block>
       <view wx:if="{{chatSending}}" id="msg-sending" class="ai-chat-msg his loading">
@@ -247,6 +284,13 @@
       </view>
       <view id="ai-chat-bottom" style="height: 1rpx;"></view>
     </scroll-view>
+
+    <!-- 快捷问题 chip:输入框上方,点一下即发,避免让用户从欢迎消息里手抄 -->
+    <view class="ai-quick-chip-row">
+      <block wx:for="{{quickChips}}" wx:key="*this">
+        <view class="ai-quick-chip" bindtap="onQuickChipTap" data-text="{{item}}" hover-class="ai-quick-chip-hover">{{item}}</view>
+      </block>
+    </view>
 
     <view class="ai-chat-input-row">
       <input
@@ -260,8 +304,6 @@
         bindkeyboardheightchange="onAiKeyboardChange"
         bindconfirm="sendAiChat"
         confirm-type="send"
-        adjust-position="{{true}}"
-        cursor-spacing="20"
         hold-keyboard="{{true}}"
       />
       <view class="ai-chat-send {{chatSending || !chatInput.trim() ? 'disabled' : ''}}" bindtap="sendAiChat">发送</view>

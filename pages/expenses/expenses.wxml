@@ -278,13 +278,19 @@
 
     <!-- 分类明细(原饼图已去掉,canvas 在 overflow 容器内"飘"的问题不需要再处理) -->
     <view class="stmt-cats">
-      <view wx:for="{{statement.categories}}" wx:key="name" class="stmt-cat-row">
+      <view wx:for="{{statement.categories}}" wx:key="name" class="stmt-cat-row {{item.isEmpty ? 'empty' : ''}}">
         <view class="stmt-cat-dot" style="background: {{item.color}};"></view>
         <view class="stmt-cat-name">{{item.name}}</view>
         <view class="stmt-cat-bar">
           <view class="stmt-cat-fill" style="width: {{item.percent}}%; background: {{item.color}};"></view>
         </view>
         <view class="stmt-cat-amt">¥{{item.amountText}}</view>
+        <!-- 分类预算入口:已设显示金额,未设显示 +预算 引导 -->
+        <view class="stmt-cat-budget {{item.budget > 0 ? 'set' : 'unset'}} {{item.over ? 'over' : ''}}"
+              bindtap="onCatBudgetTap" data-cat="{{item.name}}" hover-class="stmt-cat-budget-hover">
+          <text wx:if="{{item.budget > 0}}">¥{{item.budgetText}}</text>
+          <text wx:else>+ 预算</text>
+        </view>
         <view wx:if="{{item.over}}" class="stmt-cat-over">超</view>
       </view>
     </view>
@@ -324,7 +330,16 @@
           <block wx:for="{{chatMessages}}" wx:key="ts" wx:for-item="m">
             <view id="msg-{{m.ts}}" class="stmt-chat-msg {{m.role === 'user' ? 'mine' : 'his'}}">
               <view wx:if="{{m.role === 'assistant'}}" class="chat-avatar">账</view>
-              <text class="stmt-chat-bubble">{{m.content}}</text>
+              <view class="stmt-chat-bubble-wrap">
+                <text class="stmt-chat-bubble">{{m.content}}</text>
+                <!-- 账本君记账成功 → 5s 倒计时撤销窗口(气泡显示金额/分类/剩余秒数) -->
+                <view wx:if="{{m.undoable && !m.undone}}" class="stmt-chat-undo"
+                      bindtap="onUndoAiRecord" data-msg-ts="{{m.ts}}" hover-class="stmt-chat-undo-hover">
+                  <text wx:if="{{m.toolResult.type === 'salary' && m.toolResult.salary.source === 'side'}}">副业 ¥{{m.toolResult.salary.amount}} · {{m.undoCountdown}}s 内撤销</text>
+                  <text wx:elif="{{m.toolResult.type === 'salary'}}">工资 ¥{{m.toolResult.salary.amount}} · {{m.undoCountdown}}s 内撤销</text>
+                  <text wx:elif="{{m.toolResult.expense}}">{{m.toolResult.expense.category}} ¥{{m.toolResult.expense.amount}} · {{m.undoCountdown}}s 内撤销</text>
+                </view>
+              </view>
             </view>
           </block>
           <view wx:if="{{chatSending}}" id="msg-sending" class="stmt-chat-msg his loading">
@@ -335,6 +350,13 @@
           <!-- 哨兵节点:scroll-into-view 指向这里保证永远滚到最底 -->
           <view id="chat-bottom" style="height: 1rpx;"></view>
         </scroll-view>
+        <!-- 快捷问题 chip:输入框上方,点一下即发 -->
+        <view class="stmt-quick-chip-row">
+          <block wx:for="{{quickChips}}" wx:key="*this">
+            <view class="stmt-quick-chip" bindtap="onQuickChipTap" data-text="{{item}}" hover-class="stmt-quick-chip-hover">{{item}}</view>
+          </block>
+        </view>
+
         <view class="stmt-chat-input-row">
           <input
             class="stmt-chat-input"
@@ -362,6 +384,23 @@
 
     <view class="sheet-actions statement-bottom">
       <view class="btn btn-primary" bindtap="closeStatement">收下</view>
+    </view>
+  </view>
+
+  <!-- 分类预算设置 sheet（在账单 sheet 内点 +预算 / 预算金额 弹出） -->
+  <view wx:if="{{showCatBudget}}" class="mask {{showCatBudgetClosing ? 'mask-out' : ''}}" bindtap="closeCatBudget"></view>
+  <view wx:if="{{showCatBudget}}" class="sheet cat-budget-sheet {{showCatBudgetClosing ? 'sheet-out' : ''}}">
+    <view class="sheet-title">「{{catBudgetEditing.name}}」月度预算</view>
+    <view class="cat-budget-hint">
+      本月已花 ¥{{catBudgetEditing.spentText}}<text wx:if="{{catBudgetEditing.budget > 0}}"> · 剩 ¥{{catBudgetEditing.remainingText}}</text>
+    </view>
+    <view class="form-item">
+      <text class="form-label">预算金额（元）</text>
+      <input class="form-input amount-input" type="digit" placeholder="如 1500" value="{{catBudgetInput}}" bindinput="onCatBudgetInput" focus="{{catBudgetFocus}}" adjust-position="{{true}}" cursor-spacing="20" hold-keyboard="{{true}}" />
+    </view>
+    <view class="sheet-actions">
+      <view wx:if="{{catBudgetEditing.budget > 0}}" class="btn btn-secondary cat-budget-clear-btn" bindtap="clearCatBudget">清除预算</view>
+      <view class="btn btn-primary" bindtap="saveCatBudget">保存</view>
     </view>
   </view>
 

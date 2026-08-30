@@ -3,6 +3,7 @@ const util = require('../../utils/util')
 const dbApi = require('../../utils/db')
 const finTemplate = require('../../utils/finTemplate')
 const aiChat = require('../../utils/aiChat')
+const chatStorage = require('../../utils/chatStorage')
 
 /**
  * 构造 GitHub 风格 grid：7 行 × N 列,补齐首末日附近的空格,确保每列是完整周（周日→周六）。
@@ -155,6 +156,7 @@ Page({
     chatMessages: [],          // [{ role:'user'|'assistant', content, ts, source? }]
     chatRateError: '',         // 限流错误文案(2 秒后自动消)
     stmtScrollTop: 0,          // sheet 内主 scroll-view 滚到 sheet 底(超大值即可,自动 clamp)
+    quickChips: ['哪个分类花最多', '还剩多少预算', '最近买了啥'],  // 输入框上方 chip,点一下即发
     // 消费日历热力图
     heatmapSubText: '加载中…',         // 入口卡副标题(动态统计)
     heatmapPreview: [],               // [{date, level}] 最近 91 天格子
@@ -167,13 +169,21 @@ Page({
     heatmapStats: null,               // {totalDays, totalAmountText, avgAmountText, maxDay}
     showHeatmapDay: false,
     showHeatmapDayClosing: false,
-    heatmapDay: null                  // {date, items, totalText, count}
+    heatmapDay: null,                 // {date, items, totalText, count}
+    // 分类预算设置 sheet（从账单 sheet 分类行点 +预算 / 预算金额 弹出）
+    showCatBudget: false,
+    showCatBudgetClosing: false,
+    catBudgetEditing: null,           // { name, spent, spentText, budget, remainingText }
+    catBudgetInput: '',               // 输入框当前文本
+    catBudgetFocus: true              // 打开 sheet 时自动 focus 输入框
   },
 
   onShow() {
     util.checkLock()
     this._computeHeatCellSize()
-    this.loadData()
+    // force=true:切到记账页时强制重查。云函数写库(账本君记账)不触发 dbApi 缓存失效,
+    // 不 force 的话流水列表 / 预算条不显示账本君刚记的那笔
+    this.loadData(true)
     // 记一笔快捷入口：其他页点「＋」跳转过来时，自动弹开记账表单
     const app = getApp()
     if (app.globalData.quickExpense) {
@@ -198,6 +208,10 @@ Page({
     if (this._stmtThemeHandler) {
       wx.offThemeChange(this._stmtThemeHandler)
       this._stmtThemeHandler = null
+    }
+    if (this._undoTimer) {
+      clearInterval(this._undoTimer)
+      this._undoTimer = null
     }
   },
 
@@ -612,6 +626,76 @@ Page({
     })
   },
 
+  /* ---------- 分类预算(账单 sheet 内分类行右侧入口)---------- */
+  onCatBudgetTap(e) {
+    const cat = e.currentTarget.dataset.cat
+    const stmt = this.data.statement
+    const c = (stmt && stmt.categories || []).find((x) => x.name === cat)
+    if (!c) return
+    const budget = c.budget || 0
+    const remaining = budget > 0 ? Math.max(0, budget - c.amount) : 0
+    this.setData({
+      showCatBudget: true,
+      showCatBudgetClosing: false,
+      catBudgetEditing: {
+        name: c.name,
+        spent: c.amount,
+        spentText: c.amountText,
+        budget,
+        remainingText: remaining > 0 ? util.moneyThousand(remaining) : '0'
+      },
+      catBudgetInput: budget > 0 ? String(budget) : '',
+      catBudgetFocus: true
+    })
+  },
+
+  onCatBudgetInput(e) {
+    // 只允许数字 + 小数点;粘贴含其他字符时清洗
+    const raw = (e.detail.value || '').replace(/[^\d.]/g, '')
+    this.setData({ catBudgetInput: raw })
+  },
+
+  closeCatBudget() {
+    util.closeSheet(this, 'showCatBudget')
+  },
+
+  async saveCatBudget() {
+    const v = Number(this.data.catBudgetInput)
+    if (!v || v <= 0) {
+      wx.showToast({ title: '请输入有效金额', icon: 'none' })
+      return
+    }
+    await this._updateCatBudget(this.data.catBudgetEditing.name, v)
+  },
+
+  async clearCatBudget() {
+    await this._updateCatBudget(this.data.catBudgetEditing.name, 0)
+  },
+
+  async _updateCatBudget(cat, value) {
+    const app = getApp()
+    const user = (this.data.user) || (app.globalData.user) || {}
+    const next = Object.assign({}, user.budgets || {})
+    if (value > 0) {
+      next[cat] = value
+    } else {
+      delete next[cat]
+    }
+    try {
+      await dbApi.updateMyUser({ budgets: next })
+      // 同步本地 + globalData,下次 loadData 不被旧值覆盖
+      user.budgets = next
+      if (app && app.globalData) app.globalData.user = user
+      this.closeCatBudget()
+      // 重建 statement + 顶部预算条,让已设分类立刻显示金额
+      await this.loadData(true)
+      wx.showToast({ title: '已保存', icon: 'success' })
+    } catch (err) {
+      console.error('保存分类预算失败', err)
+      wx.showToast({ title: '保存失败', icon: 'none' })
+    }
+  },
+
   /* ---------- 本月账单 sheet ---------- */
   openStatement() {
     if (!this.data.catStats.length) {
@@ -622,14 +706,15 @@ Page({
     util.openSheet(this, 'showStatement')
     // 拼好基础数据(数字 / 分类 / 同比环比),AI 解读异步填
     const stmt = this._buildStatementData()
-    // 每次开 sheet 重置 chat(关闭后再次进入,从零开始)
+    // chat 与首页共享同一会话(globalData.chatMessages,冷启动已从 storage 恢复):
+    // 两处账本君不再人格分裂——首页聊过的,这里接着聊
     this.setData({
       statement: stmt,
       statementLoading: true,
       chatOpen: false,
       chatInput: '',
       chatSending: false,
-      chatMessages: [],
+      chatMessages: (getApp().globalData.chatMessages || []).slice(),
       chatRateError: '',
       pageLocked: true   // 锁 page 自身滚动,防止 sheet 内 scroll-view 边界手势穿透
     })
@@ -638,12 +723,11 @@ Page({
 
   closeStatement() {
     this._stmtCloseTimer = util.closeSheet(this, 'showStatement')
-    // 关 sheet 时重置 chat,下次打开是干净状态
+    // 关 sheet 只收起输入区,不清会话(与首页共享 globalData,清了首页也丢)
     this.setData({
       chatOpen: false,
       chatInput: '',
       chatSending: false,
-      chatMessages: [],
       chatRateError: '',
       pageLocked: true   // 保持锁定直到滑出动画结束,避免动画期间 page 闪动
     })
@@ -790,6 +874,16 @@ Page({
   },
 
   /**
+   * 快捷问题 chip:跟首页同款,点一下填入 + 发送
+   */
+  onQuickChipTap(e) {
+    const text = e.currentTarget.dataset.text
+    if (!text || this.data.chatSending) return
+    this.setData({ chatInput: text })
+    this.sendChat()
+  },
+
+  /**
    * 输入框聚焦:键盘弹起时强制 sheet 滚到底,避免输入框被键盘遮挡。
    * input 在 scroll-view 内部,系统 adjust-position 不一定可靠,自己滚最稳。
    * 延迟 80ms 是等键盘弹起动画到位,scrollTop 值用递增触发新滚动。
@@ -806,34 +900,40 @@ Page({
     const q = (this.data.chatInput || '').trim()
     if (!q || this.data.chatSending) return
 
-    // 1. 前端 throttle：每分钟 ≤6 次
+    // 1. 前端 throttle：每分钟 ≤10 次(账本君记账后从 6 提到 10)
     const now = Date.now()
     this._chatTs = (this._chatTs || []).filter((t) => now - t < 60000)
-    if (this._chatTs.length >= 6) {
-      this.setData({ chatRateError: '一分钟最多问 6 次,稍等再问' })
+    if (this._chatTs.length >= 10) {
+      this.setData({ chatRateError: '一分钟最多问 10 次,稍等再问' })
       setTimeout(() => this.setData({ chatRateError: '' }), 2000)
       return
     }
     this._chatTs.push(now)
 
     // 2. 推 user 气泡,清空输入框,置 sending
+    // (与首页共享 globalData.chatMessages;history 在 push 前取,云端拼成多轮上下文)
+    const app = getApp()
+    const history = aiChat.buildHistory(app.globalData.chatMessages)
     const userMsg = { role: 'user', content: q, ts: now }
+    app.globalData.chatMessages = [...(app.globalData.chatMessages || []), userMsg]
     this.setData({
       chatSending: true,
       chatInput: '',
-      chatMessages: [...this.data.chatMessages, userMsg],
+      chatMessages: app.globalData.chatMessages.slice(),
       // 立即滚到底部:user 消息出现时立刻可见,不等 assistant 返回
       chatScrollIntoView: 'chat-bottom',
       // 同时滚外层 sheet 到底部,看到自己刚发的气泡 + 输入框
       stmtScrollTop: this._bumpScrollTop(99999)
     })
 
-    // 3. 委托给 aiChat.send(云函数 / 节流兜底 / 模板兜底全在 utils/aiChat.js)
+    // 3. 委托给 aiChat.send(mode='record' 启用 addExpense 工具,账本君可记账)
     const result = await aiChat.send({
       month: stmt.month,
       stmt,
       recentList: this.data.list || [],
-      question: q
+      question: q,
+      mode: 'record',
+      history
     })
 
     // 4. 拼 assistant 气泡
@@ -844,14 +944,118 @@ Page({
       source: result.source
     }
 
+    // 4a. 账本君记账成功 → 加 undoable 标记 + 15s 撤销窗口(带倒计时)
+    if (result.toolResult && result.toolResult.added && result.toolResult.id) {
+      assistant.toolResult = result.toolResult
+      assistant.undoable = true
+      assistant.undoExpireAt = Date.now() + 15000  // 到期时间戳
+      assistant.undoCountdown = 15                  // 倒计时初始值(秒)
+    }
+
+    app.globalData.chatMessages = [...app.globalData.chatMessages, assistant]
     this.setData({
       chatSending: false,
-      chatMessages: [...this.data.chatMessages, assistant],
+      chatMessages: app.globalData.chatMessages.slice(),
       // 滚到底部哨兵(assistant 回来时也保持可见)
       chatScrollIntoView: 'chat-bottom',
       // 同时滚外层 sheet 到底部,看到 AI 回答 + 输入框
       stmtScrollTop: this._bumpScrollTop(99999)
     })
+
+    // 4b. 启动倒计时 setInterval + 写库后立即刷新账单
+    if (assistant.undoable) {
+      this._startUndoCountdown()
+      this.loadData(true)  // 立刻刷新数据(force 跳过缓存)
+    }
+
+    // 5. 截断 + 持久化(与首页同规格:globalData 恒 ≤50,撤销倒计时索引一致)
+    app.globalData.chatMessages = app.globalData.chatMessages.slice(-50)
+    chatStorage.save(app.globalData.chatMessages)
+  },
+
+  /**
+   * 撤销气泡倒计时:每秒扫描 chatMessages,更新所有 undoable 消息的 undoCountdown。
+   * - 到期(undoExpireAt 已过):自动 undoable=false,气泡消失
+   * - 所有 undoable 都处理完(撤销 or 到期):清 timer,避免空转
+   * - setData 走精确路径(chatMessages[i].undoCountdown),不重渲染整个列表
+   *
+   * 多个消息同时在 15s 窗口:timer 只起一次(去重),所有 m 一起倒计时
+   */
+  _startUndoCountdown() {
+    if (this._undoTimer) return  // 已有 timer 在跑,不重复起
+    this._undoTimer = setInterval(() => {
+      // 读写 globalData(与首页共享);page 的 chatMessages 是同一数组的副本,索引一致
+      const app = getApp()
+      const msgs = (app.globalData.chatMessages || []).slice()
+      const now = Date.now()
+      const updates = {}
+      let stillRunning = false
+      msgs.forEach((m, i) => {
+        if (!m.undoable || m.undone) return
+        if (!m.undoExpireAt) {
+          stillRunning = true
+          return
+        }
+        if (now >= m.undoExpireAt) {
+          // 到期
+          m.undoable = false
+          updates[`chatMessages[${i}].undoable`] = false
+        } else {
+          // 还在窗口内
+          const remain = Math.max(0, Math.ceil((m.undoExpireAt - now) / 1000))
+          if (m.undoCountdown !== remain) {
+            m.undoCountdown = remain
+            updates[`chatMessages[${i}].undoCountdown`] = remain
+          }
+          stillRunning = true
+        }
+      })
+      // 变更同步回 globalData,防止 sheet 关闭/重开后气泡带着过期 undo 标记
+      if (Object.keys(updates).length > 0) {
+        app.globalData.chatMessages = msgs
+        this.setData(updates)
+      }
+      // 没消息在跑 → 清 timer
+      if (!stillRunning) {
+        clearInterval(this._undoTimer)
+        this._undoTimer = null
+      }
+    }, 1000)
+  },
+
+  /**
+   * 撤销账本君刚记的那一笔(15s 撤销窗口内的气泡)
+   * 按 toolResult.type 路由:
+   * - salary → dbApi.removeSalary (写 salary collection)
+   * - expense → dbApi.removeExpense (写 expenses collection)
+   * 软删除对应记录,更新消息内容 + undone 标记,刷新当前页数据
+   */
+  async onUndoAiRecord(e) {
+    const ts = e.currentTarget.dataset.msgTs
+    const app = getApp()
+    const msgs = (app.globalData.chatMessages || []).slice()
+    const idx = msgs.findIndex((m) => m.ts === ts)
+    if (idx < 0) return
+    const msg = msgs[idx]
+    if (!msg.toolResult || !msg.toolResult.id || msg.undone) return
+    const isSalary = msg.toolResult.type === 'salary'
+    try {
+      if (isSalary) {
+        await dbApi.removeSalary(msg.toolResult.id)
+      } else {
+        await dbApi.removeExpense(msg.toolResult.id)
+      }
+      msg.undoable = false
+      msg.undone = true
+      msg.content = (msg.content || '') + ' · ✓ 已撤销'
+      app.globalData.chatMessages = msgs
+      this.setData({ chatMessages: msgs.slice() })
+      chatStorage.save(msgs)  // 同步持久化,首页重开也是"已撤销"状态
+      this.loadData(true)  // 顶部预算条 / 分类占比 / 流水重算(force 跳过缓存)
+    } catch (err) {
+      console.error('撤销失败', err)
+      wx.showToast({ title: '撤销失败', icon: 'none' })
+    }
   },
 
   /** 兼容旧引用,序列化已迁移到 utils/aiChat.js 的内部 */
@@ -892,28 +1096,34 @@ Page({
     const isDark = app && app.globalData && app.globalData.theme === 'dark'
     const colors = isDark ? paletteDark : palette
     const budgetMap = (this.data.user && this.data.user.budgets) || {}
-    const categories = (this.data.catStats || [])
-      .filter((c) => c.amount > 0)
-      .map((c, idx) => {
-        const b = budgetMap[c.name]
-        const over = typeof b === 'number' && b > 0 && c.amount > b
-        const topNotes = noteByCat[c.name]
-          ? [...noteByCat[c.name].entries()]
-              .sort((a, b2) => b2[1] - a[1])
-              .slice(0, 3)
-              .map(([n]) => n)
-          : []
-        return {
-          name: c.name,
-          amount: c.amount,
-          amountText: util.moneyThousand(c.amount),
-          percent: c.percent,
-          budget: typeof b === 'number' ? b : 0,
-          over,
-          topNotes,
-          color: colors[idx % colors.length]
-        }
-      })
+    // 遍历全部分类(config.CATEGORIES)而不是只显示当月已消费的——
+    // 这样用户能给本月还没消费过的分类提前设预算,避免"先消费再设预算"的鸡生蛋
+    const statsMap = new Map((this.data.catStats || []).map((c) => [c.name, c]))
+    const categories = (config.CATEGORIES || []).map((name, idx) => {
+      const s = statsMap.get(name)
+      const amount = s ? s.amount : 0
+      const percent = s ? s.percent : 0
+      const b = budgetMap[name]
+      const over = typeof b === 'number' && b > 0 && amount > b
+      const topNotes = (s && noteByCat[name])
+        ? [...noteByCat[name].entries()]
+            .sort((a, b2) => b2[1] - a[1])
+            .slice(0, 3)
+            .map(([n]) => n)
+        : []
+      return {
+        name,
+        amount,
+        amountText: util.moneyThousand(amount),
+        percent,
+        budget: typeof b === 'number' ? b : 0,
+        budgetText: typeof b === 'number' && b > 0 ? util.moneyThousand(b) : '',
+        over,
+        topNotes,
+        color: colors[idx % colors.length],
+        isEmpty: amount <= 0  // 本月没消费,UI 上灰化
+      }
+    })
     const overCategories = categories.filter((c) => c.over).map((c) => c.name)
 
     // 环比 — 预格式化方向 + 百分比字符串(WXML 不能用 Math.abs)
@@ -956,6 +1166,7 @@ Page({
       categories,
       recurTotalText: util.moneyThousand(recurTotal),
       overCategories,
+      budget: this.data.budget || 0,  // 总预算,让 AI 算出"剩多少能花"给规划
       budgetOver: this.data.budgetOver,
       budgetNear: this.data.budgetNear,
       insightText: '',

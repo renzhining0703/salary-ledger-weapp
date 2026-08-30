@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "openapi": [
+      "subscribeMessage.send"
+    ]
+  },
+  "triggers": [
+    {
+      "name": "salaryRemindFirst",
+      "type": "timer",
+      "config": "0 0 19 15 * * *"
+    },
+    {
+      "name": "salaryRemindSecond",
+      "type": "timer",
+      "config": "0 0 10 17 * * *"
+    }
+  ]
+}

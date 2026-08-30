@@ -45,7 +45,10 @@
       <block wx:if="{{list.length}}">
         <view wx:for="{{list}}" wx:key="_id" class="row">
           <view class="row-left">
-            <view class="row-date">{{item.dateText}}</view>
+            <view class="row-date">
+              <text>{{item.dateText}}</text>
+              <text class="source-tag {{item.sourceClass}}">{{item.sourceText}}</text>
+            </view>
             <view class="row-note">{{item.note || '工资'}}</view>
           </view>
           <view class="row-right">
@@ -72,6 +75,17 @@
         <view class="form-input picker-val">{{formDate}}</view>
       </picker>
       <view class="form-tip">按工资实际到账日填写，计入该月结余。如 7 月工资 8 月 15 到账，填 8 月 15（备注写「7月工资」）</view>
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">收入类型</text>
+      <picker mode="selector" range="{{sourceOptions}}" range-key="label"
+              value="{{formSource === 'side' ? 1 : 0}}" bindchange="onSourceChange">
+        <view class="form-input picker-val">
+          <text class="source-tag {{formSource === 'side' ? 'side' : 'main'}}">{{formSource === 'side' ? '副业/兼职' : '主业'}}</text>
+        </view>
+      </picker>
+      <view class="form-tip">主业工资每月固定的月薪;副业/兼职/稿费等劳动性收入</view>
     </view>
 
     <view class="form-item">

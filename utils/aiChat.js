@@ -26,9 +26,11 @@ const finTemplate = require('./finTemplate')
  * @param {object} opts.stmt      statement blob(income/expense/balance/savingsRate/categories/...)
  * @param {Array}  opts.recentList 最近 30 条明细(给 LLM 看到具体买了啥)
  * @param {string} opts.question  用户问题
- * @returns {Promise<{ text: string, source: 'llm'|'local', code?: string }>}
+ * @param {string} [opts.mode='chat']  'chat' 纯问答;'record' 启用 addExpense 工具(账本君记账)
+ * @param {Array}  [opts.history] 多轮上下文(buildHistory 产物,最近 12 条 user/assistant)
+ * @returns {Promise<{ text: string, source: 'llm'|'local'|'tool', code?: string, toolResult?: object }>}
  */
-async function send({ month, stmt, recentList, question }) {
+async function send({ month, stmt, recentList, question, mode = 'chat', history }) {
   let result = null
   let timedOut = false
   let transportError = null  // 捕获 wx.cloud.callFunction fail 回调里的 error(没部署/网络/鉴权时无 result.msg)
@@ -46,7 +48,9 @@ async function send({ month, stmt, recentList, question }) {
         data: {
           month,
           question,
-          data: serialize(stmt, recentList)
+          mode,                                  // 'chat' | 'record',账本君记账用 'record'
+          data: serialize(stmt, recentList),
+          history: Array.isArray(history) ? history : []  // 多轮上下文,云端二次清洗
         },
         success: (r) => {
           if (settled) return
@@ -69,10 +73,19 @@ async function send({ month, stmt, recentList, question }) {
 
   const code = result && result.code
   if (result && result.text) {
-    return { text: result.text, source: 'llm' }
+    // 云函数在工具调用成功时会返回 { source: 'tool', text, toolResult }
+    // 透传 source + toolResult,前端据此决定是否展示撤销气泡、刷新数据
+    return {
+      text: result.text,
+      source: result.source || 'llm',
+      toolResult: result.toolResult || null
+    }
   }
   if (code === 'RATE_LIMIT') {
     return { text: result.msg || '问得有点急,稍等再问', source: 'local' }
+  }
+  if (code === 'NO_DATA') {
+    return { text: result.msg || '本月还没有任何数据,先记几笔吧', source: 'local' }
   }
   if (code === 'NO_KEY' || timedOut) {
     // 本地模板兜底
@@ -139,11 +152,14 @@ function serialize(stmt, recentList) {
     expense: stmt.expense,
     balance: stmt.balance,
     savingsRate: stmt.savingsRate,
+    // 近 6 个月趋势(首页 loadData 现成数据):AI 免工具即可答"走势/上个月"类问题
+    trend: Array.isArray(stmt.trend) ? stmt.trend : [],
     prevMonthExpense: stmt.prevMonthExpense,
     prevYearExpense: stmt.hasPrevYear ? stmt.prevYearExpense : undefined,
     hasPrevYear: stmt.hasPrevYear,
     recurTotal: stmt.recurTotal,
     categories: stmt.categories,
+    budget: stmt.budget || 0,        // 用户总预算(¥),让 AI 知道"还剩多少能花"
     budgetOver: stmt.budgetOver,
     budgetNear: stmt.budgetNear,
     overCategories: stmt.overCategories,
@@ -151,4 +167,21 @@ function serialize(stmt, recentList) {
   }
 }
 
-module.exports = { send }
+/**
+ * 从会话消息里提取多轮上下文,让"那上个月呢""再具体点"类追问可被理解。
+ * - 只留 user/assistant + 非空字符串 content,单条截 400 字
+ * - 取最近 12 条(约 6 轮);输出只含 role/content,剥离 ts/undoable/toolResult 等页面字段
+ * - 云端 sanitizeHistory 会再做一遍同规格清洗(双保险,防伪造入参)
+ * @param {Array} messages 完整会话消息(不含即将发送的本条问题)
+ * @returns {Array<{role: 'user'|'assistant', content: string}>}
+ */
+function buildHistory(messages) {
+  if (!Array.isArray(messages)) return []
+  return messages
+    .filter((m) => m && (m.role === 'user' || m.role === 'assistant')
+      && typeof m.content === 'string' && m.content.trim())
+    .slice(-12)
+    .map((m) => ({ role: m.role, content: m.content.slice(0, 400) }))
+}
+
+module.exports = { send, buildHistory }

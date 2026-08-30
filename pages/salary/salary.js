@@ -16,7 +16,13 @@ Page({
     formPayday: 15,
     formDate: '',
     formAmount: '',
-    formNote: ''
+    formNote: '',
+    formSource: 'main',
+    sourceOptions: [
+      { label: '主业',   value: 'main' },
+      { label: '副业/兼职', value: 'side' }
+    ],
+    sourceLabels: { main: '主业', side: '副业' }
   },
 
   onShow() {
@@ -49,7 +55,9 @@ Page({
       const fmtList = list.map((s) => ({
         ...s,
         amountText: util.moneyThousand(s.amount),
-        dateText: s.payDate
+        dateText: s.payDate,
+        sourceText: (s.source === 'side') ? '副业' : '主业',
+        sourceClass: (s.source === 'side') ? 'side' : 'main'
       }))
 
       this._loaded = true
@@ -107,7 +115,8 @@ Page({
     util.openSheet(this, 'showForm', {
       formDate: util.fmtDate(lastPay),
       formAmount: '',
-      formNote: ''
+      formNote: '',
+      formSource: 'main'
     })
   },
 
@@ -127,8 +136,13 @@ Page({
     this.setData({ formNote: e.detail.value })
   },
 
+  onSourceChange(e) {
+    // picker 返回索引;sourceOptions 顺序:0=main,1=side
+    this.setData({ formSource: this.data.sourceOptions[e.detail.value].value })
+  },
+
   async saveSalary() {
-    const { formDate, formAmount, formNote } = this.data
+    const { formDate, formAmount, formNote, formSource } = this.data
     const amount = Number(formAmount)
     if (!formDate) {
       wx.showToast({ title: '请选择日期', icon: 'none' })
@@ -141,7 +155,12 @@ Page({
     if (this.data.saving) return
     this.setData({ saving: true })
     try {
-      await dbApi.addSalary({ payDate: formDate, amount, note: formNote.trim() })
+      await dbApi.addSalary({
+        payDate: formDate,
+        amount,
+        source: formSource || 'main',
+        note: formNote.trim()
+      })
       wx.showToast({ title: '已记录', icon: 'success' })
       util.closeSheet(this, 'showForm')
       this.loadData()

@@ -14,6 +14,14 @@ module.exports = {
   SUBSCRIBE_TEMPLATE_ID: 'wA_ZPWiHPGe4kD17FfpT2HFKPEHBOXmMXDi03viQczM',
 
   /**
+   * 订阅消息模板 ID - 工资到账询问（账本君主动询问）
+   * 申请方式：同 SUBSCRIBE_TEMPLATE_ID，在订阅消息后台选用「工资到账询问」类模板
+   * 模板字段 thing.DATA（询问文案）+ date.DATA（日期），需与后台模板一致
+   * 同步位置：cloudfunctions/salaryReminder/index.js TEMPLATE_ID
+   */
+  SALARY_REMIND_TEMPLATE_ID: '_7wp6rvHVPYC9QUj3SobEOUtXvW5l9076SUDh_4zrzg',
+
+  /**
    * 示例数据开关（上线前改为 false）
    * true：首次进入自动写入近 3 个月演示数据（开发联调用）
    * false：新用户进入为空数据，从零开始记账

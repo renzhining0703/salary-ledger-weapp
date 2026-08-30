@@ -95,6 +95,29 @@
   font-size: 30rpx;
   font-weight: 700;
   color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+/* 收入来源标签:主业金色(品牌主色)/ 副业蓝色(区别于主业) */
+.source-tag {
+  display: inline-block;
+  font-size: 22rpx;
+  font-weight: 600;
+  padding: 2rpx 14rpx;
+  border-radius: 999rpx;
+  line-height: 1.6;
+}
+.source-tag.main {
+  background: rgba(200, 160, 77, 0.12);
+  color: var(--gold-700, #8a6d2b);
+  border: 1rpx solid rgba(200, 160, 77, 0.35);
+}
+.source-tag.side {
+  background: rgba(72, 128, 200, 0.12);
+  color: #2c5fa3;
+  border: 1rpx solid rgba(72, 128, 200, 0.35);
 }
 
 .row-note {

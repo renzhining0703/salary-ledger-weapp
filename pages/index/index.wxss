@@ -423,6 +423,23 @@
   padding-left: 16rpx;
   flex-shrink: 0;
 }
+/* 入口卡未读红点:账本君有主动询问时显示 */
+.ai-card { position: relative; }
+.ai-card-badge {
+  min-width: 36rpx;
+  height: 36rpx;
+  padding: 0 12rpx;
+  border-radius: 999rpx;
+  background: var(--danger);
+  color: #fff;
+  font-size: 22rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  flex-shrink: 0;
+}
 
 /* 预算预警 */
 .budget-alert {
@@ -671,16 +688,19 @@
 
 /* 账本君 AI 助理 chat sheet */
 .ai-chat-sheet {
-  /* 从 92vh 调到 80vh,顶部留 20vh mask 区兜底关闭(sheet 太顶时仍有可点区域) */
-  max-height: 80vh;
-  /* 关键:抑制全局 .sheet 的 overflow-y:auto,只让内部 scroll-view 滚,避免双滚动(双滚动会让输入框被顶上、AI 回复被遮) */
+  /* height / padding-bottom 由 inline style 控制:
+     - 默认 80vh + safe-area-inset-bottom(键盘关闭时)
+     - 键盘弹起时:height 收缩到 (screenHeight - safeArea.top - h),sheet 顶部 ≈ 状态栏底
+                   + padding-bottom:0(键盘就是底,不需要安全区)
+     关键:用 height 而不是 max-height —— max-height 只限制最大值,内容少时 sheet
+     高度 = 内容总高度(底部贴键盘顶但 sheet 没填满空间,看着像「被顶得很高」在屏幕中段);
+     height 强制 sheet 占满整个空间,内容少时 scroll-view 内部留白
+     另:iOS 微信 position:fixed bottom:0 在键盘弹起时会自动避开键盘,不需要 transform */
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  /* 适配底部 home indicator;原 padding-bottom:0 会让输入框贴边 */
-  padding-bottom: env(safe-area-inset-bottom);
-  /* 键盘弹起时 sheet 整体上移,过渡要平滑(通过 inline style 改 transform) */
-  transition: transform 0.18s ease;
+  /* 键盘弹起/收起时平滑过渡 height */
+  transition: height 0.18s ease;
 }
 .ai-chat-title {
   display: flex;
@@ -816,14 +836,35 @@
   margin-right: 12rpx;
   flex-shrink: 0;
 }
+.ai-chat-bubble-wrap {
+  display: flex;
+  flex-direction: column;
+  max-width: 76%;
+  flex-shrink: 1;
+  min-width: 0;
+}
 .ai-chat-bubble {
   font-size: 26rpx;
   line-height: 1.6;
   padding: 16rpx 20rpx;
   border-radius: 16rpx;
-  max-width: 76%;
   word-break: break-word;
   white-space: pre-wrap;
+}
+/* 账本君记账成功后的 5s 撤销气泡(assistant 消息下方小 chip) */
+.ai-chat-undo {
+  align-self: flex-start;
+  font-size: 22rpx;
+  font-weight: 600;
+  color: var(--gold);
+  background: rgba(200, 160, 77, 0.12);
+  padding: 6rpx 16rpx;
+  border-radius: 999rpx;
+  margin-top: 8rpx;
+  border: 1rpx solid rgba(200, 160, 77, 0.3);
+}
+.ai-chat-undo-hover {
+  opacity: 0.6;
 }
 .ai-chat-msg.mine .ai-chat-bubble {
   background: var(--gold);
@@ -888,4 +929,109 @@
   font-size: 22rpx;
   color: var(--danger);
   padding: 8rpx 0;
+}
+
+/* 账本君主动询问气泡(订阅消息推送后展示) */
+.ai-chat-pending {
+  padding: 20rpx 24rpx 18rpx;
+  margin: 16rpx 24rpx;
+  background: linear-gradient(135deg, var(--gold-light), #fff8e7);
+  border-radius: 16rpx;
+  border: 2rpx solid var(--gold-light);
+}
+.ai-chat-pending-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12rpx;
+}
+.ai-chat-pending-tag {
+  font-size: 22rpx;
+  color: var(--gold-700);
+  font-weight: 600;
+}
+.ai-chat-pending-dismiss {
+  font-size: 22rpx;
+  color: var(--text-mute);
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
+}
+.ai-chat-pending-dismiss:active {
+  background: rgba(0, 0, 0, 0.05);
+}
+.ai-chat-pending-bubble {
+  font-size: 28rpx;
+  color: var(--text-main);
+  line-height: 1.55;
+}
+.ai-chat-pending-hint {
+  font-size: 22rpx;
+  color: var(--text-sub);
+  margin-top: 10rpx;
+}
+
+/* 首次引导卡:让账本君主动关心你(未订阅时提示一次) */
+.ai-chat-prompt-card {
+  padding: 20rpx 24rpx 18rpx;
+  margin: 16rpx 24rpx;
+  background: var(--card);
+  border-radius: 16rpx;
+  border: 2rpx dashed var(--gold-light);
+}
+.ai-chat-prompt-title {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--text-main);
+  margin-bottom: 6rpx;
+}
+.ai-chat-prompt-desc {
+  font-size: 24rpx;
+  color: var(--text-sub);
+  line-height: 1.5;
+  margin-bottom: 14rpx;
+}
+.ai-chat-prompt-actions {
+  display: flex;
+  gap: 16rpx;
+}
+.ai-chat-prompt-later {
+  background: var(--input-bg);
+  color: var(--text-sub);
+}
+
+/* profile 设置里订阅开关下的提示文字 */
+.form-tip {
+  font-size: 22rpx;
+  color: var(--text-sub);
+  margin: -16rpx 24rpx 16rpx;
+  line-height: 1.5;
+}
+
+/* AI 输入区上方常驻快捷问题 chip,点一下即发 */
+.ai-quick-chip-row {
+  display: flex;
+  gap: 16rpx;
+  padding: 12rpx 24rpx 14rpx;
+  overflow-x: auto;
+  /* 隐藏滚动条(部分平台) */
+  -webkit-overflow-scrolling: touch;
+}
+.ai-quick-chip-row::-webkit-scrollbar {
+  display: none;
+}
+.ai-quick-chip {
+  flex-shrink: 0;
+  font-size: 24rpx;
+  color: var(--text-sub);
+  background: var(--chip-bg);
+  border: 1rpx solid var(--border-light, rgba(0, 0, 0, 0.06));
+  border-radius: 999rpx;
+  padding: 10rpx 22rpx;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.ai-quick-chip-hover {
+  background: rgba(200, 160, 77, 0.12);
+  color: var(--gold-700, #8a6d2b);
+  border-color: rgba(200, 160, 77, 0.35);
 }
