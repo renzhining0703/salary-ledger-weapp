@@ -1,0 +1,282 @@
+/* 我的页 —— 卡片流风格，浅色/深色跟随系统主题 */
+
+.page {
+  padding-bottom: calc(48rpx + env(safe-area-inset-bottom));
+}
+
+/* ---------- 用户资料卡（普通卡片，与全局卡片流统一） ---------- */
+.my-hero {
+  background: var(--card);
+  border-radius: 28rpx;
+  padding: 40rpx 32rpx;
+  margin: 24rpx;
+  box-shadow: 0 8rpx 28rpx var(--shadow-card);
+  border: 1rpx solid var(--border-light);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+}
+
+.my-avatar-wrap {
+  position: relative;
+  width: 120rpx;
+  height: 120rpx;
+  flex-shrink: 0;
+}
+
+.my-avatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  display: block;
+  box-sizing: border-box;
+}
+
+/* 未设头像：实心深蓝渐变圆 + 金色人形剪影（无边框，避免 iOS 描边变形） */
+.my-avatar.placeholder {
+  background: linear-gradient(135deg, var(--navy-600), var(--navy-800));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.my-avatar.placeholder .ph-head {
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 50%;
+  background: var(--gold);
+}
+
+.my-avatar.placeholder .ph-body {
+  width: 62rpx;
+  height: 30rpx;
+  border-radius: 30rpx 30rpx 0 0;
+  background: var(--gold);
+  margin-top: 8rpx;
+}
+
+/* 编辑角标：金色圆 + 铅笔 */
+.my-avatar-edit {
+  position: absolute;
+  right: -2rpx;
+  bottom: -2rpx;
+  width: 42rpx;
+  height: 42rpx;
+  border-radius: 50%;
+  background: var(--gold);
+  color: var(--navy-900);
+  font-size: 22rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.25);
+  border: 3rpx solid var(--card);
+  box-sizing: border-box;
+}
+
+.my-user-meta {
+  flex: 1;
+  margin-left: 28rpx;
+  min-width: 0;
+}
+
+.my-nick-display {
+  color: var(--text);
+  font-size: 36rpx;
+  font-weight: 700;
+  height: 60rpx;
+  line-height: 60rpx;
+}
+
+/* 未设置昵称时显示"点此设置昵称"占位符，弱化样式与有昵称区分 */
+.my-nick-display.is-empty {
+  color: var(--text-mute);
+  font-weight: 400;
+}
+
+.my-user-sub {
+  margin-top: 12rpx;
+  font-size: 23rpx;
+  color: var(--text-sub);
+}
+
+/* ---------- 分组卡片 ---------- */
+.my-group {
+  margin-bottom: 24rpx;
+}
+
+.my-group-title {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--text-sub);
+  margin-bottom: 8rpx;
+}
+
+.my-row {
+  display: flex;
+  align-items: center;
+  padding: 26rpx 0;
+  border-bottom: 1rpx solid var(--border-light);
+  position: relative;
+}
+
+.my-row:last-of-type {
+  border-bottom: none;
+}
+
+picker .my-row {
+  padding-right: 8rpx;
+}
+
+.my-row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.my-row-label {
+  font-size: 29rpx;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.my-row-label.danger {
+  color: var(--danger);
+}
+
+.my-row-desc {
+  margin-top: 6rpx;
+  font-size: 23rpx;
+  color: var(--text-sub);
+}
+
+.my-row-val {
+  font-size: 27rpx;
+  color: var(--gold-700, #A98436);
+  font-weight: 500;
+  margin-left: 16rpx;
+}
+
+.my-row-input {
+  text-align: right;
+  font-size: 27rpx;
+  color: var(--text);
+  font-weight: 500;
+  margin-left: 16rpx;
+  width: 220rpx;
+}
+
+.my-row-arrow {
+  margin-left: 10rpx;
+  font-size: 32rpx;
+  color: var(--text-mute);
+  line-height: 1;
+}
+
+.my-switch {
+  transform: scale(0.85);
+  margin-left: 12rpx;
+}
+
+/* 行点击反馈（tap 行为在 picker / bindtap 上） */
+.my-row-danger {
+  border-radius: 16rpx;
+}
+
+.my-save-btn {
+  margin-top: 28rpx;
+}
+
+.my-footer {
+  text-align: center;
+  font-size: 22rpx;
+  color: var(--text-mute);
+  padding: 32rpx 0 8rpx;
+}
+
+/* ---------- 编辑资料半屏弹层 ---------- */
+/* sheet / mask / sheet-title / sheet-actions / sheet 动画：来自 app.wxss 全局样式 */
+
+.edit-avatar-wrap {
+  position: relative;
+  width: 180rpx;
+  height: 180rpx;
+  margin: 0 auto 8rpx;
+}
+
+.edit-avatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  display: block;
+  box-sizing: border-box;
+}
+
+/* 弹层内未设头像：与顶部 placeholder 风格一致 */
+.edit-avatar.placeholder {
+  background: linear-gradient(135deg, var(--navy-600), var(--navy-800));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.edit-avatar.placeholder .ph-head {
+  width: 50rpx;
+  height: 50rpx;
+  border-radius: 50%;
+  background: var(--gold);
+}
+.edit-avatar.placeholder .ph-body {
+  width: 88rpx;
+  height: 42rpx;
+  border-radius: 42rpx 42rpx 0 0;
+  background: var(--gold);
+  margin-top: 12rpx;
+}
+
+/* 透明 button 覆盖在大头像上触发微信 chooseAvatar */
+.edit-avatar-hit {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  z-index: 2;
+}
+.edit-avatar-hit::after {
+  border: none;
+}
+
+.edit-avatar-tip {
+  text-align: center;
+  font-size: 22rpx;
+  color: var(--text-mute);
+  margin-bottom: 24rpx;
+}
+
+.edit-nick-item {
+  margin-top: 16rpx;
+}
+.edit-nick-input {
+  /* 复用 .form-input 风格，此处仅微调：略大字号与昵称匹配 */
+  font-size: 32rpx;
+  font-weight: 500;
+}
+
+.edit-save-btn {
+  margin-top: 8rpx;
+}
+
+.edit-cancel {
+  text-align: center;
+  margin-top: 20rpx;
+  font-size: 26rpx;
+  color: var(--text-sub);
+  padding: 16rpx 0;
+}

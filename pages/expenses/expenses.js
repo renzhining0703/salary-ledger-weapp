@@ -178,6 +178,11 @@ Page({
     catBudgetFocus: true              // 打开 sheet 时自动 focus 输入框
   },
 
+  onLoad() {
+    // 自定义导航栏（navigationStyle: custom）：状态栏高度需 JS 注入
+    this.setData({ statusBarHeight: wx.getWindowInfo().statusBarHeight || 44 })
+  },
+
   onShow() {
     util.checkLock()
     this._computeHeatCellSize()
@@ -1090,7 +1095,7 @@ Page({
     })
 
     // 分类,带上预算对照 + 颜色 + 格式化字符串 + top-3 备注
-    const palette = ['#14304F', '#C8A04D', '#C94040', '#C98A2D', '#2F9B6B', '#4A6B8A']
+    const palette = ['#2B2620', '#C8A04D', '#BE4A3A', '#C98A2D', '#2F9B6B', '#A3823A']
     const paletteDark = ['#8AA4C2', '#E5C26B', '#E55858', '#E0A055', '#4FB78A', '#8AA4C2']
     const app = getApp()
     const isDark = app && app.globalData && app.globalData.theme === 'dark'

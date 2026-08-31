@@ -1,0 +1,137 @@
+<view class="page">
+
+  <!-- 自定义导航栏（navigationStyle: custom），跟随系统主题 -->
+  <view class="navbar" style="padding-top: {{statusBarHeight}}px;">
+    <view class="navbar-inner">
+      <view class="navbar-title">我的</view>
+    </view>
+  </view>
+
+  <!-- 用户资料卡：点头像/昵称区域弹出半屏弹层统一设置头像与昵称 -->
+  <view class="my-hero" bindtap="openEditProfile">
+    <!-- 可见圆形头像区 -->
+    <view class="my-avatar-wrap">
+      <image wx:if="{{formAvatar}}" class="my-avatar" src="{{formAvatar}}" mode="aspectFill" />
+      <view wx:else class="my-avatar placeholder">
+        <view class="ph-head"></view>
+        <view class="ph-body"></view>
+      </view>
+      <view class="my-avatar-edit">✎</view>
+    </view>
+    <view class="my-user-meta">
+      <view class="my-nick-display {{formNickname ? '' : 'is-empty'}}">{{formNickname || '点此设置昵称'}}</view>
+      <view class="my-user-sub">{{user.salaryRemindSubscribed ? '账本君会在发薪日主动关心你' : '每月 ' + formPayday + ' 号发薪'}}</view>
+    </view>
+  </view>
+
+  <!-- 资产：信用卡从 tabBar 移入，独立页面承载 -->
+  <view class="card my-group">
+    <view class="my-group-title">资产</view>
+    <view class="my-row" bindtap="goCards">
+      <view class="my-row-main">
+        <view class="my-row-label">信用卡管理</view>
+        <view class="my-row-desc">账单日、还款日与待还卡片管理</view>
+      </view>
+      <view class="my-row-arrow">›</view>
+    </view>
+  </view>
+
+  <!-- 提醒 -->
+  <view class="card my-group">
+    <view class="my-group-title">提醒</view>
+    <view class="my-row" bindtap="subscribeRemind">
+      <view class="my-row-main">
+        <view class="my-row-label">还款提醒</view>
+        <view class="my-row-desc">每天 9:00 推送待还卡片，点击开启</view>
+      </view>
+      <view class="my-row-arrow">›</view>
+    </view>
+    <view class="my-row">
+      <view class="my-row-main">
+        <view class="my-row-label">账本君主动询问</view>
+        <view class="my-row-desc">发薪日附近账本君会主动问你工资到账没</view>
+      </view>
+      <switch class="my-switch" checked="{{user.salaryRemindSubscribed === true}}" bindchange="onSalaryRemindToggle" color="#C8A04D" />
+    </view>
+  </view>
+
+  <!-- 偏好设置 -->
+  <view class="card my-group">
+    <view class="my-group-title">偏好设置</view>
+    <picker mode="selector" range="{{paydayRange}}" value="{{formPayday - 1}}" bindchange="onPaydayChange">
+      <view class="my-row">
+        <view class="my-row-main">
+          <view class="my-row-label">每月发薪日</view>
+        </view>
+        <view class="my-row-val">每月 {{formPayday}} 号</view>
+        <view class="my-row-arrow">›</view>
+      </view>
+    </picker>
+    <view class="my-row">
+      <view class="my-row-main">
+        <view class="my-row-label">每月开销预算（元）</view>
+      </view>
+      <input class="my-row-input" type="number" placeholder="如 4000" value="{{formBudget}}" bindinput="onBudgetInput" />
+    </view>
+    <picker range="{{privacyOptions}}" value="{{privacyIndex}}" bindchange="onPrivacyChange">
+      <view class="my-row">
+        <view class="my-row-main">
+          <view class="my-row-label">隐私锁</view>
+          <view class="my-row-desc">打开小程序时需要解锁</view>
+        </view>
+        <view class="my-row-val">{{privacyOptions[privacyIndex]}}</view>
+        <view class="my-row-arrow">›</view>
+      </view>
+    </picker>
+    <view class="btn btn-primary my-save-btn" bindtap="saveProfile">{{saving ? '保存中…' : '保存资料与偏好'}}</view>
+  </view>
+
+  <!-- 数据 -->
+  <view class="card my-group">
+    <view class="my-group-title">数据</view>
+    <view class="my-row" bindtap="openRecycle">
+      <view class="my-row-main">
+        <view class="my-row-label">回收站</view>
+        <view class="my-row-desc">已删记录保留 {{recycleDays}} 天</view>
+      </view>
+      <view class="my-row-arrow">›</view>
+    </view>
+    <view class="my-row my-row-danger" bindtap="clearData">
+      <view class="my-row-main">
+        <view class="my-row-label danger">重置全部数据</view>
+        <view class="my-row-desc">删除所有记录并清空聊天记录</view>
+      </view>
+      <view class="my-row-arrow">›</view>
+    </view>
+  </view>
+
+  <view class="my-footer">薪账本 · 所有数据仅保存在你自己的账号下</view>
+
+  <!-- 编辑资料半屏弹层：头像 + 昵称，一次性保存 -->
+  <view wx:if="{{showEditProfile}}" class="mask {{showEditProfileClosing ? 'mask-out' : ''}}" bindtap="closeEditProfile"></view>
+  <view wx:if="{{showEditProfile}}" class="sheet edit-profile-sheet {{showEditProfileClosing ? 'sheet-out' : ''}}">
+    <view class="sheet-title">编辑资料</view>
+
+    <!-- 大头像：点一下触发微信 chooseAvatar -->
+    <view class="edit-avatar-wrap">
+      <image wx:if="{{editAvatar}}" class="edit-avatar" src="{{editAvatar}}" mode="aspectFill" />
+      <view wx:else class="edit-avatar placeholder">
+        <view class="ph-head"></view>
+        <view class="ph-body"></view>
+      </view>
+      <button class="edit-avatar-hit" open-type="chooseAvatar" bindchooseavatar="onChooseEditAvatar"></button>
+      <view class="edit-avatar-tip">点击更换头像</view>
+    </view>
+
+    <!-- 昵称 input：复用全局 .form-item / .form-input -->
+    <view class="form-item edit-nick-item">
+      <text class="form-label">昵称</text>
+      <input class="form-input edit-nick-input" type="nickname" placeholder="设置昵称" value="{{editNickname}}" bindinput="onEditNickInput" />
+    </view>
+
+    <view class="sheet-actions">
+      <view class="btn btn-primary edit-save-btn" bindtap="saveEditProfile">{{editSaving ? '保存中…' : '保存'}}</view>
+      <view class="edit-cancel" bindtap="closeEditProfile">取消</view>
+    </view>
+  </view>
+</view>

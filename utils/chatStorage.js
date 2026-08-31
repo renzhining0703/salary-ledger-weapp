@@ -73,6 +73,12 @@ function markWelcomed() {
   catch (e) {}
 }
 
+/** 清除欢迎消息标记（重置全部数据时调用，让聊天回到首次使用、重新展示欢迎语） */
+function clearWelcomed() {
+  try { wx.removeStorageSync(KEY_WELCOMED) }
+  catch (e) {}
+}
+
 /**
  * 保存账本君待回应的询问（云函数推送后写入，本地兜底，离线也能看到）
  * @param {{ text: string, ts: number, round: number }} q
@@ -102,5 +108,5 @@ function clearPendingQuestion() {
   catch (e) {}
 }
 
-module.exports = { save, load, loadSummary, clear, isWelcomed, markWelcomed,
+module.exports = { save, load, loadSummary, clear, isWelcomed, markWelcomed, clearWelcomed,
   savePendingQuestion, loadPendingQuestion, clearPendingQuestion }

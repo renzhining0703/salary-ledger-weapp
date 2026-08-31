@@ -88,6 +88,10 @@ exports.main = async (event) => {
     await db.collection('finReports').where({ _openid: OPENID, month }).remove()
     await db.collection('finReports').add({
       data: {
+        // 必须显式写 _openid：云函数端 add 不会自动注入（只有小程序端 SDK 才会）。
+        // 缺了它 safeFind 按 _openid+month 永远查不到 → 缓存永不命中、每次都调 LLM 烧钱，
+        // 且前端 invalidateFinCache 在「仅创建者可读写」权限下也删不掉这个无主文档。
+        _openid: OPENID,
         month,
         text,
         model: MODEL,

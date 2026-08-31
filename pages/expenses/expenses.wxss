@@ -57,9 +57,27 @@
 
 .over-tip {
   margin-top: 16rpx;
+  display: flex;
+  align-items: center;
   font-size: 26rpx;
   font-weight: 700;
   color: var(--danger);
+}
+
+.over-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32rpx;
+  height: 32rpx;
+  background: var(--danger);
+  border-radius: 50%;
+  margin-right: 10rpx;
+  flex-shrink: 0;
+  color: #fff;
+  font-size: 22rpx;
+  font-weight: 800;
+  line-height: 1;
 }
 
 /* 分类占比 */
@@ -157,26 +175,7 @@
   padding: 8rpx;
 }
 
-/* 悬浮添加 */
-.fab {
-  position: fixed;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: calc(48rpx + env(safe-area-inset-bottom));
-  background: linear-gradient(135deg, var(--navy-700), var(--navy-900));
-  color: #fff;
-  font-size: 30rpx;
-  font-weight: 600;
-  padding: 24rpx 56rpx;
-  border-radius: 999rpx;
-  box-shadow: 0 12rpx 32rpx var(--shadow-deep);
-  z-index: 50;
-}
-.fab:active {
-  transform: translateX(-50%) scale(0.98);
-  opacity: 0.94;
-}
-
+/* 悬浮添加按钮样式见 app.wxss 全局 .fab */
 /* 分类 chips */
 .cat-chips {
   display: flex;
@@ -208,16 +207,7 @@
   color: var(--navy-700);
 }
 
-.picker-val {
-  display: flex;
-  align-items: center;
-  color: var(--text);
-}
-
-.sheet-actions {
-  margin-top: 32rpx;
-}
-
+/* picker-val / sheet-actions 见 app.wxss 全局定义 */
 /* 月份切换头 */
 .month-head {
   display: flex;
@@ -342,12 +332,7 @@
   justify-content: space-between;
 }
 
-.form-tip {
-  font-size: 22rpx;
-  color: var(--text-sub);
-  margin-top: 6rpx;
-}
-
+/* form-tip 见 app.wxss 全局定义 */
 /* 手动确认记账按钮 */
 .recur-tip {
   font-size: 24rpx;
@@ -469,13 +454,11 @@
   border-top: 1rpx solid var(--border-light);
 }
 
-/* ---------- 结余 Hero 卡 ---------- */
+/* ---------- 结余卡片（账单 sheet 内，跟随主题） ---------- */
 .stmt-hero {
-  background: linear-gradient(135deg, var(--navy-700), var(--navy-900));
+  background: var(--input-bg);
   border-radius: 24rpx;
   padding: 32rpx;
-  color: #fff;
-  box-shadow: 0 12rpx 32rpx var(--shadow-strong);
   margin-bottom: 20rpx;
 }
 
@@ -487,7 +470,7 @@
 
 .stmt-hero-label {
   font-size: 24rpx;
-  color: rgba(255, 255, 255, 0.65);
+  color: var(--text-sub);
 }
 
 .stmt-hero-num {
@@ -497,11 +480,12 @@
   letter-spacing: -0.02em;
   margin-top: 8rpx;
   line-height: 1.1;
+  color: var(--text);
 }
 .stmt-hero-num.pos { color: var(--gold); }
-.stmt-hero-num.neg { color: #F8B4B4; }
+.stmt-hero-num.neg { color: var(--danger); }
 
-/* 储蓄率徽章:金底深字,深浅主题均保持对比 */
+/* 储蓄率徽章:金底深字 */
 .stmt-hero-badge {
   background: var(--gold);
   color: var(--navy-900);
@@ -524,12 +508,12 @@
   margin-top: 2rpx;
 }
 
-/* Hero 底部三栏:细分割线分隔 */
+/* 底部三栏 */
 .stmt-hero-grid {
   display: flex;
   margin-top: 28rpx;
   padding-top: 24rpx;
-  border-top: 1rpx solid rgba(255, 255, 255, 0.14);
+  border-top: 1rpx solid var(--border-light);
 }
 
 .shg-item {
@@ -537,20 +521,20 @@
   text-align: center;
 }
 .shg-item + .shg-item {
-  border-left: 1rpx solid rgba(255, 255, 255, 0.14);
+  border-left: 1rpx solid var(--border-light);
 }
 
 .shg-num {
   font-size: 30rpx;
   font-weight: 700;
   font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--text);
 }
 .shg-num.gold { color: var(--gold); }
 
 .shg-label {
   font-size: 20rpx;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--text-sub);
   margin-top: 6rpx;
 }
 
@@ -691,12 +675,10 @@
 }
 
 .stmt-insight {
-  background: linear-gradient(135deg, var(--navy-700), var(--navy-900));
-  color: #fff;
-  border-radius: 20rpx;
+  background: var(--input-bg);
+  border-radius: 24rpx;
   padding: 24rpx 28rpx;
   margin-top: 8rpx;
-  box-shadow: 0 8rpx 24rpx var(--shadow-strong);
 }
 
 .stmt-insight-head {
@@ -726,11 +708,12 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   flex: 1;
+  color: var(--text);
 }
 
 .stmt-insight-src {
   font-size: 20rpx;
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--text-sub);
 }
 
 /* 对话入口:通栏输入条暗示 */
@@ -738,20 +721,37 @@
   display: flex;
   align-items: center;
   margin-top: 20rpx;
-  padding: 20rpx 24rpx;
+  padding: 16rpx 22rpx;
   border-radius: 16rpx;
-  background: var(--tint-gold-16);
-  border: 1rpx solid rgba(200, 160, 77, 0.35);
+  background: var(--card);
+  border: 1rpx solid var(--border);
+}
+
+/* 账本君小头像:纯 CSS 装饰,无需改 WXML */
+.stmt-ask-bar::before {
+  content: '账';
+  width: 40rpx;
+  height: 40rpx;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--gold), #E8B85E);
+  color: var(--navy-900);
+  font-size: 20rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 14rpx;
+  flex-shrink: 0;
 }
 
 .stmt-ask-bar:active {
-  background: var(--tint-gold-18);
+  background: var(--press-bg);
 }
 
 .ask-text {
   flex: 1;
   font-size: 24rpx;
-  color: var(--gold);
+  color: var(--gold-700);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -759,7 +759,7 @@
 
 .ask-arrow {
   font-size: 32rpx;
-  color: var(--gold);
+  color: var(--gold-700);
   line-height: 1;
   padding-left: 12rpx;
 }
@@ -768,7 +768,7 @@
   font-size: 26rpx;
   line-height: 1.65;
   white-space: pre-line;
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--text);
 }
 
 .stmt-insight-loading {
@@ -776,13 +776,13 @@
   align-items: center;
   gap: 16rpx;
   white-space: nowrap;
-  color: rgba(255, 255, 255, 0.78);
+  color: var(--text-sub);
 }
 
 .stmt-insight-spinner {
   width: 28rpx;
   height: 28rpx;
-  border: 3rpx solid rgba(255, 255, 255, 0.28);
+  border: 3rpx solid var(--border);
   border-top-color: var(--gold);
   border-radius: 50%;
   animation: stmt-spin 0.9s linear infinite;
@@ -793,42 +793,67 @@
   to { transform: rotate(360deg); }
 }
 
-/* ---------- 账本君对话问答 ---------- */
+/* ---------- 账本君对话问答:深蓝 insight 卡内嵌浅色面板,卡中卡层级 ---------- */
 .stmt-chat {
-  margin-top: 16rpx;
-  border-top: 1rpx solid rgba(255, 255, 255, 0.14);
-  padding-top: 16rpx;
+  margin-top: 20rpx;
+  background: var(--card);
+  border-radius: 18rpx;
+  padding: 20rpx 20rpx 16rpx;
+  border: 1rpx solid var(--border-light);
+  box-shadow: 0 10rpx 28rpx rgba(0, 0, 0, 0.18);
 }
 
 .stmt-chat-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 24rpx;
-  color: rgba(255, 255, 255, 0.78);
-  margin-bottom: 12rpx;
+  margin-bottom: 14rpx;
+  padding-bottom: 14rpx;
+  border-bottom: 1rpx solid var(--border-light);
+  font-size: 26rpx;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* 面板标题前的账本君小头像:纯 CSS 装饰 */
+.stmt-chat-head::before {
+  content: '账';
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--gold), #E8B85E);
+  color: var(--navy-900);
+  font-size: 18rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 10rpx;
+  flex-shrink: 0;
 }
 
 .stmt-chat-close {
   font-size: 22rpx;
-  color: var(--gold);
-  padding: 4rpx 14rpx;
-  border: 1rpx solid var(--gold);
+  font-weight: 600;
+  color: var(--gold-700);
+  background: var(--tint-gold-12);
+  border: 1rpx solid var(--tint-gold-18);
+  padding: 8rpx 22rpx;
   border-radius: 999rpx;
 }
 
 .stmt-chat-close:active {
-  opacity: 0.8;
+  background: var(--tint-gold-18);
 }
 
+/* 消息滚动区:紧凑固定高度,由样式表控制(原 inline 480rpx 已移除) */
 .stmt-chat-history {
-  max-height: 480rpx;
-  min-height: 120rpx;
+  height: 340rpx;
   display: flex;
   flex-direction: column;
   gap: 12rpx;
-  margin-bottom: 14rpx;
-  padding: 4rpx 0;
+  margin-bottom: 12rpx;
+  padding: 4rpx 2rpx 8rpx;
 }
 
 .stmt-chat-msg {
@@ -836,7 +861,7 @@
   width: 100%;
   align-items: flex-start;
   /* 每条消息之间留间距(parent 的 gap 在某些情况下被覆盖,这里双保险) */
-  margin-bottom: 18rpx;
+  margin-bottom: 16rpx;
 }
 .stmt-chat-msg:last-child {
   margin-bottom: 0;
@@ -856,7 +881,7 @@
   width: 44rpx;
   height: 44rpx;
   border-radius: 50%;
-  background: var(--gold);
+  background: linear-gradient(135deg, var(--gold), #E8B85E);
   color: var(--navy-900);
   font-size: 22rpx;
   font-weight: 700;
@@ -865,6 +890,9 @@
   justify-content: center;
   flex-shrink: 0;
   margin-right: 12rpx;
+  box-shadow:
+    0 0 0 2rpx rgba(200, 160, 77, 0.22),
+    0 4rpx 10rpx var(--tint-gold-18);
 }
 
 .stmt-chat-bubble-wrap {
@@ -879,7 +907,7 @@
   max-width: 100%;
   padding: 12rpx 18rpx;
   border-radius: 14rpx;
-  font-size: 26rpx;
+  font-size: 25rpx;
   line-height: 1.5;
   white-space: pre-line;
   word-break: break-word;
@@ -890,7 +918,7 @@
   font-size: 22rpx;
   font-weight: 600;
   color: var(--gold);
-  background: rgba(200, 160, 77, 0.15);
+  background: rgba(200, 160, 77, 0.12);
   padding: 6rpx 16rpx;
   border-radius: 999rpx;
   margin-top: 8rpx;
@@ -900,20 +928,24 @@
   opacity: 0.6;
 }
 
+/* 用户气泡:香槟金渐变,右侧小尾(与首页主弹框同款) */
 .stmt-chat-msg.mine .stmt-chat-bubble {
-  background: var(--gold);
+  background: linear-gradient(135deg, var(--gold), #E8B85E);
   color: var(--navy-900);
   border-bottom-right-radius: 4rpx;
+  box-shadow: 0 4rpx 12rpx var(--tint-gold-18);
 }
 
+/* 账本君气泡:浅底细边,左侧小尾 */
 .stmt-chat-msg.his .stmt-chat-bubble {
-  background: rgba(255, 255, 255, 0.14);
-  color: rgba(255, 255, 255, 0.92);
+  background: var(--input-bg);
+  border: 1rpx solid var(--border-light);
+  color: var(--text);
   border-bottom-left-radius: 4rpx;
 }
 
 .stmt-chat-msg.his.loading {
-  color: rgba(255, 255, 255, 0.78);
+  color: var(--text-sub);
   font-size: 24rpx;
   align-items: center;
   gap: 12rpx;
@@ -923,45 +955,50 @@
   display: flex;
   gap: 12rpx;
   align-items: center;
+  padding-top: 4rpx;
 }
 
 .stmt-chat-input {
   flex: 1;
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
-  font-size: 26rpx;
-  padding: 16rpx 20rpx;
-  border-radius: 12rpx;
+  background: var(--input-bg);
+  color: var(--text);
+  border: 1rpx solid var(--border);
+  font-size: 25rpx;
+  padding: 14rpx 22rpx;
+  border-radius: 999rpx;
   min-height: 40rpx;
 }
 
 .stmt-chat-input::placeholder {
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--text-mute);
 }
 
 .stmt-chat-send {
-  background: var(--gold);
+  background: linear-gradient(135deg, var(--gold), #E8B85E);
   color: var(--navy-900);
   font-size: 24rpx;
   font-weight: 700;
-  padding: 14rpx 24rpx;
+  padding: 14rpx 26rpx;
   border-radius: 999rpx;
   flex-shrink: 0;
+  box-shadow: 0 4rpx 12rpx var(--tint-gold-18);
 }
 
 .stmt-chat-send:active {
   opacity: 0.85;
+  transform: scale(0.96);
 }
 
 .stmt-chat-send.disabled {
-  background: rgba(255, 255, 255, 0.18);
-  color: rgba(255, 255, 255, 0.4);
+  background: var(--input-bg);
+  color: var(--text-mute);
+  box-shadow: none;
 }
 
 .stmt-chat-error {
   margin-top: 8rpx;
   font-size: 22rpx;
-  color: #FFD7A8;
+  color: var(--danger);
   text-align: center;
 }
 
@@ -1150,11 +1187,11 @@
   margin-bottom: 16rpx;
 }
 
-/* 账单 sheet 内 mini-chat 输入区上方的快捷问题 chip,点一下即发 */
+/* 账单 sheet 内 mini-chat 输入区上方的快捷问题 chip,点一下即发(面板内紧凑版) */
 .stmt-quick-chip-row {
   display: flex;
   gap: 12rpx;
-  padding: 12rpx 24rpx 14rpx;
+  padding: 8rpx 0 14rpx;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }

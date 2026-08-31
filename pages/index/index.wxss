@@ -1,17 +1,191 @@
 .page {
-  padding-bottom: 200rpx;
+  /* FAB 右下角悬浮，底部需足够留白 */
+  padding-bottom: calc(160rpx + env(safe-area-inset-bottom));
 }
 
-/* 设置弹层：隐私锁 / 回收站 */
-.recycle-entry {
+/* 月度结余看板（装在与卡片流一致的 .card 内，浅色/深色均自动适配） */
+.board-card {
+  padding-top: 28rpx;
+}
+
+.board-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  margin-bottom: 8rpx;
 }
 
-.recycle-link {
-  font-size: 28rpx;
+.board-arrow {
+  width: 64rpx;
+  height: 64rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 44rpx;
+  line-height: 64rpx;
   color: var(--text-sub);
+  background: var(--input-bg);
+  border-radius: 50%;
+}
+.board-arrow:active {
+  background: var(--press-bg);
+}
+
+.board-title {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: var(--text-sub);
+  letter-spacing: 0.02em;
+}
+
+.board-balance {
+  text-align: center;
+  padding: 12rpx 0 28rpx;
+}
+
+.bb-label {
+  font-size: 24rpx;
+  color: var(--text-sub);
+}
+
+.bb-num {
+  font-size: 80rpx;
+  font-weight: 700;
+  margin-top: 6rpx;
+  font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+  letter-spacing: -0.02em;
+}
+
+.board-balance.pos .bb-num { color: var(--gold); }
+.board-balance.neg .bb-num { color: var(--danger); }
+
+.overview-grid {
+  display: flex;
+  gap: 16rpx;
+}
+
+.ov-item {
+  flex: 1;
+  text-align: center;
+  background: var(--input-bg);
+  border-radius: 16rpx;
+  padding: 18rpx 0 14rpx;
+}
+
+.ov-num {
+  font-size: 30rpx;
+  font-weight: 700;
+  font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+}
+
+.ov-num.income { color: var(--gold); }
+.ov-num.expense { color: var(--text); }
+.ov-num.repay { color: var(--text-sub); }
+
+.ov-label {
+  font-size: 22rpx;
+  color: var(--text-sub);
+  margin-top: 6rpx;
+}
+
+.board-formula {
+  margin-top: 24rpx;
+  font-size: 22rpx;
+  color: var(--text-mute);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.board-current {
+  margin-left: 12rpx;
+  background: var(--tint-gold-06);
+  color: var(--gold);
+  font-size: 20rpx;
+  font-weight: 600;
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+}
+
+/* 账单分享按钮 */
+.share-btn {
+  margin-top: 24rpx;
+  padding: 16rpx 0;
+  text-align: center;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--navy-700);
+  border: 2rpx solid var(--border);
+  border-radius: 999rpx;
+  background: var(--bg);
+}
+.share-btn:active {
+  background: var(--press-bg);
+}
+
+/* 账本君入口卡（趋势图上方，点击弹 AI 聊天框） */
+.ai-entry-card {
+  display: flex;
+  align-items: center;
+  padding: 28rpx;
+}
+.ai-entry-card:active {
+  opacity: 0.85;
+}
+.ai-entry-card .ai-entry-avatar {
+  position: relative;
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--gold), #E8B85E);
+  color: var(--navy-900);
+  font-size: 36rpx;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 4rpx var(--tint-gold-12), 0 8rpx 20rpx var(--tint-gold-18);
+}
+.ai-entry-card .ai-entry-badge {
+  position: absolute;
+  top: -6rpx;
+  right: -6rpx;
+  min-width: 30rpx;
+  height: 30rpx;
+  padding: 0 8rpx;
+  border-radius: 999rpx;
+  background: #E24B4A;
+  color: #fff;
+  font-size: 18rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  border: 3rpx solid var(--card);
+  box-sizing: border-box;
+}
+.ai-entry-text {
+  flex: 1;
+  min-width: 0;
+  margin-left: 24rpx;
+}
+.ai-entry-title {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: var(--text);
+}
+.ai-entry-sub {
+  font-size: 22rpx;
+  color: var(--text-sub);
+  margin-top: 6rpx;
+}
+.ai-entry-arrow {
+  font-size: 40rpx;
+  color: var(--text-mute);
+  line-height: 1;
+  margin-left: 8rpx;
 }
 
 /* 收支趋势图 */
@@ -47,84 +221,8 @@
   width: 100%;
   height: 340rpx;
   display: block;
-  /* 显式建层,避免部分机型把 type="2d" canvas 当 native 组件渲染,盖住下方悬浮按钮 */
   position: relative;
   z-index: 1;
-}
-
-/* 顶部用户栏 — 深蓝金融质感头部 */
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: linear-gradient(135deg, var(--navy-700), var(--navy-900));
-  padding: 28rpx 32rpx 36rpx;
-  margin: 0;
-  border-radius: 0 0 32rpx 32rpx;
-  color: #fff;
-  box-shadow: 0 12rpx 32rpx var(--shadow-strong);
-}
-
-.user {
-  display: flex;
-  align-items: center;
-  flex: 1;
-  min-width: 0;
-}
-
-.avatar {
-  width: 88rpx;
-  height: 88rpx;
-  border-radius: 50%;
-  background: var(--gold);
-  flex-shrink: 0;
-  border: 2rpx solid rgba(255, 255, 255, 0.25);
-  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.15);
-}
-
-.avatar.placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-size: 40rpx;
-  font-weight: 700;
-}
-
-.user-meta {
-  margin-left: 20rpx;
-  min-width: 0;
-}
-
-.nick {
-  font-size: 34rpx;
-  font-weight: 700;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  letter-spacing: 0.01em;
-}
-
-.sub {
-  font-size: 24rpx;
-  color: rgba(255, 255, 255, 0.72);
-  margin-top: 6rpx;
-}
-
-.remind-btn {
-  flex-shrink: 0;
-  margin-left: 20rpx;
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
-  font-size: 24rpx;
-  font-weight: 600;
-  padding: 12rpx 24rpx;
-  border-radius: 999rpx;
-  border: 1rpx solid rgba(255, 255, 255, 0.35);
-  backdrop-filter: blur(4rpx);
-}
-.remind-btn:active {
-  background: rgba(255, 255, 255, 0.18);
 }
 
 /* 今天要处理 */
@@ -133,7 +231,7 @@
   align-items: center;
   justify-content: space-between;
   background: var(--input-bg);
-  border-radius: 18rpx;
+  border-radius: 16rpx;
   padding: 22rpx;
   margin-bottom: 16rpx;
   border-left: 8rpx solid transparent;
@@ -382,65 +480,6 @@
   margin-left: 12rpx;
 }
 
-/* 问问账本君 入口卡（让用户发现 AI 能力） */
-.ai-card {
-  display: flex;
-  align-items: center;
-}
-.ai-card-ico {
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--gold), #E8B85E);
-  color: var(--navy-900);
-  font-size: 30rpx;
-  font-weight: 800;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-right: 20rpx;
-  flex-shrink: 0;
-  box-shadow: 0 4rpx 12rpx rgba(200, 160, 77, 0.3);
-}
-.ai-card-body {
-  flex: 1;
-  min-width: 0;
-}
-.ai-card-title {
-  font-size: 30rpx;
-  font-weight: 700;
-  color: var(--text);
-  margin-bottom: 4rpx;
-}
-.ai-card-sub {
-  font-size: 22rpx;
-  color: var(--text-sub);
-}
-.ai-card-arrow {
-  font-size: 40rpx;
-  color: var(--text-mute);
-  line-height: 1;
-  padding-left: 16rpx;
-  flex-shrink: 0;
-}
-/* 入口卡未读红点:账本君有主动询问时显示 */
-.ai-card { position: relative; }
-.ai-card-badge {
-  min-width: 36rpx;
-  height: 36rpx;
-  padding: 0 12rpx;
-  border-radius: 999rpx;
-  background: var(--danger);
-  color: #fff;
-  font-size: 22rpx;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
-  flex-shrink: 0;
-}
-
 /* 预算预警 */
 .budget-alert {
   display: flex;
@@ -474,166 +513,6 @@
 .budget-alert.over .ba-text { color: var(--danger); font-weight: 600; }
 .budget-alert.warn .ba-text { color: var(--warn); font-weight: 600; }
 
-/* 月度结余看板 */
-.board-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8rpx;
-}
-
-.board-arrow {
-  width: 64rpx;
-  height: 64rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 44rpx;
-  line-height: 64rpx;
-  color: var(--text-sub);
-  background: var(--chip-bg);
-  border-radius: 50%;
-}
-.board-arrow:active {
-  background: var(--press-bg);
-}
-
-.board-title {
-  font-size: 30rpx;
-  font-weight: 700;
-  color: var(--text);
-}
-
-.board-balance {
-  text-align: center;
-  padding: 12rpx 0 28rpx;
-}
-
-.bb-label {
-  font-size: 24rpx;
-  color: var(--text-sub);
-}
-
-.bb-num {
-  font-size: 68rpx;
-  font-weight: 800;
-  margin-top: 6rpx;
-  font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
-  letter-spacing: -0.02em;
-}
-
-.board-balance.pos .bb-num { color: var(--gold); }
-.board-balance.neg .bb-num { color: var(--danger); }
-
-.overview-grid {
-  display: flex;
-  padding-top: 24rpx;
-  border-top: 1rpx solid var(--border-light);
-}
-
-.ov-item {
-  flex: 1;
-  text-align: center;
-}
-
-.ov-num {
-  font-size: 32rpx;
-  font-weight: 800;
-  font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
-}
-
-.ov-num.income { color: var(--gold); }
-.ov-num.expense { color: var(--text); }
-.ov-num.repay { color: var(--navy-600); }
-
-.ov-label {
-  font-size: 24rpx;
-  color: var(--text-sub);
-  margin-top: 8rpx;
-}
-
-.board-formula {
-  margin-top: 20rpx;
-  padding-top: 16rpx;
-  border-top: 1rpx solid var(--border-light);
-  font-size: 22rpx;
-  color: var(--text-sub);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.board-current {
-  margin-left: 12rpx;
-  background: var(--navy-700);
-  color: #fff;
-  font-size: 20rpx;
-  font-weight: 600;
-  padding: 4rpx 14rpx;
-  border-radius: 999rpx;
-}
-
-/* 设置弹层 */
-.avatar-row {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 8rpx 0 16rpx;
-}
-
-.avatar-btn {
-  background: transparent;
-  padding: 0;
-  margin: 0;
-  line-height: 1;
-  border-radius: 50%;
-}
-.avatar-btn::after { border: none; }
-
-.avatar-lg {
-  width: 128rpx;
-  height: 128rpx;
-  border-radius: 50%;
-  background: var(--gold);
-  border: 2rpx solid var(--border-light);
-}
-
-.avatar-lg.placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-size: 48rpx;
-  font-weight: 700;
-}
-
-.avatar-tip {
-  font-size: 24rpx;
-  color: var(--text-sub);
-  margin-top: 12rpx;
-}
-
-.clear-btn {
-  margin-top: 16rpx;
-}
-
-/* 账单分享按钮 */
-.share-btn {
-  margin-top: 20rpx;
-  padding: 16rpx 0;
-  text-align: center;
-  font-size: 26rpx;
-  font-weight: 600;
-  color: var(--gold);
-  border: 2rpx solid var(--gold);
-  border-radius: 16rpx;
-  background: var(--tint-gold-06);
-}
-
-.share-btn:active {
-  background: var(--tint-gold-16);
-}
-
 /* 分享弹层（居中对话框） */
 .share-pop {
   position: fixed;
@@ -643,7 +522,7 @@
   z-index: 100;
   width: 640rpx;
   background: var(--card);
-  border-radius: 32rpx;
+  border-radius: 28rpx;
   padding: 32rpx 32rpx calc(28rpx + env(safe-area-inset-bottom));
   animation: shareIn 0.26s cubic-bezier(0.32, 0.72, 0.34, 1);
 }
@@ -688,38 +567,66 @@
 
 /* 账本君 AI 助理 chat sheet */
 .ai-chat-sheet {
-  /* height / padding-bottom 由 inline style 控制:
-     - 默认 80vh + safe-area-inset-bottom(键盘关闭时)
-     - 键盘弹起时:height 收缩到 (screenHeight - safeArea.top - h),sheet 顶部 ≈ 状态栏底
-                   + padding-bottom:0(键盘就是底,不需要安全区)
-     关键:用 height 而不是 max-height —— max-height 只限制最大值,内容少时 sheet
-     高度 = 内容总高度(底部贴键盘顶但 sheet 没填满空间,看着像「被顶得很高」在屏幕中段);
-     height 强制 sheet 占满整个空间,内容少时 scroll-view 内部留白
-     另:iOS 微信 position:fixed bottom:0 在键盘弹起时会自动避开键盘,不需要 transform */
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  /* 键盘弹起/收起时平滑过渡 height */
   transition: height 0.18s ease;
+  padding: 0;
+  box-sizing: border-box;
 }
+
+/* ---- 头部标题栏:通栏深蓝渐变条,IP 专属对话头部 ---- */
 .ai-chat-title {
   display: flex;
   align-items: center;
-  margin-bottom: 20rpx;
+  margin: 0;
+  padding: 26rpx 28rpx 24rpx;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 40%),
+    linear-gradient(135deg, var(--navy-700), var(--navy-900));
+  color: #fff;
+  flex-shrink: 0;
+  position: relative;
+}
+.ai-chat-title::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2rpx;
+  background: linear-gradient(90deg, transparent, rgba(200, 160, 77, 0.55), transparent);
 }
 .ai-chat-avatar {
-  width: 64rpx;
-  height: 64rpx;
+  position: relative;
+  width: 72rpx;
+  height: 72rpx;
   border-radius: 50%;
   background: linear-gradient(135deg, var(--gold), #E8B85E);
   color: var(--navy-900);
-  font-size: 28rpx;
+  font-size: 30rpx;
   font-weight: 800;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-right: 16rpx;
+  margin-right: 18rpx;
   flex-shrink: 0;
+  box-shadow:
+    0 0 0 4rpx rgba(255, 255, 255, 0.14),
+    0 8rpx 20rpx rgba(0, 0, 0, 0.28);
+}
+/* 头像右下角在线状态点(纯 CSS 装饰,无功能) */
+.ai-chat-title .ai-chat-avatar::after {
+  content: '';
+  position: absolute;
+  right: -2rpx;
+  bottom: -2rpx;
+  width: 16rpx;
+  height: 16rpx;
+  border-radius: 50%;
+  background: #3FCF7E;
+  border: 3rpx solid rgba(255, 255, 255, 0.85);
+  box-sizing: content-box;
 }
 .ai-chat-title-text {
   flex: 1;
@@ -728,45 +635,57 @@
 .ai-chat-title-main {
   font-size: 32rpx;
   font-weight: 800;
-  color: var(--text);
+  color: #fff;
+  letter-spacing: 0.02em;
 }
 .ai-chat-title-sub {
   font-size: 22rpx;
-  color: var(--text-sub);
-  margin-top: 2rpx;
+  color: rgba(255, 255, 255, 0.66);
+  margin-top: 3rpx;
 }
+/* 清空:半透明白胶囊,头部场景专用 */
 .ai-chat-clear {
-  font-size: 24rpx;
-  color: var(--text-sub);
-  padding: 8rpx 16rpx;
+  font-size: 22rpx;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+  padding: 10rpx 20rpx;
   border-radius: 999rpx;
-  background: var(--input-bg);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1rpx solid rgba(255, 255, 255, 0.16);
   flex-shrink: 0;
-  margin-right: 8rpx;
+  margin-right: 10rpx;
+}
+.ai-chat-clear:active {
+  background: rgba(255, 255, 255, 0.22);
 }
 
 /* 显式关闭按钮:避免 sheet 太顶时无法点 mask 关闭 */
 .ai-chat-close {
-  font-size: 32rpx;
+  font-size: 28rpx;
   font-weight: 300;
-  color: var(--text-sub);
-  width: 56rpx;
-  height: 56rpx;
+  color: rgba(255, 255, 255, 0.92);
+  width: 60rpx;
+  height: 60rpx;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: var(--input-bg);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1rpx solid rgba(255, 255, 255, 0.16);
   flex-shrink: 0;
   line-height: 1;
+}
+.ai-chat-close:active {
+  background: rgba(255, 255, 255, 0.24);
 }
 
 /* 上次会话摘要 */
 .ai-chat-last {
   background: var(--input-bg);
-  border-radius: 14rpx;
+  border: 1rpx solid var(--border-light);
+  border-radius: 16rpx;
   padding: 16rpx 20rpx;
-  margin-bottom: 16rpx;
+  margin: 16rpx 28rpx;
 }
 .ai-chat-last-label {
   font-size: 20rpx;
@@ -799,7 +718,8 @@
   font-size: 22rpx;
   color: var(--text-sub);
   line-height: 1.5;
-  background: var(--card-bg);
+  background: var(--card);
+  border: 1rpx solid var(--border-light);
   padding: 8rpx 14rpx;
   border-radius: 12rpx;
   max-width: 70%;
@@ -808,25 +728,27 @@
 
 /* 主对话历史 */
 .ai-chat-history {
-  /* 不再写死 height:56vh,由 flex:1 自动填满 sheet 剩余空间;min-height:0 让 scroll-view 能真正拿到剩余高度 */
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  padding: 12rpx 28rpx 18rpx;
+  box-sizing: border-box;
 }
 .ai-chat-msg {
   display: flex;
   align-items: flex-start;
-  margin-bottom: 14rpx;
+  margin-bottom: 18rpx;
 }
 .ai-chat-msg.mine {
   justify-content: flex-end;
 }
+/* 账本君气泡头像:金色渐变 + 白色细描边 + 微光,与头部头像同源 */
 .ai-chat-msg .chat-avatar {
   width: 56rpx;
   height: 56rpx;
   border-radius: 50%;
-  background: var(--gold);
+  background: linear-gradient(135deg, var(--gold), #E8B85E);
   color: var(--navy-900);
   font-size: 26rpx;
   font-weight: 700;
@@ -835,6 +757,9 @@
   justify-content: center;
   margin-right: 12rpx;
   flex-shrink: 0;
+  box-shadow:
+    0 0 0 2rpx rgba(200, 160, 77, 0.22),
+    0 4rpx 12rpx var(--tint-gold-18);
 }
 .ai-chat-bubble-wrap {
   display: flex;
@@ -844,12 +769,27 @@
   min-width: 0;
 }
 .ai-chat-bubble {
-  font-size: 26rpx;
+  font-size: 27rpx;
   line-height: 1.6;
-  padding: 16rpx 20rpx;
-  border-radius: 16rpx;
+  padding: 18rpx 22rpx;
+  border-radius: 20rpx;
   word-break: break-word;
   white-space: pre-wrap;
+}
+/* 用户气泡:香槟金渐变,右侧小尾,浮起感 */
+.ai-chat-msg.mine .ai-chat-bubble {
+  background: linear-gradient(135deg, var(--gold), #E8B85E);
+  color: var(--navy-900);
+  border-top-right-radius: 6rpx;
+  box-shadow: 0 6rpx 18rpx var(--tint-gold-18);
+}
+/* 账本君气泡:白底细边,左侧小尾 */
+.ai-chat-msg.his .ai-chat-bubble {
+  background: var(--card);
+  border: 1rpx solid var(--border-light);
+  color: var(--text);
+  border-top-left-radius: 6rpx;
+  box-shadow: 0 4rpx 14rpx var(--shadow-card);
 }
 /* 账本君记账成功后的 5s 撤销气泡(assistant 消息下方小 chip) */
 .ai-chat-undo {
@@ -866,15 +806,25 @@
 .ai-chat-undo-hover {
   opacity: 0.6;
 }
-.ai-chat-msg.mine .ai-chat-bubble {
-  background: var(--gold);
-  color: var(--navy-900);
-  border-top-right-radius: 4rpx;
+/* 「再记一次」快捷确认:与撤销气泡同色系,虚线边框区分"待确认"状态 */
+.ai-chat-reconfirm {
+  align-self: flex-start;
+  font-size: 22rpx;
+  font-weight: 600;
+  color: var(--gold);
+  background: rgba(200, 160, 77, 0.12);
+  padding: 6rpx 16rpx;
+  border-radius: 999rpx;
+  margin-top: 8rpx;
+  border: 1rpx dashed rgba(200, 160, 77, 0.45);
 }
-.ai-chat-msg.his .ai-chat-bubble {
-  background: var(--input-bg);
-  color: var(--text);
-  border-top-left-radius: 4rpx;
+.ai-chat-msg.loading {
+  align-items: center;
+}
+.ai-chat-msg.loading text {
+  font-size: 24rpx;
+  color: var(--text-mute);
+  line-height: 1;
 }
 .ai-chat-msg.loading .ai-chat-spinner {
   width: 28rpx;
@@ -890,54 +840,73 @@
   to { transform: rotate(360deg); }
 }
 
-/* 输入框 */
+/* 输入框:底部操作栏(白底 + 顶部分割线,贴安全区) */
 .ai-chat-input-row {
   display: flex;
   align-items: center;
-  gap: 12rpx;
-  padding: 16rpx 0 8rpx;
+  gap: 14rpx;
+  padding: 18rpx 28rpx calc(18rpx + env(safe-area-inset-bottom));
   border-top: 1rpx solid var(--border);
-  margin-top: 8rpx;
+  margin-top: 0;
+  background: var(--card);
+  flex-shrink: 0;
 }
 .ai-chat-input {
   flex: 1;
   background: var(--input-bg);
+  border: 1rpx solid var(--border);
   border-radius: 999rpx;
-  padding: 16rpx 24rpx;
-  font-size: 26rpx;
+  padding: 18rpx 26rpx;
+  font-size: 27rpx;
   min-height: 40rpx;
+  color: var(--text);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.ai-chat-input::placeholder {
+  color: var(--text-mute);
+}
+.ai-chat-input:focus {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: 0 0 0 4rpx var(--tint-gold-12);
 }
 .ai-chat-send {
-  font-size: 26rpx;
+  font-size: 27rpx;
   font-weight: 700;
   color: var(--navy-900);
-  /* 用 gold 渐变(同 avatar),比单色 gold 更显眼;不要用 btn-primary 的深蓝,跟品牌色冲突 */
   background: linear-gradient(135deg, var(--gold), #E8B85E);
-  padding: 14rpx 28rpx;
+  padding: 16rpx 32rpx;
   border-radius: 999rpx;
   flex-shrink: 0;
-  transition: background 0.15s ease, color 0.15s ease;
+  box-shadow: 0 6rpx 16rpx var(--tint-gold-18);
+  transition: background 0.15s ease, color 0.15s ease, transform 0.08s ease;
+}
+.ai-chat-send:active {
+  transform: scale(0.96);
+  opacity: 0.9;
 }
 .ai-chat-send.disabled {
-  /* 不用 opacity:0.4(置灰程度不够明显),改用 input-bg 灰底 + text-mute 灰字,跟可点击态视觉拉开 */
   background: var(--input-bg);
   color: var(--text-mute);
+  box-shadow: none;
 }
 
 .ai-chat-error {
   text-align: center;
   font-size: 22rpx;
   color: var(--danger);
-  padding: 8rpx 0;
+  padding: 6rpx 28rpx 4rpx;
+  background: var(--card);
 }
 
 /* 账本君主动询问气泡(订阅消息推送后展示) */
 .ai-chat-pending {
   padding: 20rpx 24rpx 18rpx;
-  margin: 16rpx 24rpx;
+  margin: 16rpx 28rpx;
   background: linear-gradient(135deg, var(--gold-light), #fff8e7);
-  border-radius: 16rpx;
-  border: 2rpx solid var(--gold-light);
+  border-radius: 20rpx;
+  border: 1rpx solid var(--gold-light);
+  box-shadow: 0 6rpx 20rpx var(--tint-gold-12);
 }
 .ai-chat-pending-label {
   display: flex;
@@ -973,9 +942,9 @@
 /* 首次引导卡:让账本君主动关心你(未订阅时提示一次) */
 .ai-chat-prompt-card {
   padding: 20rpx 24rpx 18rpx;
-  margin: 16rpx 24rpx;
+  margin: 16rpx 28rpx;
   background: var(--card);
-  border-radius: 16rpx;
+  border-radius: 20rpx;
   border: 2rpx dashed var(--gold-light);
 }
 .ai-chat-prompt-title {
@@ -1011,9 +980,8 @@
 .ai-quick-chip-row {
   display: flex;
   gap: 16rpx;
-  padding: 12rpx 24rpx 14rpx;
+  padding: 14rpx 28rpx 12rpx;
   overflow-x: auto;
-  /* 隐藏滚动条(部分平台) */
   -webkit-overflow-scrolling: touch;
 }
 .ai-quick-chip-row::-webkit-scrollbar {

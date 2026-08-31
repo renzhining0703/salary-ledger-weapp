@@ -1,4 +1,11 @@
 <view class="page {{pageLocked ? 'page-locked' : ''}}">
+  <!-- 自定义导航栏（navigationStyle: custom），跟随系统主题 -->
+  <view class="navbar" style="padding-top: {{statusBarHeight}}px;">
+    <view class="navbar-inner">
+      <view class="navbar-title">记账</view>
+    </view>
+  </view>
+
   <!-- 骨架屏 -->
   <view wx:if="{{loading}}" class="sk-wrap">
     <view class="sk-card">
@@ -40,7 +47,10 @@
       <view class="budget-bar">
         <view class="budget-fill {{budgetOver ? 'over' : ''}}" style="width: {{budgetPercent}}%"></view>
       </view>
-      <view wx:if="{{budgetOver}}" class="over-tip">⚠️ 已超支 {{overAmount}}</view>
+      <view wx:if="{{budgetOver}}" class="over-tip">
+        <view class="over-icon">!</view>
+        <text>已超支 {{overAmount}}</text>
+      </view>
       <view class="compare-row">上月同期：{{lastMonthTotal}}</view>
       <view class="statement-link" bindtap="openStatement">
         <view class="stmt-ico">
@@ -326,7 +336,7 @@
           <text>问问账本君</text>
           <view class="stmt-chat-close" bindtap="closeChat">收起</view>
         </view>
-        <scroll-view class="stmt-chat-history" scroll-y="{{true}}" scroll-into-view="{{chatScrollIntoView}}" scroll-with-animation="{{true}}" style="height: 480rpx;">
+        <scroll-view class="stmt-chat-history" scroll-y="{{true}}" scroll-into-view="{{chatScrollIntoView}}" scroll-with-animation="{{true}}">
           <block wx:for="{{chatMessages}}" wx:key="ts" wx:for-item="m">
             <view id="msg-{{m.ts}}" class="stmt-chat-msg {{m.role === 'user' ? 'mine' : 'his'}}">
               <view wx:if="{{m.role === 'assistant'}}" class="chat-avatar">账</view>

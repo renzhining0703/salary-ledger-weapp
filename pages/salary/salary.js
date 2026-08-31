@@ -25,6 +25,11 @@ Page({
     sourceLabels: { main: '主业', side: '副业' }
   },
 
+  onLoad() {
+    // 自定义导航栏（navigationStyle: custom）：状态栏高度需 JS 注入
+    this.setData({ statusBarHeight: wx.getWindowInfo().statusBarHeight || 44 })
+  },
+
   onShow() {
     util.checkLock()
     this.loadData()

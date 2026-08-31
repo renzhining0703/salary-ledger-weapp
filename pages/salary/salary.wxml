@@ -1,4 +1,11 @@
 <view class="page">
+  <!-- 自定义导航栏（navigationStyle: custom），跟随系统主题 -->
+  <view class="navbar" style="padding-top: {{statusBarHeight}}px;">
+    <view class="navbar-inner">
+      <view class="navbar-title">工资</view>
+    </view>
+  </view>
+
   <!-- 骨架屏 -->
   <view wx:if="{{loading}}" class="sk-wrap">
     <view class="sk-card">
@@ -30,7 +37,6 @@
         <text class="sc-num">{{countdown.days}}</text>
         <text class="sc-unit">天</text>
       </view>
-      <view class="sc-edit" bindtap="openPayday">每月{{countdown.payday}}号发薪 · 修改</view>
     </view>
 
     <!-- 年度累计 -->

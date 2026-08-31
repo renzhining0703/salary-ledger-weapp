@@ -2,30 +2,22 @@
   padding-bottom: 160rpx;
 }
 
-/* 发薪倒计时 — 顶部氛围卡片 */
+/* 发薪倒计时卡片（与全局卡片流统一，浅色/深色自动适配） */
 .salary-count {
-  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: linear-gradient(135deg, var(--navy-700), var(--navy-900));
-  border-radius: 0 0 32rpx 32rpx;
-  padding: 36rpx 32rpx 92rpx;
-  margin: 0 0 24rpx;
-  color: #fff;
-  box-shadow: 0 12rpx 32rpx var(--shadow-strong);
-  border: none;
 }
 
 .sc-label {
-  color: #fff;
   font-size: 30rpx;
   font-weight: 700;
+  color: var(--text);
 }
 
 .sc-sub {
-  color: rgba(255, 255, 255, 0.72);
   font-size: 24rpx;
+  color: var(--text-sub);
   margin-top: 8rpx;
 }
 
@@ -43,21 +35,9 @@
 }
 
 .sc-unit {
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--text-sub);
   font-size: 28rpx;
   margin-left: 8rpx;
-}
-
-.sc-edit {
-  position: absolute;
-  left: 32rpx;
-  bottom: 24rpx;
-  color: rgba(255, 255, 255, 0.95);
-  font-size: 24rpx;
-  padding: 8rpx 22rpx;
-  border: 1rpx solid rgba(255, 255, 255, 0.35);
-  border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.08);
 }
 
 /* 年度累计 */
@@ -145,38 +125,4 @@
   padding: 8rpx;
 }
 
-/* 悬浮添加 */
-.fab {
-  position: fixed;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: calc(48rpx + env(safe-area-inset-bottom));
-  background: linear-gradient(135deg, var(--navy-700), var(--navy-900));
-  color: #fff;
-  font-size: 30rpx;
-  font-weight: 600;
-  padding: 24rpx 56rpx;
-  border-radius: 999rpx;
-  box-shadow: 0 12rpx 32rpx var(--shadow-strong);
-  z-index: 50;
-}
-.fab:active {
-  transform: translateX(-50%) scale(0.98);
-  opacity: 0.94;
-}
-
-.picker-val {
-  display: flex;
-  align-items: center;
-  color: var(--text);
-}
-
-.form-tip {
-  font-size: 22rpx;
-  color: var(--text-sub);
-  margin-top: 8rpx;
-}
-
-.sheet-actions {
-  margin-top: 32rpx;
-}
+/* 悬浮添加按钮样式见 app.wxss 全局 .fab */

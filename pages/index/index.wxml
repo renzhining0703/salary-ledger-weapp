@@ -1,15 +1,41 @@
 <view class="page" bindtap="onPageTap">
-  <!-- 顶部用户栏 -->
-  <view class="header">
-    <view class="user" bindtap="openProfile">
-      <image wx:if="{{user.avatarUrl}}" class="avatar" src="{{user.avatarUrl}}" mode="aspectFill" />
-      <view wx:else class="avatar placeholder">薪</view>
-      <view class="user-meta">
-        <view class="nick">{{user.nickname || '未设置昵称'}}</view>
-        <view class="sub">每月{{user.payday || 15}}号发薪 · 月预算 ¥{{user.budget || 4000}}</view>
+  <!-- 自定义导航栏（navigationStyle: custom），浅色白底 / 深色深蓝底 -->
+  <view class="navbar" style="padding-top: {{statusBarHeight}}px;">
+    <view class="navbar-inner">
+      <view class="navbar-title">首页</view>
+    </view>
+  </view>
+
+  <!-- 月度结余看板（白色/深色卡片，与下方卡片流视觉统一） -->
+  <view class="card board-card">
+    <view class="board-head">
+      <view class="board-arrow" bindtap="prevMonth">‹</view>
+      <view class="board-title">{{board.monthText}} 结余</view>
+      <view class="board-arrow" bindtap="nextMonth">›</view>
+    </view>
+    <view class="board-balance {{board.balancePositive ? 'pos' : 'neg'}}">
+      <text class="bb-label">本月结余</text>
+      <view class="bb-num">{{board.balance}}</view>
+    </view>
+    <view class="overview-grid">
+      <view class="ov-item">
+        <view class="ov-num income">{{board.income}}</view>
+        <view class="ov-label">收入</view>
+      </view>
+      <view class="ov-item">
+        <view class="ov-num expense">{{board.expense}}</view>
+        <view class="ov-label">支出</view>
+      </view>
+      <view class="ov-item">
+        <view class="ov-num repay">{{board.repay}}</view>
+        <view class="ov-label">已还</view>
       </view>
     </view>
-    <view class="remind-btn" bindtap="subscribeRemind">还款提醒</view>
+    <view class="board-formula">
+      收入 − 支出 − 已还 = 结余
+      <text wx:if="{{board.isThisMonth}}" class="board-current">当前月</text>
+    </view>
+    <view class="share-btn" bindtap="openShare">生成账单卡片</view>
   </view>
 
   <!-- 今天要处理（置顶；无事项时整张卡隐藏，避免噪音） -->
@@ -55,47 +81,17 @@
     <view class="ba-text">{{budgetAlert.text}}</view>
   </view>
 
-  <!-- 月度结余看板 -->
-  <view class="card">
-    <view class="board-head">
-      <view class="board-arrow" bindtap="prevMonth">‹</view>
-      <view class="board-title">{{board.monthText}} 结余</view>
-      <view class="board-arrow" bindtap="nextMonth">›</view>
+  <!-- 账本君入口卡：点击弹出 AI 聊天框（未读红点提示主动询问） -->
+  <view class="card ai-entry-card" bindtap="goAskAI">
+    <view class="ai-entry-avatar">
+      账
+      <view wx:if="{{aiUnread > 0}}" class="ai-entry-badge">{{aiUnread > 9 ? '9+' : aiUnread}}</view>
     </view>
-    <view class="board-balance {{board.balancePositive ? 'pos' : 'neg'}}">
-      <text class="bb-label">本月结余</text>
-      <view class="bb-num">{{board.balance}}</view>
+    <view class="ai-entry-text">
+      <view class="ai-entry-title">问问账本君</view>
+      <view class="ai-entry-sub">记账、查账、还款，一句话搞定</view>
     </view>
-    <view class="overview-grid">
-      <view class="ov-item">
-        <view class="ov-num income">{{board.income}}</view>
-        <view class="ov-label">收入</view>
-      </view>
-      <view class="ov-item">
-        <view class="ov-num expense">{{board.expense}}</view>
-        <view class="ov-label">支出</view>
-      </view>
-      <view class="ov-item">
-        <view class="ov-num repay">{{board.repay}}</view>
-        <view class="ov-label">已还</view>
-      </view>
-    </view>
-    <view class="board-formula">
-      收入 − 支出 − 已还 = 结余
-      <text wx:if="{{board.isThisMonth}}" class="board-current">当前月</text>
-    </view>
-    <view class="share-btn" bindtap="openShare">生成账单卡片</view>
-  </view>
-
-  <!-- 问问账本君：让用户发现 AI 问答功能（核心差异化能力，置于趋势图之前保证首屏可见） -->
-  <view class="card ai-card" bindtap="goAskAI">
-    <view class="ai-card-ico">账</view>
-    <view class="ai-card-body">
-      <view class="ai-card-title">跟账本君说</view>
-      <view class="ai-card-sub">记账 · 分析 · 查明细，一句话搞定</view>
-    </view>
-    <view wx:if="{{aiUnread > 0}}" class="ai-card-badge">{{aiUnread > 9 ? '9+' : aiUnread}}</view>
-    <view wx:else class="ai-card-arrow">›</view>
+    <view class="ai-entry-arrow">›</view>
   </view>
 
   <!-- 近 6 个月收支趋势 -->
@@ -108,67 +104,12 @@
         <view class="lg"><view class="dot dot-balance"></view>结余</view>
       </view>
     </view>
-    <canvas type="2d" id="trendCanvas" class="trend-canvas" wx:if="{{!trendEmpty && !showProfile && !showShare && !showAiChat}}"></canvas>
+    <canvas type="2d" id="trendCanvas" class="trend-canvas" wx:if="{{!trendEmpty && !showShare && !showAiChat}}"></canvas>
     <view wx:elif="{{trendEmpty}}" class="empty">近 6 个月暂无收支数据</view>
   </view>
 
   <!-- 记一笔快捷入口 -->
   <view class="quick-add" catchtap="quickExpense">＋</view>
-
-  <!-- 设置弹层 -->
-  <view wx:if="{{showProfile}}" class="mask {{showProfileClosing ? 'mask-out' : ''}}" bindtap="closeProfile"></view>
-  <view wx:if="{{showProfile}}" class="sheet {{showProfileClosing ? 'sheet-out' : ''}}">
-    <view class="sheet-title">个人设置</view>
-
-    <view class="form-item avatar-row">
-      <button class="avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
-        <image wx:if="{{formAvatar}}" class="avatar-lg" src="{{formAvatar}}" mode="aspectFill" />
-        <view wx:else class="avatar-lg placeholder">选</view>
-      </button>
-      <view class="avatar-tip">点击选择微信头像</view>
-    </view>
-
-    <view class="form-item">
-      <text class="form-label">昵称</text>
-      <input class="form-input" type="nickname" placeholder="填写昵称（自愿）" value="{{formNickname}}" bindinput="onNickInput" />
-    </view>
-
-    <view class="form-item">
-      <text class="form-label">每月发薪日</text>
-      <picker mode="selector" range="{{paydayRange}}" value="{{formPayday - 1}}" bindchange="onPaydayChange">
-        <view class="form-input picker-val">每月 {{formPayday}} 号</view>
-      </picker>
-    </view>
-
-    <view class="form-item">
-      <text class="form-label">每月开销预算（元）</text>
-      <input class="form-input" type="number" placeholder="如 4000" value="{{formBudget}}" bindinput="onBudgetInput" />
-    </view>
-
-    <view class="form-item">
-      <text class="form-label">隐私锁</text>
-      <picker range="{{privacyOptions}}" value="{{privacyIndex}}" bindchange="onPrivacyChange">
-        <view class="form-input picker-val">{{privacyOptions[privacyIndex]}}</view>
-      </picker>
-    </view>
-
-    <view class="form-item">
-      <text class="form-label">账本君主动询问</text>
-      <switch checked="{{user.salaryRemindSubscribed === true}}"
-              bindchange="onSalaryRemindToggle" color="#C8A04D" />
-    </view>
-    <view class="form-tip">发薪日附近账本君会主动问你工资到账没,可随时关闭</view>
-
-    <view class="form-item recycle-entry" bindtap="openRecycle">
-      <text class="form-label">回收站</text>
-      <view class="recycle-link">已删记录保留 {{recycleDays}} 天 ›</view>
-    </view>
-
-    <view class="sheet-actions">
-      <view class="btn btn-primary" bindtap="saveProfile">保存设置</view>
-      <view class="btn btn-danger clear-btn" bindtap="clearData">重置全部数据</view>
-    </view>
-  </view>
 
   <!-- 月度账单分享弹层 -->
   <view wx:if="{{showShare}}" class="mask {{showShareClosing ? 'mask-out' : ''}}" bindtap="closeShare"></view>
@@ -274,6 +215,9 @@
               <text wx:elif="{{m.toolResult.type === 'salary'}}">工资 ¥{{m.toolResult.salary.amount}} · {{m.undoCountdown}}s 内撤销</text>
               <text wx:elif="{{m.toolResult.expense}}">{{m.toolResult.expense.category}} ¥{{m.toolResult.expense.amount}} · {{m.undoCountdown}}s 内撤销</text>
             </view>
+            <!-- 账本君提示"已记过,是否再记" → 一键确认再记(点击即以"再记"回复,云函数 force=true 写入) -->
+            <view wx:if="{{m.needsConfirm && !m.undone}}" class="ai-chat-reconfirm"
+                  bindtap="onReRecord" data-msg-ts="{{m.ts}}" hover-class="ai-chat-undo-hover">再记一次</view>
           </view>
         </view>
       </block>

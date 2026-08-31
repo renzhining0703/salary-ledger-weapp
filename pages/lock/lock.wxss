@@ -52,7 +52,7 @@
   padding: 60rpx 80rpx;
   border-radius: 24rpx;
   background: var(--card, #fff);
-  box-shadow: 0 8rpx 24rpx var(--tint-navy-08);
+  box-shadow: 0 8rpx 24rpx var(--shadow-card);
 }
 
 .finger-btn:active {

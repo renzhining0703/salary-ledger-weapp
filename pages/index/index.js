@@ -23,20 +23,10 @@ const WELCOME_MESSAGE = `你好,我是账本君,你的 AI 财务助理
 Page({
   data: {
     user: null,
-    recycleDays: config.RECYCLE_DAYS,
     todoList: [],
     boardMonth: '',          // 当前查看的月份，如 2026-08
     board: null,             // 月度结余看板
     budgetAlert: null,       // 预算预警 { type: 'over'|'warn', text }
-    showProfile: false,
-    saving: false,
-    privacyOptions: ['关闭', '手势图案', '指纹解锁'],
-    privacyIndex: 0,
-    formAvatar: '',
-    formNickname: '',
-    formPayday: 15,
-    formBudget: '4000',
-    paydayRange: Array.from({ length: 31 }, (_, i) => i + 1),
     // 账单分享卡片
     showShare: false,
     showShareClosing: false,
@@ -66,6 +56,11 @@ Page({
     aiUnread: 0,                       // 入口卡未读红点计数(单条询问 = 1)
     showAiAskPrompt: false,            // 首次进入 sheet 引导用户订阅的提示卡
     quickChips: ['哪个分类花最多', '还剩多少预算', '最近买了啥']  // 输入框上方常驻 chip,点一下即发
+  },
+
+  onLoad() {
+    // 自定义导航栏（navigationStyle: custom）：状态栏高度需 JS 注入
+    this.setData({ statusBarHeight: wx.getWindowInfo().statusBarHeight || 44 })
   },
 
   onShow(options) {
@@ -603,6 +598,12 @@ Page({
       assistant.undoCountdown = 15                  // 倒计时初始值(秒)
     }
 
+    // 5a2. 账本君提示"已记过,是否再记" → 挂 needsConfirm,气泡出「再记一次」快捷按钮
+    if (result.toolResult && result.toolResult.needsConfirm && result.toolResult.duplicate) {
+      assistant.needsConfirm = true
+      assistant.dupType = result.toolResult.type  // 'expense' | 'salary'
+    }
+
     app.globalData.chatMessages = [...app.globalData.chatMessages, assistant]
     app.globalData.chatSending = false
     this.setData({
@@ -621,6 +622,20 @@ Page({
     //    保证冷启动恢复 / 两页共享 / 撤销倒计时索引三处一致
     app.globalData.chatMessages = app.globalData.chatMessages.slice(-50)
     chatStorage.save(app.globalData.chatMessages)
+  },
+
+  /**
+   * 「再记一次」快捷确认按钮:把"再记"当作下一条消息发送,复用完整对话链路。
+   * 云函数侧 isDupConfirmReply + force 自动补位,真正写入第二笔。
+   * 不覆盖输入框里已输入的内容(临时换入"再记",发送后恢复)。
+   */
+  onReRecord() {
+    if (this.data.chatSending) return
+    const saved = this.data.chatInput
+    this.setData({ chatInput: '再记' }, () => {
+      this.sendAiChat()
+      this.setData({ chatInput: saved })
+    })
   },
 
   /**
@@ -852,172 +867,23 @@ Page({
     this._optCloseTimer = util.closeSheet(this, 'showOptimalSheet')
   },
 
-  /* ---------- 设置弹层 ---------- */
-  openProfile() {
-    if (this._closeTimer) { clearTimeout(this._closeTimer); this._closeTimer = null }
-    const u = this.data.user || {}
-    util.openSheet(this, 'showProfile', {
-      formAvatar: u.avatarUrl || '',
-      formNickname: u.nickname || '',
-      formPayday: u.payday || 15,
-      formBudget: String(u.budget || 4000),
-      privacyIndex: this.privacyIndexOf(u.privacyLock)
-    })
-  },
-
-  privacyIndexOf(mode) {
-    return mode === 'gesture' ? 1 : mode === 'finger' ? 2 : 0
-  },
-
-  closeProfile() {
-    this._closeTimer = util.closeSheet(this, 'showProfile')
-    this.redrawTrendAfterPopup()
-  },
-
-  /** 弹层关闭后 canvas 随 wx:if 重建，需要重新绘制趋势图 */
+  /** sheet 关闭后 canvas 随 wx:if 重建，需要重新绘制趋势图 */
   redrawTrendAfterPopup() {
     if (this.data.trendEmpty) return
     // 关闭动画 240ms,等 wx:if 重新挂载 canvas 后再画;中途若用户又打开弹层则放弃
     setTimeout(() => {
-      if (this.data.showProfile || this.data.showShare || this.data.showAiChat) return
+      if (this.data.showShare || this.data.showAiChat) return
       this.drawTrend()
     }, 280)
   },
 
-  /* ---------- 隐私锁 ---------- */
-  onPrivacyChange(e) {
-    const idx = Number(e.detail.value)
-    const u = this.data.user || {}
-    const cur = u.privacyLock || 'off'
-    if (idx === this.privacyIndexOf(cur)) return
-
-    if (idx === 0) {
-      // 关闭
-      wx.showModal({
-        title: '关闭隐私锁',
-        content: '关闭后打开小程序将不再需要解锁。确定关闭吗？',
-        success: async (res) => {
-          if (!res.confirm) {
-            this.setData({ privacyIndex: this.privacyIndexOf(cur) })
-            return
-          }
-          try {
-            await dbApi.updateMyUser({ privacyLock: 'off' })
-            this.syncUser({ privacyLock: 'off' })
-            this.setData({ privacyIndex: 0 })
-            wx.showToast({ title: '已关闭', icon: 'success' })
-          } catch (err) {
-            this.setData({ privacyIndex: this.privacyIndexOf(cur) })
-            wx.showToast({ title: '操作失败', icon: 'none' })
-          }
-        }
-      })
-      return
-    }
-
-    if (idx === 1) {
-      // 手势：去锁页绘制两次（锁页保存成功后回来 onShow 刷新）
-      util.closeSheet(this, 'showProfile')
-      wx.navigateTo({ url: '/pages/lock/lock?mode=set' })
-      return
-    }
-
-    // 指纹
-    if (!wx.checkIsSoterEnrolledInDevice) {
-      this.setData({ privacyIndex: this.privacyIndexOf(cur) })
-      wx.showToast({ title: '当前微信版本不支持', icon: 'none' })
-      return
-    }
-    wx.checkIsSoterEnrolledInDevice({
-      checkAuthMode: 'fingerPrint',
-      success: async (res) => {
-        if (!res.isEnrolled) {
-          this.setData({ privacyIndex: this.privacyIndexOf(cur) })
-          wx.showToast({ title: '本机未录入指纹，请先在系统设置中录入', icon: 'none' })
-          return
-        }
-        try {
-          await dbApi.updateMyUser({ privacyLock: 'finger' })
-          this.syncUser({ privacyLock: 'finger' })
-          this.setData({ privacyIndex: 2 })
-          wx.showToast({ title: '指纹锁已开启', icon: 'success' })
-        } catch (err) {
-          this.setData({ privacyIndex: this.privacyIndexOf(cur) })
-          wx.showToast({ title: '操作失败', icon: 'none' })
-        }
-      },
-      fail: (err) => {
-        console.error('SOTER enroll check failed', err)
-        this.setData({ privacyIndex: this.privacyIndexOf(cur) })
-        wx.showToast({ title: '本机不支持指纹验证', icon: 'none' })
-      }
-    })
-  },
-
-  /** 同步更新 globalData.user（隐私锁守卫读它，避免读到旧值） */
+  /** 同步更新 globalData.user（订阅成功后全局立即生效） */
   syncUser(patch) {
     const app = getApp()
     if (app.globalData.user) {
       app.globalData.user = { ...app.globalData.user, ...patch }
     }
     this.setData({ user: app.globalData.user })
-  },
-
-  /* ---------- 回收站 ---------- */
-  openRecycle() {
-    util.closeSheet(this, 'showProfile')
-    wx.navigateTo({ url: '/pages/recycle/recycle' })
-  },
-
-  onChooseAvatar(e) {
-    this.setData({ formAvatar: e.detail.avatarUrl })
-  },
-
-  onNickInput(e) {
-    this.setData({ formNickname: e.detail.value })
-  },
-
-  onPaydayChange(e) {
-    this.setData({ formPayday: Number(e.detail.value) + 1 })
-  },
-
-  onBudgetInput(e) {
-    this.setData({ formBudget: e.detail.value })
-  },
-
-  async saveProfile() {
-    if (this.data.saving) return
-    this.setData({ saving: true })
-    const { formNickname, formPayday, formBudget, formAvatar } = this.data
-    const data = {
-      nickname: formNickname.trim(),
-      payday: formPayday,
-      budget: Number(formBudget) || 0
-    }
-    if (formAvatar) {
-      try {
-        const openid = getApp().globalData.openid
-        const extMatch = (formAvatar.split('?')[0].match(/\.(\w+)$/) || [])[1]
-        const ext = ['jpg', 'jpeg', 'png'].indexOf(extMatch) >= 0 ? extMatch : 'png'
-        const up = await wx.cloud.uploadFile({
-          cloudPath: `avatars/${openid}.${ext}`,
-          filePath: formAvatar
-        })
-        data.avatarUrl = up.fileID
-      } catch (err) {
-        console.error('头像上传失败，将仅本地显示', err)
-      }
-    }
-    try {
-      await dbApi.updateMyUser(data)
-      wx.showToast({ title: '已保存', icon: 'success' })
-      util.closeSheet(this, 'showProfile')
-      this.loadData()
-    } catch (err) {
-      wx.showToast({ title: '保存失败', icon: 'none' })
-    } finally {
-      this.setData({ saving: false })
-    }
   },
 
   /* ---------- 月度账单分享卡片 ---------- */
@@ -1267,11 +1133,11 @@ Page({
     const app = getApp()
     const isDark = app && app.globalData && app.globalData.theme === 'dark'
     const NAVY = isDark ? '#8AA4C2' : '#14304F'
-    const RED = isDark ? '#E55858' : '#C94040'
+    const RED = isDark ? '#E55858' : '#BE4A3A'
     const GOLD = isDark ? '#E5C26B' : '#C8A04D'
-    const SUB = isDark ? '#A8B4C5' : '#97A3B2'
-    const GRID = isDark ? '#2D3A4D' : '#E9EDF2'
-    const AXIS = isDark ? '#4A5A70' : '#C9D2DC'
+    const SUB = isDark ? '#A8B4C5' : '#82766A'
+    const GRID = isDark ? '#2D3A4D' : '#EFE7DA'
+    const AXIS = isDark ? '#4A5A70' : '#D9D0BF'
     const NODE_FILL = isDark ? '#1A2532' : '#FFFFFF'
 
     const DURATION = 550
@@ -1463,89 +1329,4 @@ Page({
     this.setData({ showAiAskPrompt: false })
   },
 
-  /**
-   * profile 设置里的「账本君主动询问」开关:
-   - 开启 → 走订阅授权;关闭 → 直接清云端字段,云函数不再推送
-   */
-  async onSalaryRemindToggle(e) {
-    const newVal = e.detail.value === true
-    const u = this.data.user || {}
-    if (u.salaryRemindSubscribed === newVal) return
-    if (newVal) {
-      this.subscribeAiAsk()  // 内部 success 后会 syncUser + setData
-      return
-    }
-    // 关闭
-    try {
-      await dbApi.updateMyUser({ salaryRemindSubscribed: false })
-      this.syncUser({ salaryRemindSubscribed: false })
-      // 顺手清未读 — 用户主动关了,提示也没意义
-      chatStorage.clearPendingQuestion()
-      dbApi.updateMyUser({ unreadQuestion: null, unreadQuestionCount: 0 }).catch(() => {})
-      this.setData({
-        pendingAiQuestion: null,
-        aiUnread: 0
-      })
-      wx.showToast({ title: '已关闭账本君主动询问', icon: 'none' })
-    } catch (err) {
-      wx.showToast({ title: '操作失败', icon: 'none' })
-    }
-  },
-
-  subscribeRemind() {
-    const tid = config.SUBSCRIBE_TEMPLATE_ID
-    if (tid.indexOf('请填入') === 0) {
-      wx.showModal({
-        title: '提醒未开启',
-        content: '需要先在 utils/config.js 填入订阅消息模板 ID（申请方式见 README），才能收到还款提醒。',
-        showCancel: false
-      })
-      return
-    }
-    // 标记今天已请求过，避免冒泡到根节点时再触发一次静默请求（同一点击只弹一个授权框）
-    wx.setStorageSync('xz_subscribe_ask_date', util.todayStr())
-    wx.requestSubscribeMessage({
-      tmplIds: [tid],
-      success: (res) => {
-        if (res[tid] === 'accept') {
-          wx.setStorageSync('xz_subscribe_last_accept', util.todayStr())
-          wx.showToast({ title: '还款提醒已开启', icon: 'success' })
-        } else {
-          wx.showToast({ title: '未授权，收不到推送', icon: 'none' })
-        }
-      },
-      fail: (err) => {
-        console.error('requestSubscribeMessage fail', err)
-        const msg = (err && err.errMsg) || ''
-        let tip = '授权失败，请重试'
-        if (msg.indexOf('20001') >= 0 || msg.indexOf('switched off') >= 0) {
-          tip = '订阅消息主开关已关闭，请到设置中开启'
-        } else if (msg.indexOf('20004') >= 0 || msg.indexOf('templateId') >= 0 || msg.indexOf('invalid') >= 0) {
-          tip = '模板 ID 无效，请核对小程序后台'
-        }
-        wx.showToast({ title: tip, icon: 'none' })
-      }
-    })
-  },
-
-  /* ---------- 重置全部数据 ---------- */
-  clearData() {
-    wx.showModal({
-      title: '重置全部数据',
-      content: '将删除当前账号下所有工资、信用卡、开销记录，重新打开小程序会预置一份新的示例数据，之后可再改成真实数据。确定继续吗？',
-      confirmText: '确定重置',
-      confirmColor: '#ef4444',
-      success: async (res) => {
-        if (!res.confirm) return
-        try {
-          await dbApi.clearAllData()
-          wx.showToast({ title: '已重置', icon: 'success' })
-          util.closeSheet(this, 'showProfile')
-          this.loadData()
-        } catch (e) {
-          wx.showToast({ title: '重置失败', icon: 'none' })
-        }
-      }
-    })
-  }
 })

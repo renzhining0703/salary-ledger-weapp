@@ -1,0 +1,22 @@
+{
+  "light": {
+    "navBg": "#FBF7F0",
+    "navTxt": "black",
+    "pageBg": "#F6F2EA",
+    "bgTxt": "dark",
+    "tabBg": "#FBF7F0",
+    "tabColor": "#ADA294",
+    "tabSelected": "#2B2620",
+    "tabBorder": "white"
+  },
+  "dark": {
+    "navBg": "#283A52",
+    "navTxt": "white",
+    "pageBg": "#0E1620",
+    "bgTxt": "light",
+    "tabBg": "#1A2532",
+    "tabColor": "#6E7B8E",
+    "tabSelected": "#E5C26B",
+    "tabBorder": "black"
+  }
+}

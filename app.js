@@ -108,15 +108,15 @@ App({
   },
 
   /**
-   * 同步导航栏颜色到当前主题
-   * 深色模式:背景 #0E1620 文字 #E8EDF3
-   * 浅色模式:背景 #F3F5F8 文字 #151E2B
+   * 同步导航栏颜色到当前主题（普通页：信用卡/回收站/锁）
+   * 浅色模式:背景 #FFFFFF 文字黑色;深色模式:背景 #283A52(与自定义导航栏 --navy-800 同色)文字白色
+   * 4 个 tab 页已改 navigationStyle: custom，本调用仅对普通页生效。
    */
   applyNavBarColor() {
     const dark = this.globalData.theme === 'dark'
     wx.setNavigationBarColor({
       frontColor: dark ? '#ffffff' : '#000000',
-      backgroundColor: dark ? '#0E1620' : '#F3F5F8',
+      backgroundColor: dark ? '#283A52' : '#FFFFFF',
       animation: { duration: 0, timingFunc: 'linear' }
     })
   },
@@ -215,7 +215,7 @@ App({
     const demoSalary = [
       { payDate: fmt(0, 15), amount: 12500, note: '本月工资', demo: true },
       { payDate: fmt(-1, 15), amount: 12000, note: '上月工资', demo: true },
-      { payDate: fmt(-2, 15), amount: 11800, note: '上月工资', demo: true }
+      { payDate: fmt(-2, 15), amount: 11800, note: '上上月工资', demo: true }
     ]
 
     // 信用卡：2 张本月待还（明天/昨天到期）+ 3 张历史已还（带 repayDate 归月）

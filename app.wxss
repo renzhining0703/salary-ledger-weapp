@@ -1,4 +1,4 @@
-/* 薪账本 全局样式 — 深蓝金融质感 */
+/* 薪账本 全局样式 — 浅色:轻盈纸感(暖纸底/墨色文字/柔金点缀) · 深色:深蓝夜色 */
 page {
   --navy-900: #0A1828;
   --navy-800: #0E2238;
@@ -6,54 +6,54 @@ page {
   --navy-600: #1F4E79;
   --navy-300: #4A6B8A;
   --gold: #C8A04D;
-  --gold-light: #F4E9D2;
+  --gold-light: #F7EDD8;
   --gold-700: #A3823A;
-  --text: #151E2B;
-  --text-sub: #657183;
-  --text-mute: #97A3B2;
-  --bg: #F3F5F8;
-  --card: #FFFFFF;
-  --border: #E4E8EE;
-  --border-light: #EDF0F4;
-  --danger: #C94040;
-  --danger-bg: #FBEFEF;
+  --text: #2B2620;
+  --text-sub: #82766A;
+  --text-mute: #ADA294;
+  --bg: #F6F2EA;
+  --card: #FFFEF9;
+  --border: #E7E0D1;
+  --border-light: #F0EBE0;
+  --danger: #BE4A3A;
+  --danger-bg: #FAEFE9;
   --warn: #C98A2D;
-  --warn-bg: #FEF6E8;
+  --warn-bg: #FBF3E1;
   --success: #2F9B6B;
-  --success-bg: #EAF6EF;
-  /* 中性灰:进度条未填充轨道 / chip 底 / 按下态 / 输入框底 */
-  --fill-bg: #E8EDF3;
-  --chip-bg: #F1F5FA;
-  --press-bg: #E8EDF3;
-  --input-bg: #F7F8FA;
+  --success-bg: #EDF4E9;
+  /* 中性暖灰:进度条未填充轨道 / chip 底 / 按下态 / 输入框底 */
+  --fill-bg: #EFE8DB;
+  --chip-bg: #F5F0E6;
+  --press-bg: #EDE6D8;
+  --input-bg: #F9F5EC;
   /* 浅色边框:用于 budget-alert 等警示色块的边框(深色模式自动加深) */
-  --danger-border: #F5CFCF;
-  --warn-border: #F8E3B5;
-  /* 阴影变量:浅色模式海军蓝投影,深色模式纯黑 */
-  --shadow-card: rgba(20, 48, 79, 0.05);
-  --shadow-strong: rgba(20, 48, 79, 0.22);
-  --shadow-deep: rgba(20, 48, 79, 0.35);
-  /* 海军蓝透明色:浅色模式海军蓝叠白,深色模式白色叠暗(深底上要白提亮) */
-  --tint-navy-04: rgba(20, 48, 79, 0.04);
-  --tint-navy-06: rgba(20, 48, 79, 0.06);
-  --tint-navy-08: rgba(20, 48, 79, 0.08);
-  --tint-navy-14: rgba(20, 48, 79, 0.14);
-  --tint-navy-18: rgba(20, 48, 79, 0.18);
+  --danger-border: #F2D2C8;
+  --warn-border: #F5E0B8;
+  /* 阴影变量:纸感用暖棕投影,深色模式纯黑 */
+  --shadow-card: rgba(140, 116, 74, 0.06);
+  --shadow-strong: rgba(140, 116, 74, 0.20);
+  --shadow-deep: rgba(140, 116, 74, 0.32);
+  /* 墨色透明色:浅色模式墨色叠纸(深色模式白色叠暗,深底上要白提亮) */
+  --tint-navy-04: rgba(70, 60, 44, 0.04);
+  --tint-navy-06: rgba(70, 60, 44, 0.06);
+  --tint-navy-08: rgba(70, 60, 44, 0.08);
+  --tint-navy-14: rgba(70, 60, 44, 0.14);
+  --tint-navy-18: rgba(70, 60, 44, 0.18);
   /* 金 / 红 / 灰透明色:tag、按钮按下态等场景 */
   --tint-gold-06: rgba(200, 160, 77, 0.06);
   --tint-gold-12: rgba(200, 160, 77, 0.12);
   --tint-gold-16: rgba(200, 160, 77, 0.16);
   --tint-gold-18: rgba(200, 160, 77, 0.18);
-  --tint-danger-08: rgba(201, 64, 64, 0.08);
-  --tint-danger-22: rgba(201, 64, 64, 0.22);
-  --tint-text-sub-12: rgba(151, 163, 178, 0.12);
-  --tint-danger-strong: #F5DFDF;
-  /* 消费日历热力图色阶(5 档:无→深) */
-  --heat-0: #EDF0F4;
-  --heat-1: #DDE6F0;
-  --heat-2: #9FB6D1;
-  --heat-3: #4A6B8A;
-  --heat-4: #C94040;
+  --tint-danger-08: rgba(190, 74, 58, 0.08);
+  --tint-danger-22: rgba(190, 74, 58, 0.22);
+  --tint-text-sub-12: rgba(173, 162, 148, 0.14);
+  --tint-danger-strong: #F3DED5;
+  /* 消费日历热力图色阶(5 档:无→深,纸感金色系) */
+  --heat-0: #F1EBDF;
+  --heat-1: #EADFC0;
+  --heat-2: #DCC287;
+  --heat-3: #C8A04D;
+  --heat-4: #C0563C;
 
   background: var(--bg);
   color: var(--text);
@@ -157,7 +157,7 @@ page {
 .btn::after { border: none; }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--navy-700), var(--navy-800));
+  background: linear-gradient(135deg, var(--navy-700), var(--navy-900));
   color: #fff;
   box-shadow: 0 12rpx 32rpx var(--shadow-strong);
 }
@@ -213,13 +213,45 @@ page {
   padding: 72rpx 0;
 }
 
+/* 页面级空态（带图标装饰，样式统一收口于此） */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 120rpx 40rpx;
+}
+.empty-state .empty-icon {
+  width: 160rpx;
+  height: 160rpx;
+  background: var(--tint-navy-04);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 72rpx;
+  color: var(--navy-300);
+  margin-bottom: 32rpx;
+}
+.empty-state .empty-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 12rpx;
+}
+.empty-state .empty-desc {
+  font-size: 24rpx;
+  color: var(--text-sub);
+  text-align: center;
+}
+
 /* 遮罩与底面板（进出动画） */
 .mask {
   position: fixed;
   inset: 0;
-  background: rgba(10, 24, 40, 0.55);
+  background: rgba(46, 38, 26, 0.45);
   z-index: 90;
-  backdrop-filter: blur(2rpx);
+  backdrop-filter: blur(10rpx);
+  -webkit-backdrop-filter: blur(10rpx);
   animation: maskIn 0.22s ease;
 }
 
@@ -238,6 +270,8 @@ page {
   z-index: 100;
   max-height: 82vh;
   overflow-y: auto;
+  /* 顶部投影强化面板悬浮感（底面板无需左右/底部阴影） */
+  box-shadow: 0 -12rpx 48rpx var(--shadow-strong);
   animation: sheetIn 0.28s cubic-bezier(0.32, 0.72, 0.34, 1);
   /* 键盘弹出时弹框保持底部定位，不被顶高 */
 }
@@ -257,8 +291,8 @@ page {
 }
 
 @keyframes sheetIn {
-  from { transform: translateY(100%); }
-  to { transform: translateY(0); }
+  from { transform: translateY(100%); opacity: 0.6; }
+  to { transform: translateY(0); opacity: 1; }
 }
 
 @keyframes sheetOut {
@@ -326,7 +360,38 @@ page {
   font-variant-numeric: tabular-nums;
 }
 
-/* 全局悬浮「记一笔」快捷入口（仅首页），主题深蓝 */
+/* 自定义导航栏（tab 页 navigationStyle: custom 共用）
+   浅色模式:白底深字; 深色模式:深蓝底白字 —— 跟随主题,不再硬写死 navy-700 */
+.navbar {
+  background: var(--card);
+  padding-top: 44px; /* JS 注入 statusBarHeight 覆盖此默认值 */
+  border-bottom: 1rpx solid var(--border-light);
+}
+.navbar-inner {
+  height: 88rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 24rpx;
+}
+.navbar-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.04em;
+}
+
+@media (prefers-color-scheme: dark) {
+  .navbar {
+    background: var(--navy-800);
+    border-bottom-color: transparent;
+  }
+  .navbar-title {
+    color: #fff;
+  }
+}
+
+/* 全局悬浮「记一笔」快捷入口（仅首页），右下角圆形按钮 */
 .quick-add {
   position: fixed;
   right: 32rpx;
@@ -334,8 +399,8 @@ page {
   width: 104rpx;
   height: 104rpx;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--navy-700), var(--navy-900));
-  color: #fff;
+  background: linear-gradient(135deg, var(--gold), var(--gold-700));
+  color: var(--navy-900);
   font-size: 56rpx;
   font-weight: 300;
   line-height: 1;
@@ -345,12 +410,31 @@ page {
   padding-bottom: 6rpx; /* ＋ 视觉居中 */
   box-sizing: border-box;
   box-shadow: 0 12rpx 32rpx var(--shadow-deep);
-  /* 必须低于 .mask(90) 和 .sheet(100),但要高于 trend canvas(1) 防止被柱状图盖住 */
   z-index: 80;
 }
 .quick-add:active {
   transform: scale(0.94);
   opacity: 0.92;
+}
+
+/* 全局悬浮胶囊按钮（列表页「添加」入口，样式统一收口于此） */
+.fab {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(48rpx + env(safe-area-inset-bottom));
+  background: linear-gradient(135deg, var(--navy-700), var(--navy-900));
+  color: #fff;
+  font-size: 30rpx;
+  font-weight: 600;
+  padding: 24rpx 56rpx;
+  border-radius: 999rpx;
+  box-shadow: 0 12rpx 32rpx var(--shadow-strong);
+  z-index: 50;
+}
+.fab:active {
+  transform: translateX(-50%) scale(0.98);
+  opacity: 0.94;
 }
 
 .text-sub { color: var(--text-sub); }
@@ -361,20 +445,20 @@ page {
 
 /* ==================== 骨架屏 ==================== */
 .sk-wrap {
-  padding: 24rpx;
+  padding: 24rpx 0;
 }
 
 .sk-card {
   background: var(--card);
   border-radius: 28rpx;
   padding: 32rpx;
-  margin-bottom: 24rpx;
+  margin: 0 24rpx 24rpx;
   border: 1rpx solid var(--border-light);
   box-shadow: 0 8rpx 28rpx var(--shadow-card);
 }
 
 .sk-block {
-  background: linear-gradient(90deg, #E9EDF2 25%, #F4F7FA 37%, #E9EDF2 63%);
+  background: linear-gradient(90deg, #EFE8DC 25%, #F8F3E9 37%, #EFE8DC 63%);
   background-size: 400% 100%;
   animation: skShimmer 1.4s ease infinite;
   border-radius: 12rpx;

@@ -43,8 +43,26 @@ async function getMyUser(force) {
 }
 
 async function updateMyUser(data) {
-  const u = await getMyUser()
-  if (!u) return null
+  let u = await getMyUser(true)
+  if (!u) {
+    // 用户文档缺失时兜底创建，绝不静默丢失（正常情况下 silentLogin 已创建用户文档）
+    const app = getApp()
+    const openid = (app && app.globalData && app.globalData.openid) || ''
+    const res = await db.collection('users').add({
+      data: {
+        openid,
+        nickname: '',
+        avatarUrl: '',
+        payday: 15,
+        budget: 4000,
+        ...data,
+        createdAt: db.serverDate(),
+        updatedAt: db.serverDate()
+      }
+    })
+    invalidate()
+    return res
+  }
   const r = await db.collection('users').doc(u._id).update({
     data: { ...data, updatedAt: db.serverDate() }
   })
@@ -454,12 +472,27 @@ async function clearAllData() {
   const clear = async (col) => {
     // 分页删，避免单次 20 条限制
     for (;;) {
-      const r = await db.collection(col).where({}).limit(100).get()
-      if (r.data.length === 0) break
-      await Promise.all(r.data.map((d) => db.collection(col).doc(d._id).remove()))
+      try {
+        const r = await db.collection(col).where({}).limit(100).get()
+        if (r.data.length === 0) break
+        await Promise.all(r.data.map((d) => db.collection(col).doc(d._id).remove()))
+      } catch (e) {
+        // 集合可能尚未在控制台创建（finReports / finChatRate），静默跳过，不阻塞整体重置
+        if (e && (e.errCode === -502005 || /collection.*not exist/i.test(e.errMsg || ''))) return
+        throw e
+      }
     }
   }
-  await Promise.all([clear('users'), clear('salary'), clear('cards'), clear('expenses'), clear('recurring')])
+  // finReports / finChatRate 一并清：AI 解读缓存和限流计数不应在重置后残留
+  await Promise.all([
+    clear('users'),
+    clear('salary'),
+    clear('cards'),
+    clear('expenses'),
+    clear('recurring'),
+    clear('finReports'),
+    clear('finChatRate')
+  ])
   invalidate()
 }
 

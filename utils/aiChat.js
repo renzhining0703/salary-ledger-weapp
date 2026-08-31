@@ -11,7 +11,7 @@
  * - 记账页账单 sheet 内的 chat(pages/expenses/expenses.js sendChat)
  *
  * 行为:
- * 1. 调云函数 finChat,8s 超时
+ * 1. 调云函数 finChat,15s 超时
  * 2. 拿到 result.text → 返回 { source: 'llm', text }
  * 3. result.code === 'RATE_LIMIT' → 返回限流文案
  * 4. 超时 / NO_KEY → 用 finTemplate 兜底
@@ -42,7 +42,7 @@ async function send({ month, stmt, recentList, question, mode = 'chat', history 
         settled = true
         timedOut = true
         reject(new Error('云函数超时'))
-      }, 8000)
+      }, 15000)
       wx.cloud.callFunction({
         name: 'finChat',
         data: {

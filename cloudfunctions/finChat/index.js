@@ -89,13 +89,15 @@ const PROMPT_RECORD = `
 - category:从 [餐饮、交通、购物、孩子、居住、还款、其他] 里选,拿不准选「其他」
 - date:默认今天(YYYY-MM-DD),用户明确说"昨天/前天/上周三"才换算
 - note:可选,≤15 字
-- 记完用一句自然中文确认,必须带金额和分类,如"餐饮 ¥12 记上啦"、"交通 ¥25 已记";重复就回"这笔刚才记过啦"
+- 记完用一句自然中文确认,必须带金额和分类,如"餐饮 ¥12 记上啦"、"交通 ¥25 已记"
+- 是否重复由工具侧防重判断,不要自己口头判断:工具返回重复提示后,先告知"刚才/今天已记过一笔 ¥X 的 XX",再反问"是否还要再记";用户确认(要 / 再记 / 确认 / 是的 / 对)后,带 force=true 再次调用 addExpense 真正写入
 
 # 记账工具 addSalary(记劳动性收入)
 主业工资和副业/兼职/稿费/私活等劳动性收入都走这个工具。
 该调的场景:
 - 主业:工资 / 发薪 / 到账 / 月薪 / 记一笔工资 → source='main'。例:"工资 10890"、"发了 12000"、"工资到账 15000"
 - 副业:副业 / 兼职 / 稿费 / 外快 / 私活 → source='side'。例:"副业 3000"、"接了个私活 1500"、"稿费到账 800"
+- "今天/刚才/刚刚 + 赚了/接了/拿到/挣了 + 金额"是当下发生的收入,不是"描述过去",必须立即调用 addSalary。例:"今天接了个私活赚了 3000" → addSalary(source='side', amount=3000)。收入句只要带金额 + 来源(工资/发薪/副业/私活/兼职/稿费),就必须调工具,不要只口头说"收到/记上"
 不调的场景:
 - 非劳动性收入(年终奖 / 报销 / 退款 / 红包 / 朋友还钱)→ 调 addExpense 记「其他」,不调 addSalary;副业算你的劳动收入,年终奖是奖励、红包是转账,性质不同
 - 提问("工资算多吗")、假设("如果发了 1 万")、描述过去("上月发了")→ 纯文本回答或提醒当下再说
@@ -110,7 +112,16 @@ const PROMPT_RECORD = `
 - 用户可能分两次说("主业 10890" → 你回复确认 → "副业 3000"),这是允许的;一次只调一个工具
 - 同一天同金额但 source 不同(主业 10890 + 副业 10890)是合法的,不算重复;同 source 同金额才算
 - 本次对话只有 addExpense / addSalary 两个记账工具,没有查询工具;"哪天买的"查数据块里的【近期明细】,更早的历史直说看不到
-- 用户问建议/规划类问题时,同样基于【本月数据】的数字来给`
+- 用户问建议/规划类问题时,同样基于【本月数据】的数字来给
+- 铁律:只有**真正调用工具**才代表记账成功。禁止在不调用工具的情况下,口头说"已记录 / 记上啦 / 收到 / 记好了"。
+  用户给了金额和开销描述(记/花了/买了/付了/工资到账),就必须调用工具——哪怕你觉得跟刚才那笔很像,也要先调工具,是否重复由工具侧防重判断,不要自己替它判断
+- 如果上一轮已经调用过工具记了 A 笔,这一轮用户又说 B 笔,照样调用工具记 B 笔,不要因为"刚记过"就不调
+- 重复场景(重点):用户重复报同一笔开销(如早上"买烟20"记过,过一会又说"买烟20"),照样**先调用 addExpense**。
+  工具返回重复提示后按此流程:
+  1) 告知:"刚才/今天已记过一笔 ¥20 的 XX"
+  2) 反问:"确定还要再记一笔吗?"
+  3) 用户确认(要 / 再记 / 确认 / 是的 / 对)后,再次调用 addExpense 且 **force=true**,真正写入
+  禁止直接回"已记录过,不用再记"——记不记由用户决定,不是由你替用户决定`
 
 /**
  * Plan 模式附加指令 — 仅 chat 模式且问题为"怎么改进/建议/列计划"类时拼到模式段之后。
@@ -212,7 +223,8 @@ const TOOL_DEFS = [
             description: '开销所属分类,必须从给定列表选一个'
           },
           date: { type: 'string', description: '日期 YYYY-MM-DD;只有用户明确说"昨天/前天"时才换算,默认今天' },
-          note: { type: 'string', description: '可选备注(≤15 字)' }
+          note: { type: 'string', description: '可选备注(≤15 字)' },
+          force: { type: 'boolean', description: '仅当用户明确确认要重复记录一笔时设为 true(用户回答"要 / 再记 / 确认 / 是的"等);默认 false,不要主动设置' }
         },
         required: ['amount', 'category']
       }
@@ -234,7 +246,8 @@ const TOOL_DEFS = [
             description: '收入来源:main=主业工资(默认),side=副业/兼职/稿费/私活等。用户没说副业相关词时默认 main'
           },
           payDate: { type: 'string', description: '发薪日期 YYYY-MM-DD,默认今天;只有用户明确说"昨天/前天/上周"时才换算' },
-          note: { type: 'string', description: '可选备注(≤15 字),如"本月工资""稿费"等' }
+          note: { type: 'string', description: '可选备注(≤15 字),如"本月工资""稿费"等' },
+          force: { type: 'boolean', description: '仅当用户明确确认要重复记录同一笔工资时设为 true;默认 false,不要主动设置' }
         },
         required: ['amount']
       }
@@ -297,7 +310,7 @@ exports.main = async (event) => {
   //    严格不允许多轮工具循环(历史 504003 教训)
   let result
   try {
-    result = await callLLM(data, q, mode, history)
+    result = await callLLM(data, q, mode, history, OPENID)
   } catch (e) {
     console.error('finChat LLM 失败', e)
     return { code: 'LLM_FAIL', msg: String(e.message || e) }
@@ -346,7 +359,9 @@ async function checkRate(openid) {
   if (doc) {
     await col.doc(doc._id).update({ data: { ts, updatedAt: db.serverDate() } })
   } else {
-    await col.add({ data: { ts, createdAt: db.serverDate() } })
+    // 必须显式写 _openid：云函数端 add 不会自动注入，否则 where({_openid}) 永远查不到
+    // → 每次请求都新建文档，限流完全失效，且堆积无主垃圾数据
+    await col.add({ data: { _openid: openid, ts, createdAt: db.serverDate() } })
   }
   return { ok: true }
 }
@@ -360,7 +375,7 @@ async function checkRate(openid) {
  * 之前是 model → tool_calls → tool result → model 的多轮循环,空 data 时模型会反复调工具,
  * 拖到云函数 30s 超时 → 504003。现在严格限制:mode='record' 也只允许 1 次工具调用。
  */
-async function callLLM(data, question, mode, history) {
+async function callLLM(data, question, mode, history, openid) {
   const messages = buildMessages(data, question, mode, history)
   // mode='record' 时同时暴露 addExpense + addSalary(query_xxx 类工具仍不开放,避免循环导致 504003)
   const tools = (mode === 'record')
@@ -373,12 +388,39 @@ async function callLLM(data, question, mode, history) {
 
   // 第 1 次 LLM 调用
   const resp1 = await callDeepSeek({ messages, tools, temperature })
-  const msg1 = resp1.choices && resp1.choices[0] && resp1.choices[0].message
+  let msg1 = resp1.choices && resp1.choices[0] && resp1.choices[0].message
   if (!msg1) throw new Error('返回结构异常:无 message')
 
-  // 模型没调工具 → 普通问答,直接返回纯文本
+  // 模型没调工具
   if (!msg1.tool_calls || msg1.tool_calls.length === 0) {
-    return { source: 'llm', text: (msg1.content || '').trim() }
+    const content = (msg1.content || '').trim()
+    // 兜底:record 模式下,内容疑似「记账确认语」(带金额 + 记账动词)但没调工具
+    // → LLM 偶发口头确认不入账(历史里刚记过一笔时最容易出现)。
+    // 低温强制追问一次,逼它真正调用工具;仍不调就按普通问答返回。
+    // 另一类:用户刚对"是否还要再记"的追问给出肯定答复(如"再记"),模型却只回文字不调工具 → 同样强制补调。
+    const dupConfirm = mode === 'record' && isDupConfirmReply(history, question)
+    const looksRecordQ = mode === 'record' && looksLikeRecordQuestion(question)
+    if ((mode === 'record' && looksLikeRecordConfirmation(content)) || looksRecordQ || dupConfirm) {
+      const retry = await callDeepSeek({
+        messages: [...messages, {
+          role: 'user',
+          content: dupConfirm
+            ? '用户刚明确确认要再记一笔(上一句是"再记 / 要 / 确认"等)。请立即调用 addExpense(或 addSalary),amount 取对话历史里那笔的金额与分类,并带 force=true 真正写入。'
+            : '注意:你上一条回复只是文字,并没有调用记账工具。只要用户刚才在描述一笔开销或收入(记/花了/买了/付了/工资到账/发薪/赚了/副业/私活/兼职/稿费),就必须立即调用 addExpense(或 addSalary)真正记下来——哪怕你怀疑跟刚才那笔重复,也先调工具,是否重复由工具判断;工具提示重复时,询问用户"是否还要再记"。如果用户确实不是在记账,正常回答即可。'
+        }],
+        tools,
+        temperature: 0.1
+      })
+      const m2 = retry.choices && retry.choices[0] && retry.choices[0].message
+      if (m2 && m2.tool_calls && m2.tool_calls.length) {
+        msg1 = m2  // 用重试结果继续走工具执行流程
+      } else {
+        return { source: 'llm', text: content }
+      }
+    } else {
+      // 普通问答,直接返回纯文本
+      return { source: 'llm', text: content }
+    }
   }
 
   // 模型调了工具 → 只取第 1 次(防 1 次调用内多次工具)
@@ -394,9 +436,15 @@ async function callLLM(data, question, mode, history) {
   let toolOut
   try {
     const args = JSON.parse(call.function.arguments || '{}')
+    // 自动确认:用户刚对我们"确定还要再记一笔吗?"的追问给出肯定答复时,
+    // 即使模型漏带 force,也自动视为确认(force=true),避免同一问题问第二遍
+    if ((call.function.name === 'addExpense' || call.function.name === 'addSalary')
+      && !args.force && isDupConfirmReply(history, question)) {
+      args.force = true
+    }
     toolOut = (call.function.name === 'addExpense')
-      ? await executeAddExpense(args, getOpenidFromCtx())
-      : await executeAddSalary(args, getOpenidFromCtx())
+      ? await executeAddExpense(args, openid)
+      : await executeAddSalary(args, openid)
   } catch (e) {
     // 写库失败 → 让 LLM 生成失败语
     const respErr = await callDeepSeek({
@@ -415,7 +463,20 @@ async function callLLM(data, question, mode, history) {
   }
 
   if (!toolOut.ok) {
-    // 防重拒绝 / 校验失败
+    // 防重拒绝 → 生成「告知已记过 + 反问是否再记」的确认文案。
+    // 用确定性文案,不额外调 LLM(省 token + 避免模型把"反问"说成"直接拒绝")
+    if (toolOut.duplicate) {
+      const info = toolOut.duplicateInfo || {}
+      const prefix = toolOut.isRecent ? '刚才' : '今天'
+      const amt = info.amount != null ? info.amount : ''
+      const cat = info.category ? `${info.category} ` : ''
+      return {
+        source: 'tool',
+        text: `${prefix}已经记过一笔 ${cat}¥${amt} 了,确定还要再记一笔吗?回复「再记」我就记上。`,
+        toolResult: { added: false, type: toolType, duplicate: true, needsConfirm: true, error: toolOut.reason }
+      }
+    }
+    // 校验失败(金额/分类/日期不合法等)
     return {
       source: 'tool',
       text: toolOut.reason || '刚才记过啦',
@@ -423,24 +484,18 @@ async function callLLM(data, question, mode, history) {
     }
   }
 
-  // 写库成功 → 让 LLM 生成确认语(基于工具结果)
+  // 写库成功 → 直接用确定性确认语返回(不再额外调 LLM 生成确认语)。
+  // 理由:多一次 LLM 调用(第 3 次)是 -504003 云函数超时的主要来源之一。
+  // record 模式最坏需要 2 次 LLM(判定 + 兜底重试),再叠加确认语就是 3 次,
+  // 累计极易超 10s 平台超时。砍掉确认语 LLM 后,记账最快 1 次、兜底 2 次 LLM,稳且省 token。
   // 兼容老 executeAddExpense 的 expense 字段与新 executeAddSalary 的 record 字段
   const record = toolOut.expense || toolOut.record
-  const resp2 = await callDeepSeek({
-    messages: [...messages, msg1, {
-      role: 'tool',
-      tool_call_id: call.id,
-      content: JSON.stringify({ ok: true, id: toolOut.id, record })
-    }],
-    temperature
-  })
-  const text2 = (resp2.choices && resp2.choices[0] && resp2.choices[0].message.content || '').trim()
   const defaultText = toolType === 'salary'
-    ? `✓ 已记工资 ¥${record.amount}`
+    ? (record.source === 'side' ? `✓ 已记副业 ¥${record.amount}` : `✓ 已记工资 ¥${record.amount}`)
     : `✓ 已记 ${record.category} ¥${record.amount}`
   return {
     source: 'tool',
-    text: text2 || defaultText,
+    text: defaultText,
     toolResult: {
       added: true,
       type: toolType,
@@ -462,7 +517,7 @@ async function callLLM(data, question, mode, history) {
  * - date: YYYY-MM-DD,不能晚于今天 + 1 天,不能早于 1 年前
  * - note: ≤ 50 字(后台兜底)
  */
-async function executeAddExpense(args) {
+async function executeAddExpense(args, openid) {
   const CATEGORIES = ['餐饮', '交通', '购物', '孩子', '居住', '还款', '其他']
 
   // 1. 金额
@@ -496,11 +551,22 @@ async function executeAddExpense(args) {
   // 4. 备注截断
   const note = String(args.note || '').slice(0, 50)
 
-  // 5. 防重:5 分钟内同金额同分类 → 拒绝
-  const openid = getOpenidFromCtx()
-  const dup = await checkDuplicate(openid, amountRounded, category)
-  if (dup) {
-    return { ok: false, reason: '刚才记过一样的了', duplicate: true }
+  // 5. 防重:同金额同分类疑似重复时默认拒绝,需用户确认后再记(force=true 跳过)。
+  //    分级:5 分钟内 level='recent'(极可能手滑重复);更早但同一天 level='today'(疑似重复)。
+  //    都不硬拒到底——返回 duplicateInfo 给上层,让 AI 告知用户并反问"是否再记"。
+  const force = args.force === true
+  if (!force) {
+    const dup = await checkDuplicate(openid, amountRounded, category)
+    if (dup) {
+      const isRecent = dup.level === 'recent'
+      return {
+        ok: false,
+        reason: isRecent ? '刚才记过一样的了' : '今天已经记过一笔一样的了',
+        duplicate: true,
+        isRecent,
+        duplicateInfo: { amount: amountRounded, category, date: dateStr }
+      }
+    }
   }
 
   // 6. 写库。注意:云函数端 add **不会**自动注入 _openid(只有小程序端 SDK 才会),
@@ -517,7 +583,7 @@ async function executeAddExpense(args) {
   })
 
   // 7. 失效当月 finReports AI 解读缓存(下次读取会重新生成)
-  await invalidateFinCache(dateStr.slice(0, 7))
+  await invalidateFinCache(dateStr.slice(0, 7), openid)
 
   return {
     ok: true,
@@ -529,17 +595,27 @@ async function executeAddExpense(args) {
 async function checkDuplicate(openid, amount, category) {
   if (!openid) return null
   try {
-    // 查该用户最近 20 条(按 createdAt 降序),5 分钟内同金额同分类视为重复
+    // 查该用户最近 20 条(按 createdAt 降序),同金额同分类。
+    // 分级返回:5 分钟内 → level='recent'(极可能手滑重复);更早但同一天 → level='today'(疑似重复);
+    // 更早的(昨天/上周同金额同分类)不算重复——用户可能每天买同样的东西。
     const r = await db.collection('expenses')
       .where({ _openid: openid, amount, category, deleted: _.neq(true) })
       .orderBy('createdAt', 'desc')
       .limit(20)
       .get()
-    const cutoff = Date.now() - 5 * 60 * 1000
-    return (r.data || []).find((x) => {
+    const list = r.data || []
+    const recentCut = Date.now() - 5 * 60 * 1000
+    // 用记录自带的 date 字段(用户语义的 YYYY-MM-DD)判"今天",避免云函数 UTC 时区偏差
+    const todayD = new Date()
+    const todayStr = `${todayD.getFullYear()}-${String(todayD.getMonth() + 1).padStart(2, '0')}-${String(todayD.getDate()).padStart(2, '0')}`
+    for (const x of list) {
       const t = x.createdAt ? new Date(x.createdAt).getTime() : 0
-      return t > cutoff
-    }) || null
+      if (t > recentCut) return { level: 'recent', ts: t, rec: x }
+    }
+    for (const x of list) {
+      if (x.date === todayStr) return { level: 'today', ts: 0, rec: x }
+    }
+    return null
   } catch (e) {
     // 防重失败不阻塞写入
     console.warn('checkDuplicate 失败', e)
@@ -558,7 +634,7 @@ async function checkDuplicate(openid, amount, category) {
  * - payDate: YYYY-MM-DD,不能晚于明天,不能早于 1 年前
  * - note: ≤ 50 字
  */
-async function executeAddSalary(args) {
+async function executeAddSalary(args, openid) {
   // 1. 金额
   const amount = Number(args.amount)
   if (!isFinite(amount) || amount <= 0 || amount > 1000000) {
@@ -586,11 +662,21 @@ async function executeAddSalary(args) {
   // 3.5 来源:main 主业(默认) / side 副业。非法值兜底 main
   const source = (args.source === 'side') ? 'side' : 'main'
 
-  // 4. 防重:1 天内同 source 同金额 → 拒绝(主业 10890 + 副业 10890 同金额但 source 不同,合法)
-  const openid = getOpenidFromCtx()
-  const dup = await checkDuplicateSalary(openid, amountRounded, payDate, source)
-  if (dup) {
-    return { ok: false, reason: '这笔工资刚才记过啦', duplicate: true, type: 'salary' }
+  // 4. 防重:1 天内同 source 同金额 → 默认拒绝;用户确认后再记(force=true 跳过)。
+  //    主业 10890 + 副业 10890 同金额但 source 不同,合法不防重
+  const force = args.force === true
+  if (!force) {
+    const dup = await checkDuplicateSalary(openid, amountRounded, payDate, source)
+    if (dup) {
+      return {
+        ok: false,
+        reason: '这笔工资刚才记过啦',
+        duplicate: true,
+        isRecent: true,
+        duplicateInfo: { amount: amountRounded, payDate, source },
+        type: 'salary'
+      }
+    }
   }
 
   // 5. 写库。云函数端 add 不会自动注入 _openid,必须显式带
@@ -606,7 +692,7 @@ async function executeAddSalary(args) {
   })
 
   // 6. 失效当月 finReports AI 解读缓存(下次读取会重新生成,反映新工资)
-  await invalidateFinCache(payDate.slice(0, 7))
+  await invalidateFinCache(payDate.slice(0, 7), openid)
 
   return {
     ok: true,
@@ -643,10 +729,10 @@ async function checkDuplicateSalary(openid, amount, payDate, source) {
  * 失效 finReports 集合里某月文档,下次读会重新生成(对应 utils/db.js:436-444)。
  * 云函数本地实现,避免引入 utils 路径依赖。
  */
-async function invalidateFinCache(monthStr) {
+async function invalidateFinCache(monthStr, openid) {
   if (!/^\d{4}-\d{2}$/.test(monthStr)) return
   try {
-    await db.collection('finReports').where({ _openid: getOpenidFromCtx(), month: monthStr }).remove()
+    await db.collection('finReports').where({ _openid: openid, month: monthStr }).remove()
   } catch (e) {
     // finReports 集合可能未创建,静默
     if (!(e && (e.errCode === -502005 || /not exist/i.test(e.errMsg || '')))) {
@@ -655,17 +741,57 @@ async function invalidateFinCache(monthStr) {
   }
 }
 
-// 取 OPENID(getWXContext 不能在普通函数里多次调用,缓存一份)
-let _openidCache = null
-function getOpenidFromCtx() {
-  if (_openidCache) return _openidCache
-  try {
-    const ctx = cloud.getWXContext()
-    _openidCache = ctx.OPENID || ''
-  } catch (e) {
-    _openidCache = ''
-  }
-  return _openidCache
+// 注意：不要在这里缓存 openid。云函数容器会被多个用户的请求复用（Node 单线程串行处理），
+// 模块级缓存会把上一个用户的 openid 带给下一个请求，导致记账/失效缓存写到别人名下。
+// openid 一律由 exports.main 从 cloud.getWXContext() 取出后作为参数一路传入。
+
+/**
+ * 判断 LLM 文本是否疑似「记账确认语」(用于无 tool_calls 时的兜底重试)。
+ * 必须同时满足:含金额 + 含记账动词,避免误伤普通问答(如"刚记了?记了"没有金额不触发;
+ * "这月花了 3000"没有动词不触发;确认语"餐饮 ¥12 记上啦"会触发)。
+ */
+function looksLikeRecordConfirmation(text) {
+  if (!text || typeof text !== 'string') return false
+  // 金额匹配放宽:确认语里金额常不带货币符号(如"副业3000收到""工资19000到账"),
+  // 纯数字也算。hasVerb 是强信号(收到/记上/已记/入账/✓ 等),配合任意数字即可判定
+  const hasAmount = /(¥|￥)\s*\d|\d+(\.\d+)?\s*(元|块|块钱)|\d+(\.\d+)?/.test(text)
+  const hasVerb = /(记上|已记|记录|记过|重复记录|重复记账|入账|收到|到账|记好了|记下了|✓)/.test(text)
+  return hasAmount && hasVerb
+}
+
+/**
+ * 判断用户原始消息是否为明确的记账意图(金额 + 记账/收入动词)。
+ * 兜底第二道:record 模式下模型偶发"该调不调"、只回非确认文字时,
+ * 从用户原始输入判断是否应强制重试一次(让模型真正调工具)。
+ * 保守设计:限短句(≤40 字)、排除明确过去式(昨天/上周/上月等),避免长问题/复杂提问被误判。
+ * 误判成本低:只多一次 LLM 调用,模型仍会自行判断"是否真的在记账"。
+ */
+function looksLikeRecordQuestion(question) {
+  if (!question || typeof question !== 'string') return false
+  const q = question.trim()
+  if (!q || q.length > 40) return false
+  // 明确的过去式(昨天/上周/上月/去年等)不兜底——prompt 已规定过去的不自动记,应引导当下再报
+  if (/昨天|前天|上周|上月|去年|之前|过去|上个月/.test(q)) return false
+  const hasAmount = /(¥|￥)\s*\d|\d+(\.\d+)?\s*(元|块|块钱)|\d{2,}/.test(q)
+  if (!hasAmount) return false
+  const hasExpenseVerb = /(记一笔|记下|记账|记上|花了|买了|付了|请客|打车|吃|买|消费|支出)/.test(q)
+  const hasIncomeVerb = /(工资|发薪|到账|月薪|副业|兼职|稿费|外快|私活|赚|挣|发了|收入|接到|到手)/.test(q)
+  return hasExpenseVerb || hasIncomeVerb
+}
+
+/**
+ * 判断当前用户消息是否是对"是否还要再记"追问的肯定答复。
+ * 用于自动补 force=true:用户确认后再记时,若模型漏带 force 会被防重拦下再问一遍,体验很差。
+ * 双重条件收紧,避免误判:① 用户消息是短确认语;② 历史里最近一条助手消息包含我们的追问句式。
+ */
+function isDupConfirmReply(history, question) {
+  if (!question || typeof question !== 'string') return false
+  const q = question.trim()
+  if (!q || q.length > 12) return false  // 确认语很短;长句(描述新开销)不算
+  if (!/^(再记|要|确认|是的|是|对|好|嗯|要再记|再记一笔|可以|继续)/.test(q)) return false
+  const last = history && history.length ? history[history.length - 1] : null
+  if (!last || last.role !== 'assistant') return false
+  return /还要再记|再记一笔吗|确定还要再记/.test(last.content || '')
 }
 
 function buildMessages(data, question, mode, history) {
@@ -701,10 +827,11 @@ async function callDeepSeek({ messages, tools, temperature }) {
   }
   if (tools) body.tools = tools
 
-  // 主动 6s 超时:匹配前端 setTimeout(8000ms),给云函数自身留 24s 余量
-  // 单次 LLM 调用正常 1~3s,6s 足够;超过则视作平台问题,主动 abort 返回 LLM_FAIL
+  // 主动 10s 超时:跟云函数 config.json timeout=20s 配套。record 模式最多 2 次 LLM
+  // (判定 + 兜底重试),每次 10s 上限 = 20s 正好在平台预算内;正常单次 2-4s,远低于此。
+  // 超过 10s 视为异常,主动 abort 走 LLM_FAIL 兜底,避免拖到平台硬杀导致前端超时链路断
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 6000)
+  const timer = setTimeout(() => controller.abort(), 10000)
 
   let resp
   try {
