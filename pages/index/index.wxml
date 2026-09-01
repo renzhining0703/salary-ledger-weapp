@@ -22,7 +22,7 @@
   <view wx:else class="card board-card">
     <view class="board-head">
       <view class="board-arrow" bindtap="prevMonth">‹</view>
-      <view class="board-title">{{board.monthText}}<text wx:if="{{board.isThisMonth}}" class="board-current">当前月</text></view>
+      <view class="board-title">{{board.monthText}}</view>
       <view class="board-arrow" bindtap="nextMonth">›</view>
     </view>
     <view class="board-balance {{board.balancePositive ? 'pos' : 'neg'}}">
