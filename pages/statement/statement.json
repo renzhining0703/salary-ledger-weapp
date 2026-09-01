@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "月度账单",
+  "usingComponents": {
+    "ai-chat-sheet": "/components/ai-chat-sheet/ai-chat-sheet"
+  }
+}

@@ -1,0 +1,357 @@
+/* 月度账单页(由记账页「本月账单」弹框迁移为独立页面)
+   基础样式(.page/.mask/.sheet/.btn/.form-*)来自 app.wxss 全局定义 */
+
+.page {
+  padding: 24rpx 32rpx calc(32rpx + env(safe-area-inset-bottom));
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+/* ---------- 加载中兜底 ---------- */
+.stmt-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16rpx;
+  padding: 120rpx 0;
+  color: var(--text-sub);
+  font-size: 26rpx;
+}
+
+/* ---------- 结余卡片（跟随主题） ---------- */
+.stmt-hero {
+  background: var(--input-bg);
+  border-radius: 24rpx;
+  padding: 32rpx;
+  margin-bottom: 20rpx;
+}
+
+.stmt-hero-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.stmt-hero-label {
+  font-size: 24rpx;
+  color: var(--text-sub);
+}
+
+.stmt-hero-num {
+  font-size: 60rpx;
+  font-weight: 800;
+  font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+  letter-spacing: -0.02em;
+  margin-top: 8rpx;
+  line-height: 1.1;
+  color: var(--text);
+}
+.stmt-hero-num.pos { color: var(--gold); }
+.stmt-hero-num.neg { color: var(--danger); }
+
+/* 结转小字：可用余额下方提示 */
+.stmt-carry-hint {
+  font-size: 22rpx;
+  color: var(--text-mute);
+  margin-top: 10rpx;
+}
+
+/* 储蓄率徽章:金底深字 */
+.stmt-hero-badge {
+  background: var(--gold);
+  color: var(--navy-900);
+  border-radius: 18rpx;
+  padding: 12rpx 22rpx;
+  text-align: center;
+  flex-shrink: 0;
+  margin-left: 24rpx;
+}
+.shb-num {
+  font-size: 30rpx;
+  font-weight: 800;
+  font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.2;
+}
+.shb-label {
+  font-size: 20rpx;
+  font-weight: 600;
+  opacity: 0.82;
+  margin-top: 2rpx;
+}
+
+/* 底部三栏 */
+.stmt-hero-grid {
+  display: flex;
+  margin-top: 28rpx;
+  padding-top: 24rpx;
+  border-top: 1rpx solid var(--border-light);
+}
+
+.shg-item {
+  flex: 1;
+  text-align: center;
+}
+.shg-item + .shg-item {
+  border-left: 1rpx solid var(--border-light);
+}
+
+.shg-num {
+  font-size: 30rpx;
+  font-weight: 700;
+  font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+  color: var(--text);
+}
+.shg-num.gold { color: var(--gold); }
+
+.shg-label {
+  font-size: 20rpx;
+  color: var(--text-sub);
+  margin-top: 6rpx;
+}
+
+/* ---------- 对比上月(单行 chip) ---------- */
+.stmt-cmp-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--chip-bg);
+  border-radius: 16rpx;
+  padding: 16rpx 24rpx;
+  margin-bottom: 24rpx;
+  font-size: 24rpx;
+  color: var(--text-sub);
+}
+
+.stmt-cmp-pct {
+  font-size: 24rpx;
+  font-weight: 700;
+  font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+}
+.stmt-cmp-pct.up { color: var(--danger); }
+.stmt-cmp-pct.down { color: var(--success); }
+.stmt-cmp-pct.flat { color: var(--text-mute); font-weight: 500; }
+
+/* ---------- 分类明细 ---------- */
+.stmt-cats {
+  margin-bottom: 24rpx;
+}
+
+.stmt-cat-row {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  padding: 14rpx 0;
+  border-bottom: 1rpx solid var(--border-light);
+}
+.stmt-cat-row:last-child { border-bottom: none; }
+
+/* 本月没消费的分类:整行灰化 + 进度条置透明,但仍可点 chip 设预算 */
+.stmt-cat-row.empty .stmt-cat-name { color: var(--text-mute); font-weight: 500; }
+.stmt-cat-row.empty .stmt-cat-amt { color: var(--text-mute); font-weight: 500; }
+.stmt-cat-row.empty .stmt-cat-fill { opacity: 0.25; }
+.stmt-cat-row.empty .stmt-cat-dot { opacity: 0.4; }
+
+.stmt-cat-dot {
+  width: 16rpx;
+  height: 16rpx;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.stmt-cat-name {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--text);
+  width: 96rpx;
+  flex-shrink: 0;
+}
+
+.stmt-cat-bar {
+  flex: 1;
+  height: 12rpx;
+  background: var(--fill-bg);
+  border-radius: 999rpx;
+  overflow: hidden;
+}
+
+.stmt-cat-fill {
+  height: 100%;
+  border-radius: 999rpx;
+}
+
+.stmt-cat-amt {
+  font-size: 24rpx;
+  font-weight: 700;
+  color: var(--text);
+  font-family: "DIN Alternate", sans-serif;
+  min-width: 140rpx;
+  text-align: right;
+}
+
+.stmt-cat-over {
+  font-size: 18rpx;
+  font-weight: 700;
+  color: var(--danger);
+  background: var(--danger-bg);
+  padding: 4rpx 10rpx;
+  border-radius: 6rpx;
+  flex-shrink: 0;
+}
+
+/* 分类预算入口 chip:
+   - 未设预算:虚线灰底 + 文字引导,弱提示
+   - 已设预算:金色实心 + 金额
+   - 已设 + 超支:红色实心 + 金额
+   可点击 → 弹分类预算设置 sheet */
+.stmt-cat-budget {
+  font-size: 22rpx;
+  font-weight: 600;
+  padding: 6rpx 14rpx;
+  border-radius: 999rpx;
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-family: "DIN Alternate", sans-serif;
+}
+.stmt-cat-budget.unset {
+  border: 1rpx dashed var(--border);
+  color: var(--text-mute);
+  background: transparent;
+}
+.stmt-cat-budget.set {
+  background: rgba(200, 160, 77, 0.15);
+  color: var(--gold);
+}
+.stmt-cat-budget.set.over {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.stmt-cat-budget-hover {
+  opacity: 0.7;
+}
+
+/* 分类预算设置 sheet */
+.cat-budget-hint {
+  font-size: 24rpx;
+  color: var(--text-sub);
+  margin-bottom: 24rpx;
+  padding: 16rpx 20rpx;
+  background: var(--input-bg);
+  border-radius: 12rpx;
+}
+.cat-budget-clear-btn {
+  margin-bottom: 12rpx;
+  background: var(--input-bg);
+  color: var(--text-sub);
+}
+
+/* ---------- AI 解读卡 ---------- */
+.stmt-insight {
+  background: var(--input-bg);
+  border-radius: 24rpx;
+  padding: 24rpx 28rpx;
+  margin-top: 8rpx;
+}
+
+.stmt-insight-head {
+  display: flex;
+  align-items: center;
+  margin-bottom: 14rpx;
+}
+
+/* 账本君金色圆头像 */
+.stmt-insight-avatar {
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  margin-right: 16rpx;
+}
+.stmt-insight-avatar-img {
+  width: 100%;
+  height: 100%;
+}
+
+.stmt-insight-title {
+  font-size: 28rpx;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  flex: 1;
+  color: var(--text);
+}
+
+.stmt-insight-src {
+  font-size: 20rpx;
+  color: var(--text-sub);
+}
+
+/* 对话入口:通栏输入条暗示 */
+.stmt-ask-bar {
+  display: flex;
+  align-items: center;
+  margin-top: 20rpx;
+  padding: 16rpx 14rpx;
+  border-radius: 16rpx;
+  background: var(--card);
+  border: 1rpx solid var(--border);
+}
+
+/* 账本君小头像:管家先生图片 */
+.stmt-ask-bar::before {
+  content: '';
+  width: 40rpx;
+  height: 40rpx;
+  border-radius: 50%;
+  background: url('/static/avatar/avatar-c-200.png') center/cover no-repeat;
+  margin-right: 10rpx;
+  flex-shrink: 0;
+}
+
+.stmt-ask-bar:active {
+  background: var(--press-bg);
+}
+
+.ask-text {
+  flex: 1;
+  font-size: 24rpx;
+  color: var(--gold-700);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ask-arrow {
+  font-size: 32rpx;
+  color: var(--gold-700);
+  line-height: 1;
+  padding-left: 12rpx;
+}
+
+.stmt-insight-body {
+  font-size: 26rpx;
+  line-height: 1.65;
+  white-space: pre-line;
+  color: var(--text);
+}
+
+.stmt-insight-loading {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  white-space: nowrap;
+  color: var(--text-sub);
+}
+
+.stmt-insight-spinner {
+  width: 28rpx;
+  height: 28rpx;
+  border: 3rpx solid var(--border);
+  border-top-color: var(--gold);
+  border-radius: 50%;
+  animation: stmt-spin 0.9s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes stmt-spin {
+  to { transform: rotate(360deg); }
+}

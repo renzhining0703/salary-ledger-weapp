@@ -1,0 +1,314 @@
+/* 账本君聊天 sheet 公共组件样式(由首页 index.wxss 迁移,两页共用)
+   基础样式(.mask/.sheet/.sheet-out/.sheet-title)与 CSS 变量来自 app.wxss,
+   通过 styleIsolation: apply-shared 穿透生效 */
+
+.ai-chat-sheet {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: height 0.18s ease;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* ---- 头部标题栏:通栏深蓝渐变条,IP 专属对话头部 ---- */
+.ai-chat-title {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 26rpx 28rpx 24rpx;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 40%),
+    linear-gradient(135deg, var(--navy-700), var(--navy-900));
+  color: #fff;
+  flex-shrink: 0;
+  position: relative;
+}
+.ai-chat-title::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2rpx;
+  background: linear-gradient(90deg, transparent, rgba(200, 160, 77, 0.55), transparent);
+}
+.ai-chat-avatar {
+  position: relative;
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 50%;
+  overflow: hidden;
+  margin-right: 18rpx;
+  flex-shrink: 0;
+  box-shadow:
+    0 0 0 4rpx rgba(255, 255, 255, 0.14),
+    0 8rpx 20rpx rgba(0, 0, 0, 0.28);
+}
+.ai-chat-avatar-img {
+  width: 100%;
+  height: 100%;
+}
+/* 头像右下角在线状态点(纯 CSS 装饰,无功能) */
+.ai-chat-title .ai-chat-avatar::after {
+  content: '';
+  position: absolute;
+  right: -2rpx;
+  bottom: -2rpx;
+  width: 16rpx;
+  height: 16rpx;
+  border-radius: 50%;
+  background: #3FCF7E;
+  border: 3rpx solid rgba(255, 255, 255, 0.85);
+  box-sizing: content-box;
+  z-index: 1;
+}
+.ai-chat-title-text {
+  flex: 1;
+  min-width: 0;
+}
+.ai-chat-title-main {
+  font-size: 32rpx;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: 0.02em;
+}
+.ai-chat-title-sub {
+  font-size: 22rpx;
+  color: rgba(255, 255, 255, 0.66);
+  margin-top: 3rpx;
+}
+/* 清空:半透明白胶囊,头部场景专用 */
+.ai-chat-clear {
+  font-size: 22rpx;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+  padding: 10rpx 20rpx;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1rpx solid rgba(255, 255, 255, 0.16);
+  flex-shrink: 0;
+  margin-right: 10rpx;
+}
+.ai-chat-clear:active {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* 显式关闭按钮:避免 sheet 太顶时无法点 mask 关闭 */
+.ai-chat-close {
+  font-size: 28rpx;
+  font-weight: 300;
+  color: rgba(255, 255, 255, 0.92);
+  width: 60rpx;
+  height: 60rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1rpx solid rgba(255, 255, 255, 0.16);
+  flex-shrink: 0;
+  line-height: 1;
+}
+.ai-chat-close:active {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+/* 主对话历史 */
+.ai-chat-history {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12rpx 28rpx 18rpx;
+  box-sizing: border-box;
+}
+.ai-chat-msg {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 18rpx;
+}
+.ai-chat-msg.mine {
+  justify-content: flex-end;
+}
+/* 账本君气泡头像:管家先生图片 + 金色细描边 + 微光,与头部头像同源 */
+.ai-chat-msg .chat-avatar {
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 50%;
+  overflow: hidden;
+  margin-right: 12rpx;
+  flex-shrink: 0;
+  box-shadow:
+    0 0 0 2rpx rgba(200, 160, 77, 0.22),
+    0 4rpx 12rpx var(--tint-gold-18);
+}
+.chat-avatar-img {
+  width: 100%;
+  height: 100%;
+}
+.ai-chat-bubble-wrap {
+  display: flex;
+  flex-direction: column;
+  max-width: 76%;
+  flex-shrink: 1;
+  min-width: 0;
+}
+.ai-chat-bubble {
+  font-size: 27rpx;
+  line-height: 1.6;
+  padding: 18rpx 22rpx;
+  border-radius: 20rpx;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+/* 用户气泡:香槟金渐变,右侧小尾,浮起感 */
+.ai-chat-msg.mine .ai-chat-bubble {
+  background: linear-gradient(135deg, var(--gold), #E8B85E);
+  color: var(--navy-900);
+  border-top-right-radius: 6rpx;
+  box-shadow: 0 6rpx 18rpx var(--tint-gold-18);
+}
+/* 账本君气泡:白底细边,左侧小尾 */
+.ai-chat-msg.his .ai-chat-bubble {
+  background: var(--card);
+  border: 1rpx solid var(--border-light);
+  color: var(--text);
+  border-top-left-radius: 6rpx;
+  box-shadow: 0 4rpx 14rpx var(--shadow-card);
+}
+/* 账本君记账成功后的 15s 撤销气泡(assistant 消息下方小 chip) */
+.ai-chat-undo {
+  align-self: flex-start;
+  font-size: 22rpx;
+  font-weight: 600;
+  color: var(--gold);
+  background: rgba(200, 160, 77, 0.12);
+  padding: 6rpx 16rpx;
+  border-radius: 999rpx;
+  margin-top: 8rpx;
+  border: 1rpx solid rgba(200, 160, 77, 0.3);
+}
+.ai-chat-undo-hover {
+  opacity: 0.6;
+}
+/* 「再记一次」快捷确认:与撤销气泡同色系,虚线边框区分"待确认"状态 */
+.ai-chat-reconfirm {
+  align-self: flex-start;
+  font-size: 22rpx;
+  font-weight: 600;
+  color: var(--gold);
+  background: rgba(200, 160, 77, 0.12);
+  padding: 6rpx 16rpx;
+  border-radius: 999rpx;
+  margin-top: 8rpx;
+  border: 1rpx dashed rgba(200, 160, 77, 0.45);
+}
+.ai-chat-msg.loading {
+  align-items: center;
+}
+.ai-chat-msg.loading text {
+  font-size: 24rpx;
+  color: var(--text-mute);
+  line-height: 1;
+}
+.ai-chat-msg.loading .ai-chat-spinner {
+  width: 28rpx;
+  height: 28rpx;
+  border-radius: 50%;
+  border: 3rpx solid var(--gold);
+  border-top-color: transparent;
+  animation: ai-spin 0.8s linear infinite;
+  margin-right: 10rpx;
+  flex-shrink: 0;
+}
+@keyframes ai-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 输入框:底部操作栏(白底 + 顶部分割线,贴安全区) */
+.ai-chat-input-row {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  padding: 18rpx 28rpx calc(18rpx + env(safe-area-inset-bottom));
+  border-top: 1rpx solid var(--border);
+  margin-top: 0;
+  background: var(--card);
+  flex-shrink: 0;
+}
+.ai-chat-input {
+  flex: 1;
+  background: var(--input-bg);
+  border: 1rpx solid var(--border);
+  border-radius: 999rpx;
+  padding: 18rpx 26rpx;
+  font-size: 27rpx;
+  min-height: 40rpx;
+  color: var(--text);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.ai-chat-input::placeholder {
+  color: var(--text-mute);
+}
+.ai-chat-input:focus {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: 0 0 0 4rpx var(--tint-gold-12);
+}
+.ai-chat-send {
+  font-size: 27rpx;
+  font-weight: 700;
+  color: var(--navy-900);
+  background: linear-gradient(135deg, var(--gold), #E8B85E);
+  padding: 16rpx 32rpx;
+  border-radius: 999rpx;
+  flex-shrink: 0;
+  box-shadow: 0 6rpx 16rpx var(--tint-gold-18);
+  transition: background 0.15s ease, color 0.15s ease, transform 0.08s ease;
+}
+.ai-chat-send:active {
+  transform: scale(0.96);
+  opacity: 0.9;
+}
+.ai-chat-send.disabled {
+  background: var(--input-bg);
+  color: var(--text-mute);
+  box-shadow: none;
+}
+
+.ai-chat-error {
+  text-align: center;
+  font-size: 22rpx;
+  color: var(--danger);
+  padding: 6rpx 28rpx 4rpx;
+  background: var(--card);
+}
+
+/* AI 输入区上方常驻快捷问题 chip,点一下即发 */
+.ai-quick-chip-row {
+  display: flex;
+  gap: 16rpx;
+  padding: 14rpx 28rpx 12rpx;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.ai-quick-chip-row::-webkit-scrollbar {
+  display: none;
+}
+.ai-quick-chip {
+  flex-shrink: 0;
+  font-size: 24rpx;
+  color: var(--text-sub);
+  background: var(--chip-bg);
+  border: 1rpx solid var(--border-light, rgba(0, 0, 0, 0.06));
+  border-radius: 999rpx;
+  padding: 10rpx 22rpx;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.ai-quick-chip-hover {
+  background: rgba(200, 160, 77, 0.12);
+  color: var(--gold-700, #8a6d2b);
+  border-color: rgba(200, 160, 77, 0.35);
+}

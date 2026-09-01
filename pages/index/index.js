@@ -2,7 +2,6 @@ const config = require('../../utils/config')
 const util = require('../../utils/util')
 const dbApi = require('../../utils/db')
 const chatStorage = require('../../utils/chatStorage')
-const chatController = require('../../utils/chatController')
 const themeUtil = require('../../utils/theme')
 
 /**
@@ -22,8 +21,6 @@ const WELCOME_MESSAGE = `你好,我是账本君,你的 AI 财务助理
 「我该如何规划下个月开销?」`
 
 Page({
-  behaviors: [chatController],
-
   data: {
     user: null,
     todoList: [],
@@ -52,16 +49,14 @@ Page({
     optimalFull: null,       // { pendingCount, order: [], savedInterestText }
     showOptimalSheet: false,
     showOptimalSheetClosing: false,
-    // 账本君 AI 助理 chat sheet（独立,不需要跳页）
+    // 账本君 AI 助理 chat sheet(公共组件 components/ai-chat-sheet,交互逻辑在组件内)
     showAiChat: false,
-    showAiChatClosing: false,
-    aiScrollIntoView: '',    // 滚到底用,绑定哨兵节点 #ai-chat-bottom(立即响应)
-    aiScrollTop: 0,          // scroll-top 兜底:_bumpScrollTop 累加器保证每次值唯一,scroll-into-view 同值不触发时用它
+    aiStmt: null,            // 发送时取的 statement blob(组件 stmt 属性,_buildAiStmt 产出)
     chatStorage: { last: [], shown: false },  // 上次会话摘要(冷启动展示)
     recentExpenses: [],      // 给 aiChat.send 用,本月最近流水
-    aiSheetTransform: 'translateY(0)',  // 保留兼容(目前已用 max-height 收缩,这个不动)
-    aiSheetMaxHeight: '80vh',          // 键盘弹起时收缩 sheet 高度 = windowHeight - 键盘高度,让 sheet 底部贴键盘顶
-    aiSheetPaddingBottom: 'env(safe-area-inset-bottom)',  // 键盘弹起时设为 0(键盘就是底),关闭时还原
+    lastRecordGap: null,     // 距上次记账天数(0=今天记过;仅当前月,账本君断记提醒用)
+    aiCards: [],             // 未还卡实时摘要(账本君逐卡明细用;画像里的信用卡是 24h 汇总)
+    recurringList: [],       // 固定支出模板(账本君「本月待记」用,fire-and-forget 拉取)
     // 账本君主动询问(云函数 salaryReminder 推送后写入,本地兜底在 chatStorage)
     pendingAiQuestion: null,           // { text, ts, round }
     aiUnread: 0,                       // 入口卡未读红点计数(单条询问 = 1)
@@ -126,10 +121,7 @@ Page({
   },
 
   onUnload() {
-    if (this._undoTimer) {
-      clearInterval(this._undoTimer)
-      this._undoTimer = null
-    }
+    // 聊天撤销倒计时 timer 已随公共组件 detached 自动清理,页面无需处理
   },
 
   /**
@@ -243,6 +235,15 @@ Page({
         }
       })
 
+      // 账本君逐卡实时明细(仅未还卡):画像里的信用卡是 24h 缓存汇总,还完款当天 AI 仍当未还
+      const aiCards = cards
+        .filter((c) => c.status !== 'paid')
+        .map((c) => ({
+          bank: c.bank || '',
+          amount: c.amount || 0,
+          days: util.daysBetween(today, util.calcDueDate(c.repayDay, 'pending'))  // 负=逾期天数
+        }))
+
       // 多卡最优还款顺序(纯函数,无副作用)。<3 张未还时给 null,入口卡不显示
       this._computeOptimal(cards, today)
 
@@ -260,8 +261,11 @@ Page({
         .reduce((s, x) => s + (x.amount || 0), 0)
       // 【方案C】月度支出快照：users.expAgg 按月求和 → 精确累计支出
       // （含 12 个月窗口外的老账，查看任意历史月都准确）
+      // 历史月份用快照，本月用实际 expense（避免快照漂移导致累计余额不准）
       const snapCum = expAgg
-        ? Object.keys(expAgg).filter((m) => m <= month).reduce((s, m) => s + expAgg[m], 0)
+        ? Object.keys(expAgg)
+            .filter((m) => m < month)
+            .reduce((s, m) => s + expAgg[m], 0) + expense
         : null
       // 【降级路径】无快照（云端旧版 dbRead / 快照回填失败）时退回方案A：
       // 12 个月窗口内近似，窗口外缺口由阶段2后台补查修正
@@ -347,6 +351,7 @@ Page({
       // 今日指南：日均可花 + 连续记账（语义基于「今天」，仅当前月展示）
       let daily = null
       let streak = null
+      let lastRecordGap = null   // 距上次记账天数(0=今天记过):账本君断记提醒用
       // 「账本君说」空态状态机（设计稿 v3 §2）：payday 判定看用户是否显式设置（>0），不按默认 15 兜底
       const paydaySet = !!(user && user.payday)
       const hasRecorded = cumIncome > 0 || cumExpense > 0
@@ -409,6 +414,11 @@ Page({
           .map((x) => x.date)
           .filter((d) => d && d >= cutoff)
         streak = util.calcStreak(recentDates, today)
+        // 距上次记账天数:recentDates 顺序无保证,取最大日期与今天的差(0=今天记过)
+        if (recentDates.length) {
+          const lastDate = recentDates.reduce((a, b) => (a > b ? a : b))
+          lastRecordGap = Math.max(0, util.daysBetween(lastDate, today))
+        }
         if (!hasRecorded && !paydaySet) boardAiState = 'welcome'   // S1 全新用户
         else if (!hasRecorded) boardAiState = 'first'              // S2 已设发薪日，待记首笔
         else if (!paydaySet) boardAiState = 'unset'                // S3 有记录但缺发薪日（估算口径）
@@ -451,6 +461,8 @@ Page({
         board,
         daily,
         streak,
+        lastRecordGap,
+        aiCards,
         boardAiSub: this._buildBoardAiSub(daily, streak, boardAiState, (user && user.payday) || 0),
         boardAiState,
         // 每日 brief 未读：账本君今天有话说（且非空态外的提醒优先场景），看过一次当天不再弹
@@ -472,6 +484,13 @@ Page({
         catStats: this._buildCatStats(expenses, expense),
         recentExpenses: expenses.slice(0, 60)  // 列表按时间倒序(最新在前),前 60 条=最近;多存点,发送前再截 top20
       })
+
+      // 固定支出模板(60s 缓存):账本君「本月待记固定支出」用;fire-and-forget 不阻塞首页渲染
+      dbApi.listRecurring()
+        .then((list) => {
+          if (seq === this._loadSeq) this.setData({ recurringList: list || [] })
+        })
+        .catch(() => {})
 
       if (!trendEmpty) {
         setTimeout(() => this.drawTrend(), 80)
@@ -824,125 +843,46 @@ Page({
     const showAiAskPrompt = !pendingQ && user.salaryRemindSubscribed !== true
 
     const hasCurrent = messages.length > 0
+    // 会话注入已同步进 globalData,组件 show 观察者会拉取;
+    // 页面只负责 slot 卡片(询问气泡/订阅引导/上次摘要)与 aiStmt 数据源
     this.setData({
       showAiChat: true,
-      chatMessages: messages,
-      chatInput: app.globalData.chatInput || '',
-      chatSending: app.globalData.chatSending || false,
-      chatRateError: '',
+      aiStmt: this._buildAiStmt(),
       chatStorage: {
         last: stored,
         shown: !hasCurrent && stored.length > 0
       },
       showAiAskPrompt,
       // 进入 sheet 即清未读红点(用户已经看见入口)
-      aiUnread: 0,
-      aiScrollIntoView: '',
-      aiScrollTop: 0
+      aiUnread: 0
     })
-    // 有消息(欢迎/询问气泡也算)就滚到底(wx:if 刚挂载 scroll-view,需要等布局 ready)
-    if (messages.length > 0) {
-      setTimeout(() => this._scrollChatToBottom(), 120)
-    }
   },
 
-  closeAiChat() {
-    if (this._aiCloseTimer) { clearTimeout(this._aiCloseTimer); this._aiCloseTimer = null }
-    this._aiCloseTimer = util.closeSheet(this, 'showAiChat')
+  /** 组件播完关闭动画后回调:卸载 sheet + 趋势图 canvas 随 wx:if 重建需重绘 */
+  onAiChatClose() {
+    this.setData({ showAiChat: false })
     this.redrawTrendAfterPopup()
   },
 
-  /** 清空当前会话 + storage */
-  clearAiChat() {
-    const app = getApp()
-    app.globalData.chatMessages = []
-    app.globalData.chatInput = ''
-    chatStorage.clear()
-    // 主动询问气泡独立存储,一并清掉避免下次打开 sheet 又冒出来
-    chatStorage.clearPendingQuestion()
+  /**
+   * 清空会话(组件 clear 事件):核心数据(globalData/storage/组件态)组件内已清,
+   * 页面只清页面级状态 + 云端未读字段。
+   */
+  onAiChatClear() {
     dbApi.updateMyUser({ unreadQuestion: null, unreadQuestionCount: 0 }).catch(() => {})
     this.setData({
-      chatMessages: [],
-      chatInput: '',
       chatStorage: { last: [], shown: false },
       pendingAiQuestion: null,
       aiUnread: 0
     })
-    wx.showToast({ title: '已清空', icon: 'none' })
-  },
-
-  onAiInput(e) {
-    const v = e.detail.value || ''
-    getApp().globalData.chatInput = v
-    this.setData({ chatInput: v })
-  },
-
-  /** 快捷 chip 同步输入到 globalData（让 onShow 切回时恢复输入）；手动输入走 onAiInput */
-  _chatSyncInput(v) {
-    getApp().globalData.chatInput = v
-  },
-
-  /** 输入框聚焦：滚到底,避免键盘遮挡输入框 */
-  onAiFocus() {
-    // _scrollChatToBottom 内部已有 16ms/80ms 多重延迟,这里不再套 setTimeout
-    this._scrollChatToBottom()
   },
 
   /**
-   * 输入框失焦：键盘收起,还原 sheet 位置。
-   * 主要兜底用 —— bindkeyboardheightchange 在快速切走时可能不触发最终 0。
-   */
-  onAiBlur() {
-    this.setData({
-      aiSheetMaxHeight: '80vh',
-      aiSheetPaddingBottom: 'env(safe-area-inset-bottom)'
-    })
-  },
-
-  /**
-   * 键盘高度变化:动态调整 sheet 高度。
-   *
-   * iOS 微信 position:fixed bottom:0 在键盘弹起时会自动避开键盘(sheet 底部自动上移到
-   * 键盘顶部),所以不需要 transform。
-   *
-   * sheet 高度策略:50vh(iPhone ≈ 426px),不撑满可视区:
-   * - 关闭键盘:80vh(顶部留 20vh mask 区关闭)
-   * - 键盘弹起:50vh(sheet 顶部在状态栏底 29px 之下 → 标题完整可见;
-   *   sheet 底部在键盘顶之下 ~80px → input 不紧贴键盘但完全可见,不被挡)
-   *
-   * 之前的 height = screenHeight - safeArea.top - h(占满可视区 ≈ 455px)虽然 input 紧贴键盘,
-   * 但 sheet 占满整个可视区看起来太满。
-   */
-  onAiKeyboardChange(e) {
-    const h = (e && e.detail && e.detail.height) || 0
-    if (h === 0) {
-      this.setData({
-        aiSheetMaxHeight: '80vh',
-        aiSheetPaddingBottom: 'env(safe-area-inset-bottom)'
-      })
-      return
-    }
-    const win = wx.getWindowInfo()
-    // 键盘弹起时 sheet 高度固定 50vh,不撑满可视区
-    // 上限:可视区高度(screenHeight - safeArea.top - h),防止 sheet 顶部出屏幕
-    // 下限:280px,保证能看到聊天 + 输入框
-    const visibleH = win.screenHeight - win.safeArea.top - h
-    const desiredH = win.screenHeight * 0.5
-    const maxH = Math.max(280, Math.min(visibleH, desiredH))
-    this.setData({
-      aiSheetMaxHeight: maxH + 'px',
-      aiSheetPaddingBottom: '0px'
-    })
-  },
-
-  /* ---------- 账本君对话钩子（发送 / 撤销 / 滚动逻辑由 chatController 提供） ---------- */
-
-  /**
-   * 发送前副作用：
+   * 发送前副作用(组件 beforesend 事件):
    * - 用户回应了账本君的主动询问 → 清掉未读状态（本地 + 云端；失败静默，下次 cron 重置）
    * - 隐藏「上次会话」摘要（本次已开始新提问）
    */
-  _chatBeforeSend() {
+  onAiChatBeforeSend() {
     if (this.data.pendingAiQuestion) {
       chatStorage.clearPendingQuestion()
       dbApi.updateMyUser({ unreadQuestion: null, unreadQuestionCount: 0 }).catch(() => {})
@@ -951,51 +891,15 @@ Page({
     this.setData({ chatStorage: { ...this.data.chatStorage, shown: false } })
   },
 
-  /** statement：用首页已有数据（空白月也允许通过，stmt.expense=0） */
-  _chatStmt() {
-    return this._buildAiStmt()
-  },
-
-  /** 最近流水：时间倒序列表里取前 30 条 = 最近 */
-  _chatRecentList() {
-    return (this.data.recentExpenses || []).slice(0, 30)
-  },
-
-  /** 滚 chat-history 到底：复用首页的 _scrollChatToBottom */
-  _chatScrollToBottom() {
-    this._scrollChatToBottom()
-  },
-
   /**
-   * 「再记一次」快捷确认按钮:把"再记"当作下一条消息发送,复用完整对话链路。
-   * 云函数侧 isDupConfirmReply + force 自动补位,真正写入第二笔。
-   * 不覆盖输入框里已输入的内容(临时换入"再记",发送后恢复)。
+   * 记账/撤销后刷新(组件 refresh 事件):
+   * 云函数写库不触发 dbApi 缓存失效,必须 force;同时重建 aiStmt 让下一问拿到新数据。
    */
-  onReRecord() {
-    if (this.data.chatSending) return
-    const saved = this.data.chatInput
-    this.setData({ chatInput: '再记' }, () => {
-      this.sendChat()
-      this.setData({ chatInput: saved })
-    })
-  },
-
-  /**
-   * 滚 chat-history 到底。三层保险:
-   * 1) scroll-into-view 立即指向哨兵,首屏/快速响应
-   * 2) 重置 scroll-into-view 为空绕开「同值不触发」
-   * 3) 80ms 后用 scroll-top + _bumpScrollTop 累加器兜底,确保 DOM/layout ready 且值唯一
-   */
-  _scrollChatToBottom() {
-    // 先重置(空串),下一帧再设回目标,触发 scroll-view 重定位
-    this.setData({ aiScrollIntoView: '' })
-    setTimeout(() => {
-      this.setData({ aiScrollIntoView: 'ai-chat-bottom' })
-    }, 16)
-    // scroll-top 兜底:DOM 更新完(80ms)后再 setData,scroll-top 值每次都唯一
-    setTimeout(() => {
-      this.setData({ aiScrollTop: this._bumpScrollTop(99999) })
-    }, 80)
+  async onAiChatRefresh() {
+    await this.loadData(true)
+    if (this.data.showAiChat) {
+      this.setData({ aiStmt: this._buildAiStmt() })
+    }
   },
 
   /**
@@ -1029,6 +933,18 @@ Page({
     const viewMonth = this.data.boardMonth || util.thisMonthStr()
     const catStats = this.data.catStats || []
     const recentList = this.data.recentExpenses || []
+
+    // 当日已支出:仅查看当前月时聚合(recentExpenses 是查看月流水,历史月不含今天,
+    // 恒 0 会误导 AI 说「今天没花钱」);历史月传 null 让云端跳过
+    let todayExpense = null
+    let todayExpenseCount = 0
+    if (viewMonth === util.thisMonthStr()) {
+      const t = util.todayStr()
+      todayExpense = 0
+      recentList.forEach((x) => {
+        if (x.date === t) { todayExpense += (x.amount || 0); todayExpenseCount++ }
+      })
+    }
 
     // 备注聚合 top-3
     const noteByCat = {}
@@ -1073,7 +989,26 @@ Page({
       expense,
       balance,
       available: board._availableNum || 0,
-      dailyBudget: this.data.daily ? this.data.daily.amount : null,  // 日均可花(含预算约束),AI 可直接答「我今天能花多少」
+      // 当日已支出+笔数(仅当前月有效,历史月 null):AI 直接答「今天花了多少」
+      todayExpense,
+      todayExpenseCount,
+      // 距上次记账天数(仅当前月;历史月 data 残留旧值必须屏蔽):断记提醒依据
+      lastRecordGap: viewMonth === util.thisMonthStr() ? this.data.lastRecordGap : null,
+      // 本月待记固定支出(active 且 lastRecorded≠当月,与记一笔快捷条同源):AI 主动询问「记了吗」
+      pendingRecurring: viewMonth === util.thisMonthStr()
+        ? (this.data.recurringList || [])
+            .filter((r) => r.active !== false && r.lastRecorded !== viewMonth)
+            .map((r) => `${r.name || '未命名'} ¥${(r.amount || 0).toFixed(0)}`)
+        : [],
+      // 未还卡实时摘要(逐卡 bank/amount/days,负 days=逾期):卡片状态与查看月份无关,直传
+      pendingCards: (this.data.aiCards || []).map((c) => ({
+        bank: c.bank, amount: c.amount, days: c.days
+      })),
+      // 日预算三件套:amount 日均可花(含预算约束与距发薪口径)/sub 口径说明/zeroTip 0 额度告警。
+      // 查看历史月份时 daily 为 null,serialize 透传 null 云端自然跳过
+      dailyBudget: this.data.daily ? this.data.daily.amount : null,
+      dailyBudgetSub: this.data.daily ? this.data.daily.sub : '',
+      dailyBudgetTip: this.data.daily ? this.data.daily.zeroTip : '',
       streakDays: this.data.streak ? this.data.streak.count : 0,     // 连续记账天数,AI 可做鼓励
       paydaySet: !!this.data.paydaySet,   // 发薪日是否已设置:未设置时 AI 不应按默认值谈「距发薪」,优先引导设置
       payday: (this.data.user && this.data.user.payday) || 0,  // 发薪日(每月几号,0=未设置):AI 可直接答「发薪日是哪天」
@@ -1536,9 +1471,11 @@ Page({
     app.globalData.chatMessages = msgs
     this.setData({
       pendingAiQuestion: null,
-      aiUnread: 0,
-      chatMessages: msgs
+      aiUnread: 0
     })
+    // sheet 开着时同步组件内消息列表(询问气泡从历史里移除)
+    const chat = this.selectComponent('#aiChatSheet')
+    if (chat && chat.syncMessages) chat.syncMessages()
   },
 
   /**

@@ -71,6 +71,12 @@ module.exports = Behavior({
       // 3. push user 消息 + 立刻滚动到底
       // (history 在 push 前取：不含本条问题，云端拼成多轮上下文，追问"那上个月呢"可被理解)
       const history = aiChat.buildHistory(app.globalData.chatMessages)
+      // 冷启动(本进程还没聊过)时,把持久化会话尾部作为「上次对话」传云端:
+      // AI 能看到自己上次说过什么,避免重复唠叨同一建议(跨会话去重)。
+      // 本进程已聊过则 history 已覆盖,不重复传
+      const lastSession = (app.globalData.chatMessages || []).length
+        ? null
+        : aiChat.buildHistory(chatStorage.load())
       const userMsg = { role: 'user', content: q, ts: now }
       app.globalData.chatMessages = [...(app.globalData.chatMessages || []), userMsg]
       app.globalData.chatInput = ''
@@ -89,7 +95,8 @@ module.exports = Behavior({
         recentList,
         question: q,
         mode: 'record',
-        history
+        history,
+        lastSession
       })
 
       // 5. 拼 assistant 气泡

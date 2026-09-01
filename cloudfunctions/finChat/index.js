@@ -289,6 +289,35 @@ const TOOL_DEFS = [
         required: ['amount']
       }
     }
+  },
+  // ↓ 新增:长期记忆工具(chat / record 双模式挂载)——用户亲口表达的目标/偏好持久化,跨会话生效
+  {
+    type: 'function',
+    function: {
+      name: 'saveMemory',
+      description: '当用户**亲口明确表达长期目标、消费偏好或禁忌**时调用。例:"我在攒钱换电池,今年别让我乱花"、"以后别提奶茶"、"我的目标是每月存 2000"、"多提醒我少点外卖"。只在用户说出这类**长期性**表述时调用;单笔记账、临时性聊天(如"这周不喝奶茶")、以及你对用户消费记录的推断都**不调用**。调用后在回复中复述记住的内容,并告知说「忘记+关键词」可删除。',
+      parameters: {
+        type: 'object',
+        properties: {
+          text: { type: 'string', description: '记忆内容(≤40 字,第一人称复述用户的目标/偏好,如"在攒钱换电池,控制乱花钱")' }
+        },
+        required: ['text']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'forgetMemory',
+      description: '当用户要求删除已记住的长期记忆时调用。例:"忘记攒钱那个"、"别记了"、"把记住的都删了"。keyword 传用户提到的关键词做模糊匹配删除;用户要求全删时 keyword 留空。用户只是问"你记住了什么"时**不调用**——直接根据【长期记忆】块回答。',
+      parameters: {
+        type: 'object',
+        properties: {
+          keyword: { type: 'string', description: '匹配关键词,包含该词的记忆会被删除;留空=清空全部' }
+        },
+        required: []
+      }
+    }
   }
 ]
 
@@ -351,10 +380,15 @@ exports.main = async (event) => {
   const profile = await buildProfile(OPENID)
   console.log(`[finChat] 画像完成 +${Date.now() - __t0}ms`)
 
+  // 3.5 长期记忆(用户亲口确认过的目标/偏好,存 users.aiMemories;一次轻量读,失败静默)
+  //     + 上次对话摘要(前端冷启动时传,跨会话去重用:AI 能看到自己上次说过什么)
+  const memories = await loadMemories(OPENID)
+  const lastSession = sanitizeHistory(event && event.lastSession)
+
   // 4. 调 LLM(单轮至多 1 次工具调用,严格不允许多轮循环——历史 504003 教训)
   let result
   try {
-    result = await callLLM(data, q, mode, history, OPENID, profile)
+    result = await callLLM(data, q, mode, history, OPENID, profile, memories, lastSession)
     console.log(`[finChat] 全流程完成 +${Date.now() - __t0}ms`)
   } catch (e) {
     console.error('finChat LLM 失败', e)
@@ -421,10 +455,10 @@ async function checkRate(openid) {
  * 两次串行调用,叠加画像聚合与查库,真实 DeepSeek 延迟下都曾拖爆 30s 云函数超时(504003)。
  * 现在严格限制:每轮至多 1 次工具调用,查询在云函数内直接查库,查完用结果拼回答,全程只有 1 次 LLM。
  */
-async function callLLM(data, question, mode, history, openid, profile) {
-  const messages = buildMessages(data, question, mode, history, profile)
-  const RECORD_TOOLS = ['addExpense', 'addSalary', 'query_expenses', 'query_summary', 'compare_months']
-  const QUERY_TOOLS = ['query_expenses', 'query_summary', 'compare_months']
+async function callLLM(data, question, mode, history, openid, profile, memories, lastSession) {
+  const messages = buildMessages(data, question, mode, history, profile, memories, lastSession)
+  const RECORD_TOOLS = ['addExpense', 'addSalary', 'saveMemory', 'forgetMemory', 'query_expenses', 'query_summary', 'compare_months']
+  const QUERY_TOOLS = ['saveMemory', 'forgetMemory', 'query_expenses', 'query_summary', 'compare_months']
   const tools = (mode === 'record')
     ? TOOL_DEFS.filter((t) => RECORD_TOOLS.indexOf(t.function.name) >= 0)
     : TOOL_DEFS.filter((t) => QUERY_TOOLS.indexOf(t.function.name) >= 0)
@@ -484,6 +518,10 @@ async function callLLM(data, question, mode, history, openid, profile) {
   }
   if (fname === 'compare_months') {
     return handleCompareTool(call, openid)
+  }
+  // 长期记忆工具分支(chat / record 共用):确定性确认语,不追加 LLM 调用(504003 教训)
+  if (fname === 'saveMemory' || fname === 'forgetMemory') {
+    return handleMemoryTool(call, fname, openid)
   }
   if (fname !== 'addExpense' && fname !== 'addSalary') {
     // 未知工具兜底:不执行,只用 content 回答
@@ -919,6 +957,89 @@ const PROFILE_TTL = 24 * 3600 * 1000
 const PROFILE_MAX_LEN = 400
 
 /**
+ * ---------------- 长期记忆(C8) ----------------
+ * 存储:users.aiMemories(字符串数组,≤10 条,新的在前)。
+ * 不放 aiProfiles:那是 24h 重建的缓存文档(remove+add 会清掉附加字段);
+ * users 由前端 dbApi 按字段更新,云函数只动 aiMemories 字段互不干扰。
+ */
+
+/** 读长期记忆(一次轻量读;users 不存在/无字段/异常 → 空数组,不阻塞主流程) */
+async function loadMemories(openid) {
+  if (!openid) return []
+  try {
+    const r = await db.collection('users').where({ _openid: openid }).limit(1).get()
+    const u = r.data[0] || {}
+    return Array.isArray(u.aiMemories) ? u.aiMemories.filter((m) => typeof m === 'string' && m.trim()) : []
+  } catch (e) {
+    console.warn('长期记忆读取失败', e)
+    return []
+  }
+}
+
+/** 执行 saveMemory:去重(完全相同跳过) + LRU 上限 10 条 */
+async function executeSaveMemory(args, openid) {
+  const text = String((args && args.text) || '').trim().slice(0, 60)
+  if (!text) return { ok: false, reason: '记忆内容为空' }
+  const col = db.collection('users')
+  const r = await col.where({ _openid: openid }).limit(1).get()
+  const doc = r.data[0]
+  if (!doc) return { ok: false, reason: '用户档案还没初始化,先记一笔再告诉我偏好' }
+  const list = Array.isArray(doc.aiMemories) ? doc.aiMemories.filter(Boolean) : []
+  if (list.indexOf(text) >= 0) return { ok: true, text, unchanged: true, total: list.length }
+  list.unshift(text)
+  while (list.length > 10) list.pop()
+  await col.doc(doc._id).update({ data: { aiMemories: list } })
+  return { ok: true, text, total: list.length }
+}
+
+/** 执行 forgetMemory:keyword 模糊匹配删除,空 keyword 清空全部 */
+async function executeForgetMemory(args, openid) {
+  const kw = String((args && args.keyword) || '').trim().slice(0, 30)
+  const col = db.collection('users')
+  const r = await col.where({ _openid: openid }).limit(1).get()
+  const doc = r.data[0]
+  const list = (doc && Array.isArray(doc.aiMemories)) ? doc.aiMemories.filter(Boolean) : []
+  if (!list.length) return { ok: false, reason: '我还没有记住任何长期偏好' }
+  if (!kw) {
+    await col.doc(doc._id).update({ data: { aiMemories: [] } })
+    return { ok: true, removed: list.length, cleared: true }
+  }
+  const rest = list.filter((m) => m.indexOf(kw) < 0)
+  const removed = list.length - rest.length
+  if (!removed) return { ok: false, reason: `没找到跟「${kw}」相关的记忆` }
+  await col.doc(doc._id).update({ data: { aiMemories: rest } })
+  return { ok: true, removed }
+}
+
+/** 记忆工具分发:确定性确认语,不追加 LLM 调用(504003 超时教训);toolResult 不带 added → 前端不出撤销按钮 */
+async function handleMemoryTool(call, fname, openid) {
+  let args = {}
+  try {
+    args = JSON.parse(call.function.arguments || '{}')
+  } catch (e) { /* 空参数兜底 */ }
+  try {
+    const out = fname === 'saveMemory'
+      ? await executeSaveMemory(args, openid)
+      : await executeForgetMemory(args, openid)
+    if (!out.ok) {
+      return { source: 'tool', text: out.reason || '记忆操作没成功', toolResult: { added: false, memory: true, error: out.reason } }
+    }
+    let text
+    if (fname === 'saveMemory') {
+      text = out.unchanged
+        ? `这条我已经记着了：${out.text}`
+        : `记住了：${out.text}。之后聊到相关话题我会记得（说「忘记 ${out.text.slice(0, 6)}」可删除）`
+    } else {
+      text = out.cleared ? '好，把记住的长期偏好都清掉了' : `好，删掉了 ${out.removed} 条相关记忆`
+    }
+    return { source: 'tool', text, toolResult: { added: false, memory: true, op: fname } }
+  } catch (e) {
+    console.warn('记忆工具执行失败', e)
+    return { source: 'tool', text: '记忆没存上，稍后再试一次', toolResult: { added: false, memory: true, error: String(e.message || e) } }
+  }
+}
+
+/**
  * 取画像:缓存命中直接返回;未命中聚合 → 写 aiProfiles 缓存。
  * aiProfiles 集合未创建时直接返回 null(不现算):否则每次请求都跑 5 个聚合查询,
  * 叠加 LLM 会把云函数拖到 30s 超时(504003)。创建集合后自然恢复缓存画像。
@@ -1122,7 +1243,7 @@ async function aggregateProfile(openid) {
   return text ? { text, catAvg } : null
 }
 
-function buildMessages(data, question, mode, history, profile) {
+function buildMessages(data, question, mode, history, profile, memories, lastSession) {
   const profileText = profile ? (typeof profile === 'string' ? profile : profile.text) : null
   const catAvg = profile && typeof profile !== 'string' && profile.catAvg ? profile.catAvg : null
   const dataBlock = formatDataForLLM(data, catAvg)
@@ -1137,13 +1258,23 @@ function buildMessages(data, question, mode, history, profile) {
     systemContent += HISTORY_NOTE
   }
   systemContent += PROMPT_TAIL
-  // 多轮结构:system → 对话历史 → [用户画像] → 本月数据 → 当前问题。
+  // 多轮结构:system → 对话历史 → [用户画像] → [长期记忆] → [上次对话结尾] → 本月数据 → 当前问题。
   // 数据块与问题保持在 messages 末尾,利用模型对结尾的注意力;画像与历史只作语境
   const messages = [
     { role: 'system', content: systemContent },
     ...hist
   ]
   if (profileText) messages.push({ role: 'user', content: `【用户画像】\n${profileText}` })
+  // 长期记忆(用户亲口确认过的目标/偏好):回答时主动对齐,如"在攒钱换电池"就别夸他乱花得爽
+  if (Array.isArray(memories) && memories.length) {
+    const list = memories.slice(0, 10).map((m, i) => `${i + 1}. ${m}`).join('\n')
+    messages.push({ role: 'user', content: `【长期记忆】(用户亲口确认过的目标/偏好,回答时主动对齐)\n${list}` })
+  }
+  // 上次对话结尾(仅本次会话第一问时传,history 为空):跨会话去重,避免重复已给过的建议/已问过的问题
+  if (!hist.length && Array.isArray(lastSession) && lastSession.length) {
+    const items = lastSession.slice(-8).map((m) => `${m.role === 'user' ? '用户' : '账本君'}: ${m.content}`)
+    messages.push({ role: 'user', content: `【上次对话结尾】(跨会话参考,不要重复已给过的建议)\n${items.join('\n')}` })
+  }
   messages.push({ role: 'user', content: `【本月数据】\n${dataBlock}` })
   messages.push({ role: 'user', content: `【用户问题】\n${question}` })
   return messages
@@ -1479,6 +1610,17 @@ function formatDataForLLM(d, catAvg) {
   const lines = []
   lines.push(`本月：${d.monthText || d.month}`)
 
+  // 今天日期由云端自算注入(不依赖前端传参,旧版前端也生效):
+  // LLM 不知道今天几号就算不了「距发薪几天」「到月底还剩几天」。
+  // 仅 finChat 注入(finReport 生成的是上月月报,无实时意义,两副本在此处有意不同步)
+  const now = new Date()
+  const pad2 = (n) => String(n).padStart(2, '0')
+  const todayStr = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`
+  const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+  const daysLeft = lastDayOfMonth - now.getDate() + 1  // 含今天
+  const wnames = ['日', '一', '二', '三', '四', '五', '六']
+  lines.push(`今天：${todayStr}（周${wnames[now.getDay()]}），本月还剩 ${daysLeft} 天`)
+
   // 发薪日常驻输出:老用户 AI 可直接答「我的发薪日是哪天」,未设置时明示不知道
   if (typeof d.payday === 'number' && d.payday > 0) {
     lines.push(`发薪日：每月${d.payday}号`)
@@ -1502,6 +1644,13 @@ function formatDataForLLM(d, catAvg) {
   }
   if (typeof d.savingsRate === 'number') fin.push(`储蓄率 ${d.savingsRate.toFixed(0)}%`)
   if (fin.length) lines.push(`收支：${fin.join('，')}`)
+
+  // 累计可用余额(滚动结转口径 = 截至查看月末全部收入−全部支出,与首页看板主数字一致):
+  // AI 只看本月结余会答错「我总共还有多少钱」,尤其发薪日≠月初导致跨月结余断裂的用户
+  if (typeof d.available === 'number') {
+    const avSign = d.available >= 0 ? '' : '-'
+    lines.push(`累计可用余额（含历史结转）：${avSign}¥${Math.abs(d.available).toFixed(0)}`)
+  }
 
   const cmp = []
   if (typeof d.prevMonthExpense === 'number' && d.expense) {
@@ -1608,6 +1757,22 @@ function formatDataForLLM(d, catAvg) {
     lines.push(`固定支出 ¥${d.recurTotal.toFixed(0)}（占 ${pct}%）`)
   }
 
+  // 本月待记固定支出(前端与记一笔快捷条同源逻辑):AI 主动询问「记了吗」,防漏记/重复记账
+  if (Array.isArray(d.pendingRecurring) && d.pendingRecurring.length) {
+    lines.push(`本月待记固定支出：${d.pendingRecurring.slice(0, 6).join('、')}——可主动询问用户是否已付`)
+  }
+
+  // 未还卡逐卡实时明细(前端透传;画像里的信用卡是 24h 缓存汇总,还完款当天会滞后)
+  if (Array.isArray(d.pendingCards) && d.pendingCards.length) {
+    const cardItems = d.pendingCards.slice(0, 6).map((c) => {
+      const amt = `¥${(c.amount || 0).toFixed(0)}`
+      if (typeof c.days !== 'number') return `${c.bank || '信用卡'} ${amt}`
+      const dueTxt = c.days < 0 ? `已逾期${-c.days}天` : c.days === 0 ? '今天到期' : `${c.days}天后到期`
+      return `${c.bank || '信用卡'} ${amt}(${dueTxt})`
+    })
+    lines.push(`未还信用卡：${cardItems.join('；')}`)
+  }
+
   const tags = []
   if (typeof d.budget === 'number' && d.budget > 0) {
     // 让 AI 看到总预算金额,能算出"剩多少能花"给具体规划
@@ -1624,6 +1789,27 @@ function formatDataForLLM(d, catAvg) {
     tags.push(`超预算分类：${d.overCategories.join('、')}`)
   }
   if (tags.length) lines.push(`状态：${tags.join('；')}`)
+
+  // 今日已支出(前端仅在看当前月时计算,历史月传 null 跳过):「今天花了多少」高频问题。
+  // 0 也是有效信息(今天还没花钱),与日预算行相邻组成「今天」语境
+  if (typeof d.todayExpense === 'number') {
+    const cnt = d.todayExpenseCount > 0 ? `（${d.todayExpenseCount} 笔）` : ''
+    lines.push(`今日已支出：¥${d.todayExpense.toFixed(0)}${cnt}`)
+  }
+
+  // 距上次记账天数(前端仅当前月计算,历史月 null 跳过):断记是记账 App 最大流失点,
+  // AI 应在用户问任何问题时顺带提醒补记(尤其周末/隔天容易漏)
+  if (typeof d.lastRecordGap === 'number' && d.lastRecordGap > 0) {
+    const gapTxt = d.lastRecordGap === 1 ? '今天还没记账（昨天记过）' : `距上次记账已 ${d.lastRecordGap} 天`
+    lines.push(`记账状态：${gapTxt}——回答末尾可顺带提醒补记一笔`)
+  }
+
+  // 日预算余量(前端首页 calcDailyBudget 现成结果):「今天还能花多少」高频问题的直接答案。
+  // sub 携带口径(距发薪 X 天 / 按本月剩余 X 天估算);amount=0 且带 tip 是额度告警,同样要喂
+  if (typeof d.dailyBudget === 'number' && (d.dailyBudget > 0 || d.dailyBudgetTip)) {
+    const sub = d.dailyBudgetSub ? `，${d.dailyBudgetSub}` : ''
+    lines.push(`日预算：今天还能花 ¥${d.dailyBudget.toFixed(0)}${sub}`)
+  }
 
   return lines.join('\n')
 }

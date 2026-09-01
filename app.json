@@ -4,6 +4,7 @@
     "pages/salary/salary",
     "pages/cards/cards",
     "pages/expenses/expenses",
+    "pages/statement/statement",
     "pages/calendar/calendar",
     "pages/my/my",
     "pages/recycle/recycle",

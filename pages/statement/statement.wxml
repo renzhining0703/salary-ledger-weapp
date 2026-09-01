@@ -1,0 +1,115 @@
+<view class="page {{themeClass}}">
+
+  <!-- 加载中 / 加载失败兜底（statement 未就绪时不渲染主体，避免闪空值） -->
+  <view wx:if="{{!statement}}" class="stmt-loading">
+    <view class="stmt-insight-spinner"></view>
+    <text>{{loading ? '账本君正在翻账本…' : '账单加载失败，请返回重试'}}</text>
+  </view>
+
+  <block wx:if="{{statement}}">
+  <!-- 结余 Hero：主数字 + 储蓄率徽章 + 三栏明细（由记账页账单弹框迁移） -->
+  <view class="stmt-hero">
+    <view class="stmt-hero-top">
+      <view class="stmt-hero-main">
+        <view class="stmt-hero-label">可用余额</view>
+        <view class="stmt-hero-num {{statement.balanceSign === '+' ? 'pos' : 'neg'}}">{{statement.balanceSign}}¥{{statement.balanceText}}</view>
+        <view wx:if="{{statement.carriedOverText}}" class="stmt-carry-hint">{{statement.carriedOverText}}</view>
+      </view>
+      <view class="stmt-hero-badge">
+        <view class="shb-num">{{statement.savingsRateText}}</view>
+        <view class="shb-label">储蓄率</view>
+      </view>
+    </view>
+    <view class="stmt-hero-grid">
+      <view class="shg-item">
+        <view class="shg-num gold">¥{{statement.incomeText}}</view>
+        <view class="shg-label">累计收入</view>
+      </view>
+      <view class="shg-item">
+        <view class="shg-num">¥{{statement.expenseText}}</view>
+        <view class="shg-label">累计支出</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 对比上月（单行 chip） -->
+  <view class="stmt-cmp-bar">
+    <text class="stmt-cmp-label">较上月支出 ¥{{statement.momText}}</text>
+    <view wx:if="{{statement.momDelta}}" class="stmt-cmp-pct {{statement.momDelta.dir}}">{{statement.momDelta.arrow}} {{statement.momDelta.pctText}}</view>
+    <view wx:else class="stmt-cmp-pct flat">持平</view>
+  </view>
+
+  <!-- 分类明细 -->
+  <view class="stmt-cats">
+    <view wx:for="{{statement.categories}}" wx:key="name" class="stmt-cat-row {{item.isEmpty ? 'empty' : ''}}">
+      <view class="stmt-cat-dot" style="background: {{item.color}};"></view>
+      <view class="stmt-cat-name">{{item.name}}</view>
+      <view class="stmt-cat-bar">
+        <view class="stmt-cat-fill" style="width: {{item.percent}}%; background: {{item.color}};"></view>
+      </view>
+      <view class="stmt-cat-amt">¥{{item.amountText}}</view>
+      <!-- 分类预算入口:已设显示金额,未设显示 +预算 引导 -->
+      <view class="stmt-cat-budget {{item.budget > 0 ? 'set' : 'unset'}} {{item.over ? 'over' : ''}}"
+            bindtap="onCatBudgetTap" data-cat="{{item.name}}" hover-class="stmt-cat-budget-hover">
+        <text wx:if="{{item.budget > 0}}">¥{{item.budgetText}}</text>
+        <text wx:else>+ 预算</text>
+      </view>
+      <view wx:if="{{item.over}}" class="stmt-cat-over">超</view>
+    </view>
+  </view>
+
+  <!-- AI 解读卡 -->
+  <view id="stmt-insight" class="stmt-insight">
+    <view class="stmt-insight-head">
+      <view class="stmt-insight-avatar"><image class="stmt-insight-avatar-img" src="/static/avatar/avatar-c-200.png" mode="aspectFill" /></view>
+      <view class="stmt-insight-title">账本君</view>
+      <view class="stmt-insight-src">
+        <text wx:if="{{statement.insightSource === 'loading'}}">思考中…</text>
+        <text wx:elif="{{statement.insightSource === 'cache'}}">缓存</text>
+        <text wx:elif="{{statement.insightSource === 'llm'}}">AI</text>
+        <text wx:elif="{{statement.insightSource === 'template'}}">本地生成</text>
+        <text wx:elif="{{statement.insightSource === 'template-pending'}}">本地生成</text>
+      </view>
+    </view>
+    <view wx:if="{{statement.insightSource === 'loading'}}" class="stmt-insight-body stmt-insight-loading">
+      <view class="stmt-insight-spinner"></view>
+      <text>账本君正在翻账本…</text>
+    </view>
+    <view wx:else class="stmt-insight-body">{{statement.insightText}}</view>
+
+    <!-- 对话入口：点击弹出公共账本君聊天组件 -->
+    <view wx:if="{{statement.insightSource === 'cache' || statement.insightSource === 'llm' || statement.insightSource === 'template'}}" class="stmt-ask-bar" bindtap="openChat">
+      <text class="ask-text">有问题问账本君</text>
+      <view class="ask-arrow">›</view>
+    </view>
+  </view>
+
+  <!-- 分类预算设置 sheet（分类行点 +预算 / 预算金额 弹出） -->
+  <view wx:if="{{showCatBudget}}" class="mask {{showCatBudgetClosing ? 'mask-out' : ''}}" bindtap="closeCatBudget"></view>
+  <view wx:if="{{showCatBudget}}" class="sheet {{showCatBudgetClosing ? 'sheet-out' : ''}}">
+    <view class="sheet-title">「{{catBudgetEditing.name}}」月度预算</view>
+    <view class="cat-budget-hint">
+      本月已花 ¥{{catBudgetEditing.spentText}}<text wx:if="{{catBudgetEditing.budget > 0}}"> · 剩 ¥{{catBudgetEditing.remainingText}}</text>
+    </view>
+    <view class="form-item">
+      <text class="form-label">预算金额（元）</text>
+      <input class="form-input amount-input" type="digit" placeholder="如 1500" value="{{catBudgetInput}}" bindinput="onCatBudgetInput" focus="{{catBudgetFocus}}" adjust-position="{{true}}" cursor-spacing="20" hold-keyboard="{{true}}" />
+    </view>
+    <view class="sheet-actions">
+      <view wx:if="{{catBudgetEditing.budget > 0}}" class="btn btn-secondary cat-budget-clear-btn" bindtap="clearCatBudget">清除预算</view>
+      <view class="btn btn-primary" bindtap="saveCatBudget">保存</view>
+    </view>
+  </view>
+
+  <!-- 账本君聊天（公共组件，与首页同一套） -->
+  <ai-chat-sheet
+    show="{{showChat}}"
+    sub="{{chatSub}}"
+    stmt="{{statement}}"
+    recent-list="{{recentList}}"
+    placeholder="比如：这个月餐饮花在哪了？"
+    bindclose="onChatClose"
+    bindrefresh="onChatRefresh"
+  />
+  </block>
+</view>

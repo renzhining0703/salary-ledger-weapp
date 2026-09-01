@@ -1,5 +1,8 @@
 {
   "navigationStyle": "custom",
   "navigationBarTitleText": "薪账本",
-  "enablePullDownRefresh": true
+  "enablePullDownRefresh": true,
+  "usingComponents": {
+    "ai-chat-sheet": "/components/ai-chat-sheet/ai-chat-sheet"
+  }
 }

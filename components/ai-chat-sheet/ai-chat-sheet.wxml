@@ -1,0 +1,68 @@
+<!-- 账本君聊天 sheet 公共组件(首页 / 账单页共用) -->
+<view wx:if="{{show}}" class="mask {{closing ? 'mask-out' : ''}}" bindtap="close"></view>
+<view wx:if="{{show}}" class="sheet ai-chat-sheet {{closing ? 'sheet-out' : ''}}" style="height: {{sheetHeight}}; padding-bottom: {{sheetPaddingBottom}};">
+  <view class="sheet-title ai-chat-title">
+    <view class="ai-chat-avatar"><image class="ai-chat-avatar-img" src="/static/avatar/avatar-c-200.png" mode="aspectFill" /></view>
+    <view class="ai-chat-title-text">
+      <view class="ai-chat-title-main">账本君</view>
+      <view class="ai-chat-title-sub">{{sub}}</view>
+    </view>
+    <view class="ai-chat-clear" bindtap="clear">清空</view>
+    <view class="ai-chat-close" bindtap="close">✕</view>
+  </view>
+
+  <!-- slot:宿主自定义头部卡片(首页:主动询问气泡/订阅引导/上次会话摘要),不传则不展示 -->
+  <slot name="head"></slot>
+
+  <!-- 主对话区 -->
+  <scroll-view class="ai-chat-history" scroll-y="{{true}}" scroll-into-view="{{scrollIntoView}}" scroll-top="{{scrollTop}}" scroll-with-animation="{{true}}" enhanced="{{true}}" bounces="{{false}}">
+    <block wx:for="{{chatMessages}}" wx:key="ts" wx:for-item="m">
+      <view id="msg-{{m.ts}}" class="ai-chat-msg {{m.role === 'user' ? 'mine' : 'his'}}">
+        <view wx:if="{{m.role === 'assistant'}}" class="chat-avatar"><image class="chat-avatar-img" src="/static/avatar/avatar-c-200.png" mode="aspectFill" /></view>
+        <view class="ai-chat-bubble-wrap">
+          <text class="ai-chat-bubble">{{m.content}}</text>
+          <!-- 账本君记账成功 → 15s 倒计时撤销窗口(气泡显示金额/分类/剩余秒数) -->
+          <view wx:if="{{m.undoable && !m.undone}}" class="ai-chat-undo"
+                bindtap="onUndoAiRecord" data-msg-ts="{{m.ts}}" hover-class="ai-chat-undo-hover">
+            <text wx:if="{{m.toolResult.type === 'salary'}}">{{m.toolResult.salary.label || '收入'}} ¥{{m.toolResult.salary.amount}} · {{m.undoCountdown}}s 内撤销</text>
+            <text wx:elif="{{m.toolResult.expense}}">{{m.toolResult.expense.category}} ¥{{m.toolResult.expense.amount}} · {{m.undoCountdown}}s 内撤销</text>
+          </view>
+          <!-- 账本君提示"已记过,是否再记" → 一键确认再记(点击即以"再记"回复,云函数 force=true 写入) -->
+          <view wx:if="{{m.needsConfirm && !m.undone}}" class="ai-chat-reconfirm"
+                bindtap="onReRecord" data-msg-ts="{{m.ts}}" hover-class="ai-chat-undo-hover">再记一次</view>
+        </view>
+      </view>
+    </block>
+    <view wx:if="{{chatSending}}" id="msg-sending" class="ai-chat-msg his loading">
+      <view class="chat-avatar"><image class="chat-avatar-img" src="/static/avatar/avatar-c-200.png" mode="aspectFill" /></view>
+      <view class="ai-chat-spinner"></view>
+      <text>账本君在想…</text>
+    </view>
+    <view id="ai-chat-bottom" style="height: 1rpx;"></view>
+  </scroll-view>
+
+  <!-- 快捷问题 chip:输入框上方,点一下即发,避免让用户从欢迎消息里手抄 -->
+  <view class="ai-quick-chip-row">
+    <block wx:for="{{quickChips}}" wx:key="*this">
+      <view class="ai-quick-chip" bindtap="onQuickChipTap" data-text="{{item}}" hover-class="ai-quick-chip-hover">{{item}}</view>
+    </block>
+  </view>
+
+  <view class="ai-chat-input-row">
+    <input
+      class="ai-chat-input"
+      value="{{chatInput}}"
+      maxlength="60"
+      placeholder="{{placeholder}}"
+      bindinput="onInput"
+      bindfocus="onFocus"
+      bindblur="onBlur"
+      bindkeyboardheightchange="onKeyboardChange"
+      bindconfirm="sendChat"
+      confirm-type="send"
+      hold-keyboard="{{true}}"
+    />
+    <view class="ai-chat-send {{chatSending || !chatInput.trim() ? 'disabled' : ''}}" bindtap="sendChat">发送</view>
+  </view>
+  <view wx:if="{{chatRateError}}" class="ai-chat-error">{{chatRateError}}</view>
+</view>

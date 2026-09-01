@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>薪账本首页改造设计稿 v3 · 账本君说（含空态状态机）</title>
+<title>薪账本首页改造设计稿 v4 · 账本君说 + 当前月标签优化</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -88,7 +88,23 @@
     color: #8a96a8;
     border-bottom: 1px solid #1f2a37;
   }
-  .theme-toggle-btn {
+  .scheme-btn {
+    padding: 5px 12px;
+    border-radius: 999px;
+    border: 1px solid #2d3a4d;
+    background: #0e1620;
+    color: #6e7b8e;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .scheme-btn.active {
+    background: var(--tint-gold-12);
+    color: var(--gold);
+    border-color: var(--tint-gold-30);
+  }
+  .scheme-btn:hover { opacity: 0.85; }
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -293,6 +309,14 @@
     justify-content: space-between;
     margin-bottom: 4px;
   }
+  .board-head-center {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+  }
   .board-arrow {
     width: 32px;
     height: 32px;
@@ -304,11 +328,45 @@
     background: var(--input-bg);
     border-radius: 50%;
   }
+  .board-arrow.disabled {
+    opacity: 0.25;
+    pointer-events: none;
+  }
   .board-title {
     font-size: 14px;
     font-weight: 500;
     color: var(--text-sub);
     letter-spacing: 0.02em;
+  }
+  /* 方案 A：胶囊徽章（推荐） */
+  .board-current-badge {
+    font-size: 18rpx;
+    font-weight: 600;
+    color: var(--gold);
+    padding: 3rpx 9rpx;
+    border: 1rpx solid var(--tint-gold-30);
+    border-radius: 999px;
+    background: var(--tint-gold-08);
+    line-height: 1;
+    letter-spacing: 0.02em;
+  }
+  /* 方案 B：圆点指示器 */
+  .board-current-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--gold);
+    box-shadow: 0 0 0 2px var(--tint-gold-12);
+  }
+  /* 方案 C：下划线 */
+  .board-current-underline {
+    position: absolute;
+    bottom: -4px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--gold);
+    border-radius: 1px;
   }
   .board-balance {
     text-align: center;
@@ -623,13 +681,42 @@
 
 <!-- ====== 左侧设计规范 ====== -->
 <div class="spec-panel">
-  <div class="spec-title">首页改造设计规范 v3 · 含空态状态机</div>
+  <div class="spec-title">首页改造设计规范 v4 · 含空态状态机 + 当前月标签优化</div>
 
   <div class="spec-section">
     <div class="spec-section-title">改造概览</div>
     <div class="spec-item">账本君入口：独立卡片 → <b>看板底部「账本君说」智能区块</b>，融入数据展示，不额外占卡片</div>
     <div class="spec-item">日均可花：独立双列大卡片 → <b>并入「账本君说」</b>——账本君算出日均可花，以"人话"呈现</div>
+    <div class="spec-item">当前月标签：从年月行紧挨文字 → <b>独立胶囊徽章</b>，与年月拉开层次（见下方 §0）</div>
     <div class="spec-item">首页卡片数 <b>-1</b>，纵向节省约 <b>200rpx</b>，卡片流更干净</div>
+  </div>
+
+  <div class="spec-section">
+    <div class="spec-section-title">0. 「当前月」标签优化（3 种方案）</div>
+    <div class="spec-item"><b>问题</b>：「2026年9月」与「当前月」挤在同一行，字号接近、缺乏层次，视觉上像两个标题打架。</div>
+    <div class="spec-item"><b>原则</b>：非当前月不显示任何标签；当前月需要明确但克制地提示。</div>
+    <table class="spec-table" style="margin-top:10px;">
+      <tr><th>方案</th><th>样式</th><th>适用场景</th><th>推荐度</th></tr>
+      <tr>
+        <td><b>A. 胶囊徽章</b></td>
+        <td>18rpx 金色细线胶囊，背景 <code class="spec-code">--tint-gold-08</code>，边框 <code class="spec-code">--tint-gold-30</code></td>
+        <td>明确告知，有精致感，与项目金融质感一致</td>
+        <td>⭐⭐⭐ 推荐</td>
+      </tr>
+      <tr>
+        <td><b>B. 圆点指示器</b></td>
+        <td>6px 金色实心圆点 + 金色光晕描边</td>
+        <td>极简路线，不增加文字</td>
+        <td>⭐⭐ 备选</td>
+      </tr>
+      <tr>
+        <td><b>C. 完全移除</b></td>
+        <td>不显示标签，左箭头置灰 disabled 暗示当前月</td>
+        <td>极简到极致，但需要用户自己推断</td>
+        <td>⭐ 可用</td>
+      </tr>
+    </table>
+    <div class="spec-item" style="margin-top:10px;"><b>决策</b>：推荐 <b>方案 A</b>——胶囊体积小（18rpx）、有独立背景和边框、与年月拉开明确层次，同时不增加用户认知负担。非当前月时整颗胶囊消失，年月行干净如初。</div>
   </div>
 
   <div class="spec-section">
@@ -745,7 +832,15 @@
 
 <!-- ====== 右侧手机原型 ====== -->
 <div class="phone-wrap">
-  <div class="phone-label">改造后首页效果 · 「账本君说」看板融合（点击按钮切换主题）</div>
+  <div class="phone-label">改造后首页效果 · 「账本君说」看板融合</div>
+
+  <!-- 当前月标签方案切换器 -->
+  <div class="scheme-switcher" style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; justify-content:center;">
+    <button class="scheme-btn active" data-scheme="badge" onclick="setScheme('badge', this)">方案 A：胶囊徽章</button>
+    <button class="scheme-btn" data-scheme="dot" onclick="setScheme('dot', this)">方案 B：圆点</button>
+    <button class="scheme-btn" data-scheme="none" onclick="setScheme('none', this)">方案 C：完全移除</button>
+  </div>
+
   <div class="state-switcher">
     <button class="state-btn active" data-state="s4" onclick="setState('s4', this)">S4 正常（老用户）</button>
     <button class="state-btn" data-state="s1" onclick="setState('s1', this)">S1 全新用户</button>
@@ -766,9 +861,12 @@
 
       <!-- 月度看板 + 账本君说 -->
       <div class="card board-card">
-        <div class="board-head">
-          <div class="board-arrow">‹</div>
-          <div class="board-title">2026年9月 结余</div>
+        <div class="board-head" style="position:relative;">
+          <div class="board-arrow" id="left-arrow">‹</div>
+          <div class="board-head-center">
+            <div class="board-title">2026年9月</div>
+            <div class="board-current-badge" id="current-badge">当前月</div>
+          </div>
           <div class="board-arrow">›</div>
         </div>
         <div class="board-balance">
@@ -788,7 +886,6 @@
         </div>
         <div class="board-formula">
           结转 + 收入 − 支出 = 可用
-          <span class="board-current">当前月</span>
         </div>
 
         <!-- 账本君说：内容随状态机切换（见左侧规范 §2） -->
@@ -872,6 +969,22 @@
 </div>
 
 <script>
+  function setScheme(scheme, btn) {
+    document.querySelectorAll('.scheme-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const badge = document.getElementById('current-badge');
+    badge.className = '';
+    if (scheme === 'badge') {
+      badge.className = 'board-current-badge';
+      badge.textContent = '当前月';
+    } else if (scheme === 'dot') {
+      badge.className = 'board-current-dot';
+      badge.textContent = '';
+    } else {
+      badge.className = '';
+      badge.textContent = '';
+    }
+  }
   function toggleTheme() {
     const phone = document.getElementById('phone');
     phone.classList.toggle('dark');

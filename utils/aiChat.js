@@ -30,7 +30,7 @@ const finTemplate = require('./finTemplate')
  * @param {Array}  [opts.history] 多轮上下文(buildHistory 产物,最近 12 条 user/assistant)
  * @returns {Promise<{ text: string, source: 'llm'|'local'|'tool', code?: string, toolResult?: object }>}
  */
-async function send({ month, stmt, recentList, question, mode = 'chat', history }) {
+async function send({ month, stmt, recentList, question, mode = 'chat', history, lastSession }) {
   let result = null
   let timedOut = false
   let transportError = null  // 捕获 wx.cloud.callFunction fail 回调里的 error(没部署/网络/鉴权时无 result.msg)
@@ -50,7 +50,8 @@ async function send({ month, stmt, recentList, question, mode = 'chat', history 
           question,
           mode,                                  // 'chat' | 'record',账本君记账用 'record'
           data: serialize(stmt, recentList),
-          history: Array.isArray(history) ? history : []  // 多轮上下文,云端二次清洗
+          history: Array.isArray(history) ? history : [],  // 多轮上下文,云端二次清洗
+          lastSession: Array.isArray(lastSession) && lastSession.length ? lastSession : undefined  // 冷启动时的上次对话尾部(跨会话去重);空不发省流量
         },
         success: (r) => {
           if (settled) return
@@ -158,6 +159,22 @@ function serialize(stmt, recentList) {
     prevYearExpense: stmt.hasPrevYear ? stmt.prevYearExpense : undefined,
     hasPrevYear: stmt.hasPrevYear,
     recurTotal: stmt.recurTotal,
+    // 累计可用余额(滚动结转口径,与首页看板主数字一致):AI 只见本月结余会答错「我总共还有多少钱」
+    available: typeof stmt.available === 'number' ? stmt.available : null,
+    // 当日已支出+笔数(仅当前月有效):「今天花了多少」高频问题
+    todayExpense: typeof stmt.todayExpense === 'number' ? stmt.todayExpense : null,
+    todayExpenseCount: typeof stmt.todayExpenseCount === 'number' ? stmt.todayExpenseCount : 0,
+    // 距上次记账天数(仅当前月,null 跳过):断记提醒依据
+    lastRecordGap: typeof stmt.lastRecordGap === 'number' ? stmt.lastRecordGap : null,
+    // 本月待记固定支出(字符串数组,与记一笔快捷条同源):AI 主动询问是否已付
+    pendingRecurring: Array.isArray(stmt.pendingRecurring) ? stmt.pendingRecurring : [],
+    // 未还卡实时摘要(逐卡明细,画像里的信用卡是 24h 汇总会滞后)
+    pendingCards: Array.isArray(stmt.pendingCards) ? stmt.pendingCards : [],
+    // 日预算(首页 daily 现成结果):amount+口径说明+0 额度告警,AI 免算直接答「今天还能花多少」。
+    // dailyBudget=null(查看历史月份)时云端 typeof 判断自然跳过
+    dailyBudget: typeof stmt.dailyBudget === 'number' ? stmt.dailyBudget : null,
+    dailyBudgetSub: stmt.dailyBudgetSub || '',
+    dailyBudgetTip: stmt.dailyBudgetTip || '',
     categories: stmt.categories,
     budget: stmt.budget || 0,        // 用户总预算(¥),让 AI 知道"还剩多少能花"
     budgetOver: stmt.budgetOver,
