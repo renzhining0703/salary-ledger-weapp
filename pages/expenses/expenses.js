@@ -29,6 +29,9 @@ Page({
     formCategory: '餐饮',
     formDate: '',
     formNote: '',
+    // 固定支出联动（记一笔 ↔ 模板）：打开记一笔时拉本月未落账模板，点一下预填并关联
+    pendingRecurring: [],   // [{_id, name, amount, amountText, category}]
+    linkedRecurring: null,  // 已选中待关联的模板（保存时写入 recurringId 并标记 lastRecorded）
     // 固定支出（数据供账单弹框用，管理入口已移到「我的」页）
     recurList: [],
     recurTotal: '0.00',
@@ -315,8 +318,53 @@ Page({
       formAmount: '',
       formCategory: '餐饮',
       formDate: prefillDate || util.todayStr(),
-      formNote: ''
+      formNote: '',
+      linkedRecurring: null
     })
+    this._loadPendingRecurring()
+  },
+
+  /**
+   * 拉取本月未落账的固定支出模板（记一笔快捷条数据源）。
+   * listRecurring 带 60s 缓存；关联落账走 updateRecurring 会 invalidate，
+   * 所以下次打开 sheet 时不会看到已记过的模板。
+   */
+  async _loadPendingRecurring() {
+    try {
+      const month = util.thisMonthStr()
+      const list = await dbApi.listRecurring()
+      const pending = (list || [])
+        .filter((r) => r.active !== false && r.lastRecorded !== month)
+        .map((r) => ({
+          _id: r._id,
+          name: r.name,
+          amount: r.amount || 0,
+          amountText: util.moneyThousand(r.amount || 0),
+          category: r.category || '其他'
+        }))
+      this.setData({ pendingRecurring: pending })
+    } catch (err) {
+      console.warn('加载待记固定支出失败', err)
+      this.setData({ pendingRecurring: [] })
+    }
+  },
+
+  /** 点快捷条模板：预填金额/分类/备注并挂上关联（保存时同步标记本月已记） */
+  onRecurringChipTap(e) {
+    const id = e.currentTarget.dataset.id
+    const item = (this.data.pendingRecurring || []).find((r) => r._id === id)
+    if (!item) return
+    this.setData({
+      formAmount: String(item.amount),
+      formCategory: item.category,
+      formNote: item.name,
+      linkedRecurring: item
+    })
+  },
+
+  /** 取消关联：保留已预填内容，仅解除模板绑定 */
+  clearLinkedRecurring() {
+    this.setData({ linkedRecurring: null })
   },
 
   closeForm() {
@@ -328,7 +376,8 @@ Page({
   },
 
   onCategoryTap(e) {
-    this.setData({ formCategory: e.currentTarget.dataset.cat })
+    // cat-grid 组件 change 事件：detail.value 为选中分类
+    this.setData({ formCategory: e.detail.value })
   },
 
   onDateChange(e) {
@@ -340,7 +389,7 @@ Page({
   },
 
   async saveExpense() {
-    const { formAmount, formCategory, formDate, formNote } = this.data
+    const { formAmount, formCategory, formDate, formNote, linkedRecurring } = this.data
     const amount = Number(formAmount)
     if (!amount || amount <= 0) {
       wx.showToast({ title: '请输入正确金额', icon: 'none' })
@@ -349,11 +398,22 @@ Page({
     if (this.data.saving) return
     this.setData({ saving: true })
     try {
-      await dbApi.addExpense({ date: formDate, category: formCategory, amount, note: formNote.trim() })
-      wx.showToast({ title: '已记账', icon: 'success' })
+      // 关联了固定支出模板 → 开销带 recurringId（可追溯），并按该笔日期所属月标记模板已记
+      const payload = { date: formDate, category: formCategory, amount, note: formNote.trim() }
+      if (linkedRecurring) payload.recurringId = linkedRecurring._id
+      await dbApi.addExpense(payload)
+      if (linkedRecurring) {
+        try {
+          await dbApi.updateRecurring(linkedRecurring._id, { lastRecorded: formDate.slice(0, 7) })
+        } catch (err) {
+          // 标记失败不阻断记账：模板保持待记状态，下次仍可确认，不会丢数据
+          console.warn('固定支出标记失败', err)
+        }
+      }
+      wx.showToast({ title: linkedRecurring ? '已记 · ' + linkedRecurring.name + '本月已同步' : '已记账', icon: 'success' })
       util.closeSheet(this, 'showForm')
       // 切到新纪录所在月份，保存后立即可见
-      this.setData({ viewMonth: formDate.slice(0, 7) })
+      this.setData({ viewMonth: formDate.slice(0, 7), linkedRecurring: null })
       // 失效当月 AI 解读缓存(用户改了数据 → 上次的解读过期)
       dbApi.invalidateFinCache(formDate.slice(0, 7))
       this.loadData()

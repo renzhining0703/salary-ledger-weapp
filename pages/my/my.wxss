@@ -479,27 +479,4 @@ picker .my-row {
   transform-origin: right center;
 }
 
-/* ---------- 分类选择 chips（固定支出表单用） ---------- */
-.cat-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16rpx;
-}
-
-.chip {
-  min-width: 120rpx;
-  text-align: center;
-  padding: 16rpx 28rpx;
-  background: var(--chip-bg);
-  border-radius: 999rpx;
-  font-size: 28rpx;
-  color: var(--text-sub);
-  transition: all 0.1s ease;
-}
-
-.chip-active {
-  background: linear-gradient(135deg, var(--navy-700), var(--navy-800));
-  color: #fff;
-  font-weight: 600;
-  box-shadow: 0 8rpx 20rpx var(--shadow-strong);
-}
+/* ---------- 分类选择（固定支出表单用）：已抽为公共组件 components/cat-grid，样式随组件走 ---------- */

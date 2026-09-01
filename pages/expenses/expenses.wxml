@@ -104,6 +104,31 @@
   <view wx:if="{{showForm}}" class="sheet {{showFormClosing ? 'sheet-out' : ''}}">
     <view class="sheet-title">记一笔开销</view>
 
+    <!-- 本月待记固定支出快捷条：点一下预填表单并关联模板，保存时自动标记本月已记 -->
+    <view wx:if="{{pendingRecurring.length > 0 && !linkedRecurring}}" class="pending-recur">
+      <view class="pending-recur-label">本月待记固定支出</view>
+      <scroll-view class="pending-recur-row" scroll-x="{{true}}" enhanced="{{true}}" show-scrollbar="{{false}}">
+        <view
+          wx:for="{{pendingRecurring}}"
+          wx:key="_id"
+          class="pending-recur-chip"
+          hover-class="pending-recur-chip-hover"
+          bindtap="onRecurringChipTap"
+          data-id="{{item._id}}"
+        >
+          <text class="prc-name">{{item.name}}</text>
+          <text class="prc-amount">¥{{item.amountText}}</text>
+        </view>
+      </scroll-view>
+    </view>
+
+    <!-- 已关联模板提示：保存时同步标记；点 ✕ 解除关联（预填内容保留） -->
+    <view wx:if="{{linkedRecurring}}" class="linked-recur-tag">
+      <text class="lrt-icon">📌</text>
+      <text class="lrt-text">已关联「{{linkedRecurring.name}}」，保存后本月不再提示</text>
+      <text class="lrt-close" catchtap="clearLinkedRecurring">✕</text>
+    </view>
+
     <view class="form-item">
       <text class="form-label">金额（元）</text>
       <input class="form-input amount-input" type="digit" placeholder="0.00" value="{{formAmount}}" bindinput="onAmountInput" focus="{{true}}" adjust-position="{{false}}" hold-keyboard="{{true}}" />
@@ -111,15 +136,7 @@
 
     <view class="form-item">
       <text class="form-label">分类</text>
-      <view class="cat-chips">
-        <view
-          wx:for="{{categories}}"
-          wx:key="*this"
-          class="chip {{formCategory === item ? 'chip-active' : ''}}"
-          bindtap="onCategoryTap"
-          data-cat="{{item}}"
-        >{{item}}</view>
-      </view>
+      <cat-grid items="{{categories}}" value="{{formCategory}}" bindchange="onCategoryTap" />
     </view>
 
     <view class="form-item">

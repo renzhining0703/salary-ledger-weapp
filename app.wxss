@@ -47,6 +47,8 @@ page {
   --tint-danger-08: rgba(190, 74, 58, 0.08);
   --tint-danger-22: rgba(190, 74, 58, 0.22);
   --tint-text-sub-12: rgba(173, 162, 148, 0.14);
+  --tint-success-12: rgba(47, 155, 107, 0.12);
+  --tint-warn-12: rgba(201, 138, 45, 0.12);
   --tint-danger-strong: #F3DED5;
   /* 消费日历热力图色阶(5 档:无→深,纸感金色系) */
   --heat-0: #F1EBDF;
@@ -108,6 +110,8 @@ page {
   --tint-danger-08: rgba(190, 74, 58, 0.08);
   --tint-danger-22: rgba(190, 74, 58, 0.22);
   --tint-text-sub-12: rgba(173, 162, 148, 0.14);
+  --tint-success-12: rgba(47, 155, 107, 0.12);
+  --tint-warn-12: rgba(201, 138, 45, 0.12);
   --tint-danger-strong: #F3DED5;
   --heat-0: #F1EBDF;
   --heat-1: #EADFC0;
@@ -167,6 +171,8 @@ page {
     --tint-danger-08: rgba(229, 88, 88, 0.14);
     --tint-danger-22: rgba(229, 88, 88, 0.32);
     --tint-text-sub-12: rgba(168, 180, 197, 0.16);
+    --tint-success-12: rgba(79, 183, 138, 0.16);
+    --tint-warn-12: rgba(224, 160, 85, 0.16);
     --tint-danger-strong: #4A2020;
     /* 深色模式热力图色阶 */
     --heat-0: #2A3441;
@@ -222,6 +228,8 @@ page {
   --tint-danger-08: rgba(229, 88, 88, 0.14);
   --tint-danger-22: rgba(229, 88, 88, 0.32);
   --tint-text-sub-12: rgba(168, 180, 197, 0.16);
+  --tint-success-12: rgba(79, 183, 138, 0.16);
+  --tint-warn-12: rgba(224, 160, 85, 0.16);
   --tint-danger-strong: #4A2020;
   --heat-0: #2A3441;
   --heat-1: #3A4F66;

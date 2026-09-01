@@ -291,15 +291,7 @@
 
     <view class="form-item">
       <text class="form-label">分类</text>
-      <view class="cat-chips">
-        <view
-          wx:for="{{categories}}"
-          wx:key="*this"
-          class="chip {{rCategory === item ? 'chip-active' : ''}}"
-          bindtap="onRCategoryTap"
-          data-cat="{{item}}"
-        >{{item}}</view>
-      </view>
+      <cat-grid items="{{categories}}" value="{{rCategory}}" bindchange="onRCategoryTap" />
     </view>
 
     <view class="sheet-actions">

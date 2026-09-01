@@ -775,7 +775,8 @@ Page({
   },
 
   onRCategoryTap(e) {
-    this.setData({ rCategory: e.currentTarget.dataset.cat })
+    // cat-grid 组件 change 事件：detail.value 为选中分类
+    this.setData({ rCategory: e.detail.value })
   },
 
   async saveRecurring() {

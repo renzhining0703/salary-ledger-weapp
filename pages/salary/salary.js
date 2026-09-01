@@ -162,7 +162,8 @@ Page({
   },
 
   onSourceTap(e) {
-    this.setData({ formSource: e.currentTarget.dataset.source })
+    // cat-grid 组件 change 事件：detail.value 为选中的收入类型 value
+    this.setData({ formSource: e.detail.value })
   },
 
   async saveSalary() {

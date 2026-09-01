@@ -120,30 +120,7 @@
   border: 1rpx solid var(--border);
 }
 
-/* 收入类型 chips(与记账页分类 chips 同款,页面样式隔离需各自定义) */
-.cat-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16rpx;
-}
-
-.chip {
-  min-width: 120rpx;
-  text-align: center;
-  padding: 16rpx 28rpx;
-  background: var(--chip-bg);
-  border-radius: 999rpx;
-  font-size: 28rpx;
-  color: var(--text-sub);
-  transition: all 0.1s ease;
-}
-
-.chip-active {
-  background: linear-gradient(135deg, var(--navy-700), var(--navy-800));
-  color: #fff;
-  font-weight: 600;
-  box-shadow: 0 8rpx 20rpx var(--shadow-strong);
-}
+/* 收入类型选择器已抽为公共组件 components/cat-grid（图标网格版），样式随组件走 */
 
 .row-note {
   font-size: 24rpx;

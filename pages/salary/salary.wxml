@@ -85,15 +85,7 @@
 
     <view class="form-item">
       <text class="form-label">收入类型</text>
-      <view class="cat-chips">
-        <view
-          wx:for="{{sourceOptions}}"
-          wx:key="value"
-          class="chip {{formSource === item.value ? 'chip-active' : ''}}"
-          bindtap="onSourceTap"
-          data-source="{{item.value}}"
-        >{{item.label}}</view>
-      </view>
+      <cat-grid items="{{sourceOptions}}" value="{{formSource}}" bindchange="onSourceTap" />
       <view class="form-tip">只有真正到手的钱才记收入；借款/朋友还钱不算收入，不入账</view>
     </view>
 

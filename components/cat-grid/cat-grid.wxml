@@ -1,0 +1,15 @@
+<view class="cg-grid">
+  <view
+    wx:for="{{rows}}"
+    wx:key="value"
+    class="cg-cell {{value === item.value ? 'cg-selected' : ''}}"
+    hover-class="cg-cell-hover"
+    hover-stay-time="80"
+    bindtap="onTap"
+    data-value="{{item.value}}"
+  >
+    <view class="cg-icon tone-{{item.tone}}">{{item.icon}}</view>
+    <view class="cg-label">{{item.label}}</view>
+    <view wx:if="{{value === item.value}}" class="cg-check">✓</view>
+  </view>
+</view>
