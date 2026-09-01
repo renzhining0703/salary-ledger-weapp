@@ -139,8 +139,8 @@
   <view class="quick-add" catchtap="quickExpense">＋</view>
 
   <!-- 月度账单分享弹层 -->
-  <view wx:if="{{showShare}}" class="mask {{showShareClosing ? 'mask-out' : ''}}" bindtap="closeShare"></view>
-  <view wx:if="{{showShare}}" class="share-pop {{showShareClosing ? 'share-pop-out' : ''}}">
+  <view wx:if="{{showShare}}" class="mask {{showShareClosing ? 'mask-out' : ''}}" bindtap="closeShare" catchtouchmove="preventTouchmove"></view>
+  <view wx:if="{{showShare}}" class="share-pop {{showShareClosing ? 'share-pop-out' : ''}}" catchtouchmove="preventTouchmove">
     <canvas type="2d" id="shareCanvas" class="share-canvas"></canvas>
     <view class="share-actions">
       <view class="btn btn-share" bindtap="saveShareImage">保存到相册</view>
@@ -149,8 +149,8 @@
   </view>
 
   <!-- 最优还款顺序完整 sheet -->
-  <view wx:if="{{showOptimalSheet}}" class="mask {{showOptimalSheetClosing ? 'mask-out' : ''}}" bindtap="closeOptimalSheet"></view>
-  <view wx:if="{{showOptimalSheet}}" class="sheet {{showOptimalSheetClosing ? 'sheet-out' : ''}}">
+  <view wx:if="{{showOptimalSheet}}" class="mask {{showOptimalSheetClosing ? 'mask-out' : ''}}" bindtap="closeOptimalSheet" catchtouchmove="preventTouchmove"></view>
+  <view wx:if="{{showOptimalSheet}}" class="sheet {{showOptimalSheetClosing ? 'sheet-out' : ''}}" catchtouchmove="preventTouchmove">
     <view class="sheet-title">最优还款顺序</view>
     <view class="opt-tip">
       <text>建议在每张卡的还款日前 1-3 天再还，把免息期吃满。按当前未还 {{optimalFull.pendingCount}} 张卡估算：</text>

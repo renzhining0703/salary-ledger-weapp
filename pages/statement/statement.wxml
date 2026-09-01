@@ -85,8 +85,8 @@
   </view>
 
   <!-- 分类预算设置 sheet（分类行点 +预算 / 预算金额 弹出） -->
-  <view wx:if="{{showCatBudget}}" class="mask {{showCatBudgetClosing ? 'mask-out' : ''}}" bindtap="closeCatBudget"></view>
-  <view wx:if="{{showCatBudget}}" class="sheet {{showCatBudgetClosing ? 'sheet-out' : ''}}">
+  <view wx:if="{{showCatBudget}}" class="mask {{showCatBudgetClosing ? 'mask-out' : ''}}" bindtap="closeCatBudget" catchtouchmove="preventTouchmove"></view>
+  <view wx:if="{{showCatBudget}}" class="sheet {{showCatBudgetClosing ? 'sheet-out' : ''}}" catchtouchmove="preventTouchmove">
     <view class="sheet-title">「{{catBudgetEditing.name}}」月度预算</view>
     <view class="cat-budget-hint">
       本月已花 ¥{{catBudgetEditing.spentText}}<text wx:if="{{catBudgetEditing.budget > 0}}"> · 剩 ¥{{catBudgetEditing.remainingText}}</text>

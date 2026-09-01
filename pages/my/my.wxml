@@ -148,8 +148,8 @@
   <view class="my-footer">薪账本 · 所有数据仅保存在你自己的账号下</view>
 
   <!-- 编辑资料半屏弹层：头像 + 昵称，一次性保存 -->
-  <view wx:if="{{showEditProfile}}" class="mask {{showEditProfileClosing ? 'mask-out' : ''}}" bindtap="closeEditProfile"></view>
-  <view wx:if="{{showEditProfile}}" class="sheet edit-profile-sheet {{showEditProfileClosing ? 'sheet-out' : ''}}">
+  <view wx:if="{{showEditProfile}}" class="mask {{showEditProfileClosing ? 'mask-out' : ''}}" bindtap="closeEditProfile" catchtouchmove="preventTouchmove"></view>
+  <view wx:if="{{showEditProfile}}" class="sheet edit-profile-sheet {{showEditProfileClosing ? 'sheet-out' : ''}}" catchtouchmove="preventTouchmove">
     <view class="sheet-title">编辑资料</view>
 
     <!-- 大头像：点一下触发微信 chooseAvatar -->
@@ -176,8 +176,8 @@
   </view>
 
   <!-- 总预算编辑 sheet -->
-  <view wx:if="{{showBudgetEdit}}" class="mask {{showBudgetEditClosing ? 'mask-out' : ''}}" bindtap="closeBudgetEdit"></view>
-  <view wx:if="{{showBudgetEdit}}" class="sheet cat-budget-sheet {{showBudgetEditClosing ? 'sheet-out' : ''}}">
+  <view wx:if="{{showBudgetEdit}}" class="mask {{showBudgetEditClosing ? 'mask-out' : ''}}" bindtap="closeBudgetEdit" catchtouchmove="preventTouchmove"></view>
+  <view wx:if="{{showBudgetEdit}}" class="sheet cat-budget-sheet {{showBudgetEditClosing ? 'sheet-out' : ''}}" catchtouchmove="preventTouchmove">
     <view class="sheet-title">每月开销预算</view>
     <view class="form-item">
       <text class="form-label">预算金额（元）</text>
@@ -189,8 +189,8 @@
   </view>
 
   <!-- 签名编辑 sheet -->
-  <view wx:if="{{showMottoEdit}}" class="mask {{showMottoEditClosing ? 'mask-out' : ''}}" bindtap="closeMottoEdit"></view>
-  <view wx:if="{{showMottoEdit}}" class="sheet motto-edit-sheet {{showMottoEditClosing ? 'sheet-out' : ''}}">
+  <view wx:if="{{showMottoEdit}}" class="mask {{showMottoEditClosing ? 'mask-out' : ''}}" bindtap="closeMottoEdit" catchtouchmove="preventTouchmove"></view>
+  <view wx:if="{{showMottoEdit}}" class="sheet motto-edit-sheet {{showMottoEditClosing ? 'sheet-out' : ''}}" catchtouchmove="preventTouchmove">
     <view class="sheet-title">修改签名</view>
     <view class="form-item">
       <text class="form-label">个性签名</text>
@@ -202,8 +202,8 @@
   </view>
 
   <!-- 分类预算列表 sheet（提醒与规则 → 分类预算）：全分类可设，不依赖当月有没有消费 -->
-  <view wx:if="{{showCatBudgets}}" class="mask {{showCatBudgetsClosing ? 'mask-out' : ''}}" bindtap="closeCatBudgets"></view>
-  <view wx:if="{{showCatBudgets}}" class="sheet cat-budgets-sheet {{showCatBudgetsClosing ? 'sheet-out' : ''}}">
+  <view wx:if="{{showCatBudgets}}" class="mask {{showCatBudgetsClosing ? 'mask-out' : ''}}" bindtap="closeCatBudgets" catchtouchmove="preventTouchmove"></view>
+  <view wx:if="{{showCatBudgets}}" class="sheet cat-budgets-sheet {{showCatBudgetsClosing ? 'sheet-out' : ''}}" catchtouchmove="preventTouchmove">
     <view class="sheet-title">分类预算</view>
     <view class="cat-budgets-hint">点击分类设置月度预算，超支时首页会提醒你</view>
     <view wx:for="{{catBudgetRows}}" wx:key="name" class="cat-budget-row" bindtap="onCatRowTap" data-cat="{{item.name}}" hover-class="cat-budget-row-hover">
@@ -220,8 +220,8 @@
   </view>
 
   <!-- 单个分类预算编辑 sheet（列表 sheet 内点某分类弹出） -->
-  <view wx:if="{{showCatBudget}}" class="mask {{showCatBudgetClosing ? 'mask-out' : ''}}" bindtap="closeCatBudget"></view>
-  <view wx:if="{{showCatBudget}}" class="sheet cat-budget-sheet {{showCatBudgetClosing ? 'sheet-out' : ''}}">
+  <view wx:if="{{showCatBudget}}" class="mask {{showCatBudgetClosing ? 'mask-out' : ''}}" bindtap="closeCatBudget" catchtouchmove="preventTouchmove"></view>
+  <view wx:if="{{showCatBudget}}" class="sheet cat-budget-sheet {{showCatBudgetClosing ? 'sheet-out' : ''}}" catchtouchmove="preventTouchmove">
     <view class="sheet-title">「{{catBudgetEditing.name}}」月度预算</view>
     <view class="cat-budget-hint">
       本月已花 ¥{{catBudgetEditing.spentText}}<text wx:if="{{catBudgetEditing.budget > 0}}"> · 剩 ¥{{catBudgetEditing.remainingText}}</text>
@@ -236,37 +236,42 @@
     </view>
   </view>
 
-  <!-- 固定支出管理弹层 -->
-  <view wx:if="{{showRecur}}" class="mask {{showRecurClosing ? 'mask-out' : ''}}" bindtap="closeRecur"></view>
-  <view wx:if="{{showRecur}}" class="sheet {{showRecurClosing ? 'sheet-out' : ''}}">
+  <!-- 固定支出管理弹层。
+       sheet-scroll 保留全局 56vh 兜底高度（保障 WX scroll-view 内部滚动生效），
+       同时通过 inline style 在 JS 测量后按需收敛：内容少时让 scroll-view 自然撑开，
+       避免 sheet 被强制撑到 ~72% 屏高、内容少时底部留大片空白。 -->
+  <view wx:if="{{showRecur}}" class="mask {{showRecurClosing ? 'mask-out' : ''}}" bindtap="closeRecur" catchtouchmove="preventTouchmove"></view>
+  <view wx:if="{{showRecur}}" class="sheet {{showRecurClosing ? 'sheet-out' : ''}}" catchtouchmove="preventTouchmove">
     <view class="sheet-title">每月固定支出</view>
-    <view class="recur-tip">模板不会自动记账，每月实际支付后点「记入本月」</view>
+    <scroll-view class="sheet-scroll" style="height: {{recurScrollHeight}};" scroll-y="{{true}}" enhanced="{{true}}" bounces="{{false}}">
+      <view class="recur-tip">模板不会自动记账，每月实际支付后点「记入本月」</view>
 
-    <block wx:if="{{recurList.length}}">
-      <view wx:for="{{recurList}}" wx:key="_id" class="recur-row">
-        <view class="recur-info">
-          <view class="recur-name">{{item.name}}</view>
-          <view class="recur-meta">{{item.category}}<text wx:if="{{item.recordedThisMonth}}" class="recur-done-text"> · 本月已记 ✓</text></view>
-          <view class="recur-auto">
-            <text class="recur-auto-label">每月自动落账</text>
-            <switch checked="{{item.autoRecord === true}}" bindchange="toggleAutoRecord" data-id="{{item._id}}" color="#C8A04D" />
+      <block wx:if="{{recurList.length}}">
+        <view wx:for="{{recurList}}" wx:key="_id" class="recur-row">
+          <view class="recur-info">
+            <view class="recur-name">{{item.name}}</view>
+            <view class="recur-meta">{{item.category}}<text wx:if="{{item.recordedThisMonth}}" class="recur-done-text"> · 本月已记 ✓</text></view>
+            <view class="recur-auto">
+              <text class="recur-auto-label">每月自动落账</text>
+              <switch checked="{{item.autoRecord === true}}" bindchange="toggleAutoRecord" data-id="{{item._id}}" color="#C8A04D" />
+            </view>
           </view>
+          <view class="recur-right">
+            <view class="recur-amount">¥{{item.amountText}}</view>
+            <view
+              class="recur-record {{item.recordedThisMonth ? 'done' : ''}}"
+              bindtap="recordRecurringItem"
+              data-id="{{item._id}}"
+              data-name="{{item.name}}"
+              data-amount="{{item.amountText}}"
+              data-recorded="{{item.recordedThisMonth}}"
+            >{{item.recordedThisMonth ? '已记' : '记入本月'}}</view>
+          </view>
+          <view class="recur-del" bindtap="removeRecurringItem" data-id="{{item._id}}" data-name="{{item.name}}">删除</view>
         </view>
-        <view class="recur-right">
-          <view class="recur-amount">¥{{item.amountText}}</view>
-          <view
-            class="recur-record {{item.recordedThisMonth ? 'done' : ''}}"
-            bindtap="recordRecurringItem"
-            data-id="{{item._id}}"
-            data-name="{{item.name}}"
-            data-amount="{{item.amountText}}"
-            data-recorded="{{item.recordedThisMonth}}"
-          >{{item.recordedThisMonth ? '已记' : '记入本月'}}</view>
-        </view>
-        <view class="recur-del" bindtap="removeRecurringItem" data-id="{{item._id}}" data-name="{{item.name}}">删除</view>
-      </view>
-    </block>
-    <view wx:else class="empty">还没有固定支出，点下方添加</view>
+      </block>
+      <view wx:else class="empty">还没有固定支出，点下方添加</view>
+    </scroll-view>
 
     <view class="sheet-actions">
       <view class="btn btn-primary" bindtap="openRecurForm">＋ 添加固定支出</view>
@@ -274,8 +279,8 @@
   </view>
 
   <!-- 固定支出发布表单 -->
-  <view wx:if="{{showRecurForm}}" class="mask {{showRecurFormClosing ? 'mask-out' : ''}}" bindtap="closeRecurForm"></view>
-  <view wx:if="{{showRecurForm}}" class="sheet {{showRecurFormClosing ? 'sheet-out' : ''}}">
+  <view wx:if="{{showRecurForm}}" class="mask {{showRecurFormClosing ? 'mask-out' : ''}}" bindtap="closeRecurForm" catchtouchmove="preventTouchmove"></view>
+  <view wx:if="{{showRecurForm}}" class="sheet {{showRecurFormClosing ? 'sheet-out' : ''}}" catchtouchmove="preventTouchmove">
     <view class="sheet-title">添加固定支出</view>
     <view class="recur-tip">仅保存为模板，不会自动记账，每月支付后再手动确认</view>
 

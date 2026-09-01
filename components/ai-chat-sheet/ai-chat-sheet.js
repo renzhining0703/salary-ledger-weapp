@@ -83,6 +83,10 @@ Component({
   methods: {
     /* ---------- 打开 / 关闭 ---------- */
 
+    /** 空方法:mask/sheet 的 catchtouchmove 绑定,阻止弹框滑动穿透到底部页面。
+     *  组件不走 app.js 的全局 Page 注入,必须自带。内部 scroll-view 原生滚动不受影响。 */
+    preventTouchmove() {},
+
     /** show=true:同步 globalData 会话状态进组件,有消息滚到底 */
     _onSheetShow() {
       const app = getApp()

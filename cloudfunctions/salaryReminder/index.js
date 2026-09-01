@@ -9,7 +9,7 @@
  * 4. 用户须在前端订阅授权后才会被推送（依赖 users.salaryRemindSubscribed 字段）
  */
 const cloud = require('wx-server-sdk')
-const { fmtDate, monthStart } = require('./lib/date')
+const { fmtDate, monthStart, nowInChina } = require('./lib/date')
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
@@ -30,7 +30,7 @@ exports.main = async (event) => {
 
   // 区分两轮触发：优先用触发器名（config.json 的 TriggerName，不受时区/触发时间偏移影响）；
   // 手动在控制台测试调用时没有 TriggerName，按小时兜底（17 号 10:00 → 沉默期）
-  const now = new Date()
+  const now = nowInChina()
   const triggerName = (event && event.TriggerName) || ''
   const isSecondRound = triggerName
     ? triggerName === 'salaryRemindSecond'

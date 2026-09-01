@@ -393,12 +393,19 @@ page {
   padding: 36rpx 32rpx calc(36rpx + env(safe-area-inset-bottom));
   z-index: 100;
   max-height: 82vh;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  /* 弹框整体作为 flex 容器：标题固定、可滚动区 flex 占满剩余空间、底部操作固定 */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   /* 顶部投影强化面板悬浮感（底面板无需左右/底部阴影） */
   box-shadow: 0 -12rpx 48rpx var(--shadow-strong);
   animation: sheetIn 0.28s cubic-bezier(0.32, 0.72, 0.34, 1);
   /* 键盘弹出时弹框保持底部定位，不被顶高 */
+}
+
+.sheet-title,
+.sheet-actions {
+  flex-shrink: 0;
 }
 
 .sheet-out {
@@ -477,6 +484,15 @@ page {
 
 .sheet-actions {
   margin-top: 32rpx;
+}
+
+/* 弹框内部滚动区：配合 mask/sheet 的 catchtouchmove 防穿透，
+   长内容弹框的滚动交给原生 scroll-view（不受 catch 阻断），scroll-view 占满标题与底部按钮之间的剩余空间 */
+.sheet-scroll {
+  /* 必须给 scroll-view 固定高度，微信 scroll-view 的内部滚动容器
+     需要父级“确定高度”才能裁剪并滚动；max-height / flex 分配值不算。
+     56vh 在 iPhone X 类机型 ≈ 455px，足够显示 4-5 行固定支出 */
+  height: 56vh;
 }
 
 /* 通用辅助 */

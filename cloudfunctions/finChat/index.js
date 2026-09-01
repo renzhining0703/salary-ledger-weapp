@@ -490,9 +490,21 @@ async function checkRate(openid) {
 
 /* ---------------- LLM 成本熔断(评审项:日 token 计数 + 超限降级) ---------------- */
 
-/** 今天日期串 'YYYY-MM-DD'(容器本地时区,与限流口径一致) */
+/** 返回按东八区(Asia/Shanghai)对齐的 Date 对象。
+ *  云函数容器默认 UTC,北京凌晨时如果直接用 new Date().getDate() 会得到前一天。
+ *  公式:本地时间 + 本地时区偏移 = UTC,再 +8h = 北京时间。
+ */
+function nowInChina() {
+  const now = new Date()
+  // getTimezoneOffset() 返回本地时间与 UTC 的分钟差(UTC+8 则返回 -480)
+  const localOffsetMs = now.getTimezoneOffset() * 60 * 1000
+  const cnOffsetMs = 8 * 60 * 60 * 1000
+  return new Date(now.getTime() + localOffsetMs + cnOffsetMs)
+}
+
+/** 今天日期串 'YYYY-MM-DD'(以东八区为准) */
 function todayStr() {
-  const d = new Date()
+  const d = nowInChina()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
@@ -725,7 +737,7 @@ async function callLLM(data, question, mode, history, openid, profile, memories,
     if (toolOut.duplicate) {
       const info = toolOut.duplicateInfo || {}
       const dupRecDate = info.dupRecDate || info.date || ''
-      const todayD = new Date()
+      const todayD = nowInChina()
       const todayStr = `${todayD.getFullYear()}-${String(todayD.getMonth() + 1).padStart(2, '0')}-${String(todayD.getDate()).padStart(2, '0')}`
       const prefix = toolOut.isRecent ? '刚才' : (dupRecDate === todayStr ? '今天' : dupRecDate)
       const amt = info.amount != null ? info.amount : ''
@@ -802,13 +814,13 @@ async function executeAddExpense(args, openid) {
   }
 
   // 3. 日期(默认今天)
-  const today = new Date()
+  const today = nowInChina()
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
   let dateStr = todayStr
   if (args.date && /^\d{4}-\d{2}-\d{2}$/.test(args.date)) {
     dateStr = args.date
-    // 不能晚于明天,不能早于 1 年前
-    const d = new Date(dateStr + 'T00:00:00')
+    // 不能晚于明天,不能早于 1 年前(统一按东八区解析,避免容器时区差异)
+    const d = new Date(dateStr + 'T00:00:00+08:00')
     const tomorrow = new Date(today.getTime() + 86400000)
     const oneYearAgo = new Date(today.getTime() - 365 * 86400000)
     if (d > tomorrow || d < oneYearAgo) {
@@ -928,7 +940,7 @@ async function checkDuplicate(openid, amount, category, date) {
       if (t > recentCut) return { level: 'recent', ts: t, rec: x }
     }
     // 按指定日期查重;未传 date 时兼容旧行为(查今天)
-    const todayD = new Date()
+    const todayD = nowInChina()
     const todayStr = `${todayD.getFullYear()}-${String(todayD.getMonth() + 1).padStart(2, '0')}-${String(todayD.getDate()).padStart(2, '0')}`
     const targetDate = date || todayStr
     for (const x of list) {
@@ -968,12 +980,12 @@ async function executeAddSalary(args, openid) {
   const amountRounded = Math.round(amount * 100) / 100
 
   // 2. 日期(默认今天)
-  const today = new Date()
+  const today = nowInChina()
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
   let payDate = todayStr
   if (args.payDate && /^\d{4}-\d{2}-\d{2}$/.test(args.payDate)) {
     payDate = args.payDate
-    const d = new Date(payDate + 'T00:00:00')
+    const d = new Date(payDate + 'T00:00:00+08:00')
     const tomorrow = new Date(today.getTime() + 86400000)
     const oneYearAgo = new Date(today.getTime() - 365 * 86400000)
     if (d > tomorrow || d < oneYearAgo) {
@@ -1301,7 +1313,7 @@ async function queryAll(query, batch = 1000) {
 
 /** 聚合近 12 个月数据 → ≤400 字画像文本;数据全空返回 null */
 async function aggregateProfile(openid) {
-  const now = new Date()
+  const now = nowInChina()
   const thisMonth = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}`
   const start12 = shiftMonth(thisMonth, -11)
   const nextM = monthNext(thisMonth)
@@ -1847,7 +1859,7 @@ function formatDataForLLM(d, catAvg) {
   // 今天日期由云端自算注入(不依赖前端传参,旧版前端也生效):
   // LLM 不知道今天几号就算不了「距发薪几天」「到月底还剩几天」。
   // 仅 finChat 注入(finReport 生成的是上月月报,无实时意义,两副本在此处有意不同步)
-  const now = new Date()
+  const now = nowInChina()
   const pad2 = (n) => String(n).padStart(2, '0')
   const todayStr = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`
   const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()

@@ -435,6 +435,7 @@ picker .my-row {
   font-size: 24rpx;
   color: var(--text-sub);
   margin: -8rpx 0 16rpx;
+  margin-top: 5rpx;
 }
 
 .recur-record {

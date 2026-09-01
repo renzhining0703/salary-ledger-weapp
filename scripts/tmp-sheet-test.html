@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { font-family: -apple-system, sans-serif; background: rgba(0,0,0,.45); }
+
+  /* ===== 复刻 app.wxss .sheet ===== */
+  .sheet {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    background: #fff; border-radius: 20px 20px 0 0;
+    padding: 18px 16px calc(18px + 10px);
+    z-index: 100; max-height: 82vh;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .sheet-title { font-size: 17px; font-weight: 700; text-align: center; margin-bottom: 16px; flex-shrink: 0; }
+  .sheet-actions { margin-top: 16px; flex-shrink: 0; }
+  .btn-primary { background: #C8A04D; color: #fff; text-align: center; padding: 12px; border-radius: 10px; font-size: 15px; }
+
+  /* ===== 方案A：现状 flex:1 + min-height:0 + max-height + overflow:hidden ===== */
+  .sv-a { flex: 1; min-height: 0; max-height: 56vh; overflow: hidden; }
+
+  /* ===== 方案B：flex-basis auto（flex:1 1 auto）+ min-height:0，无 max-height ===== */
+  .sv-b { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+
+  /* ===== 方案C：外包 wrapper（flex-basis auto）+ scroll-view height:100% ===== */
+  .wrap-c { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+  .sv-c { height: 100%; overflow: hidden; }
+
+  /* ===== 方案D：直接定高 height:56vh ===== */
+  .sv-d { height: 56vh; overflow: hidden; }
+
+  /* WebView 中 scroll-view 的内部结构：外层元素(高度来自WXSS) + 内层滚动容器 */
+  .sv-inner { height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+  .recur-tip { font-size: 12px; color: #999; margin: -4px 0 8px; }
+  .recur-row {
+    display: flex; align-items: center; padding: 10px 0;
+    border-bottom: 1px solid #eee; gap: 8px;
+  }
+  .recur-info { flex: 1; min-width: 0; }
+  .recur-name { font-size: 15px; font-weight: 600; }
+  .recur-meta { font-size: 12px; color: #999; margin-top: 2px; }
+  .recur-auto { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+  .recur-auto-label { font-size: 11px; color: #999; }
+  .switch-mock { width: 40px; height: 22px; background: #C8A04D; border-radius: 11px; }
+  .recur-right { display: flex; align-items: center; gap: 8px; }
+  .recur-amount { font-size: 16px; font-weight: 700; }
+  .recur-record { padding: 5px 12px; font-size: 12px; color: #C8A04D; border: 1px solid #C8A04D; border-radius: 6px; white-space: nowrap; }
+  .recur-del { font-size: 12px; color: #e5484d; }
+
+  /* 演示布局：4 个弹框并排（错开 top 以便截图对比） */
+  .demo { position: relative; height: 100%; }
+  .sheet.a { left: 0;    width: 24.5%; }
+  .sheet.b { left: 25%;  width: 24.5%; }
+  .sheet.c { left: 50%;  width: 24.5%; }
+  .sheet.d { left: 75%;  width: 24.5%; }
+  .tag { position: fixed; top: 40px; font-size: 12px; color: #fff; z-index: 200; background: rgba(0,0,0,.6); padding: 2px 6px; border-radius: 4px; }
+  .tag.a { left: 2%; } .tag.b { left: 27%; } .tag.c { left: 52%; } .tag.d { left: 77%; }
+</style>
+</head>
+<body>
+  <div class="tag a">A 现状</div>
+  <div class="tag b">B basis:auto</div>
+  <div class="tag c">C wrapper</div>
+  <div class="tag d">D 定高56vh</div>
+  <div class="demo"></div>
+
+  <!-- 内容模板（JS 复制到 4 个弹框，6 条固定支出模拟超长内容） -->
+  <template id="tpl">
+    <div class="recur-tip">模板不会自动记账，每月实际支付后点「记入本月」</div>
+    <div class="recur-row"><div class="recur-info"><div class="recur-name">房租</div><div class="recur-meta">居住 · 本月已记 ✓</div><div class="recur-auto"><span class="recur-auto-label">每月自动落账</span><span class="switch-mock"></span></div></div><div class="recur-right"><div class="recur-amount">¥2200</div><div class="recur-record done">已记</div></div><div class="recur-del">删除</div></div>
+    <div class="recur-row"><div class="recur-info"><div class="recur-name">孩子课外班</div><div class="recur-meta">孩子</div><div class="recur-auto"><span class="recur-auto-label">每月自动落账</span><span class="switch-mock"></span></div></div><div class="recur-right"><div class="recur-amount">¥600</div><div class="recur-record">记入本月</div></div><div class="recur-del">删除</div></div>
+    <div class="recur-row"><div class="recur-info"><div class="recur-name">抚养费</div><div class="recur-meta">孩子</div><div class="recur-auto"><span class="recur-auto-label">每月自动落账</span><span class="switch-mock"></span></div></div><div class="recur-right"><div class="recur-amount">¥3000</div><div class="recur-record">记入本月</div></div><div class="recur-del">删除</div></div>
+    <div class="recur-row"><div class="recur-info"><div class="recur-name">宽带费</div><div class="recur-meta">居住</div><div class="recur-auto"><span class="recur-auto-label">每月自动落账</span><span class="switch-mock"></span></div></div><div class="recur-right"><div class="recur-amount">¥99</div><div class="recur-record">记入本月</div></div><div class="recur-del">删除</div></div>
+    <div class="recur-row"><div class="recur-info"><div class="recur-name">话费</div><div class="recur-meta">其他</div><div class="recur-auto"><span class="recur-auto-label">每月自动落账</span><span class="switch-mock"></span></div></div><div class="recur-right"><div class="recur-amount">¥129</div><div class="recur-record">记入本月</div></div><div class="recur-del">删除</div></div>
+    <div class="recur-row"><div class="recur-info"><div class="recur-name">视频会员</div><div class="recur-meta">其他</div><div class="recur-auto"><span class="recur-auto-label">每月自动落账</span><span class="switch-mock"></span></div></div><div class="recur-right"><div class="recur-amount">¥30</div><div class="recur-record">记入本月</div></div><div class="recur-del">删除</div></div>
+    <div class="recur-row"><div class="recur-info"><div class="recur-name">健身卡</div><div class="recur-meta">其他</div><div class="recur-auto"><span class="recur-auto-label">每月自动落账</span><span class="switch-mock"></span></div></div><div class="recur-right"><div class="recur-amount">¥199</div><div class="recur-record">记入本月</div></div><div class="recur-del">删除</div></div>
+  </template>
+
+  <template id="tplC">
+    <div class="wrap-c"><div class="sv-c"><div class="sv-inner" data-inner></div></div></div>
+  </template>
+
+  <script>
+    const tpl = document.getElementById('tpl').innerHTML
+    const build = (cls, scrollCls, useWrap) => {
+      const sheet = document.createElement('view')
+      sheet.className = 'sheet ' + cls
+      sheet.innerHTML = '<div class="sheet-title">每月固定支出</div>'
+      if (useWrap) {
+        const wrapTpl = document.getElementById('tplC').content.cloneNode(true)
+        wrapTpl.querySelector('[data-inner]').innerHTML = tpl
+        sheet.appendChild(wrapTpl)
+      } else {
+        const sv = document.createElement('div')
+        sv.className = scrollCls
+        sv.innerHTML = '<div class="sv-inner">' + tpl + '</div>'
+        sheet.appendChild(sv)
+      }
+      const actions = document.createElement('div')
+      actions.className = 'sheet-actions'
+      actions.innerHTML = '<div class="btn-primary">＋ 添加固定支出</div>'
+      sheet.appendChild(actions)
+      document.body.appendChild(sheet)
+      return sheet
+    }
+    build('a', 'sv-a', false)
+    build('b', 'sv-b', false)
+    build('c', null, true)
+    build('d', 'sv-d', false)
+  </script>
+</body>
+</html>

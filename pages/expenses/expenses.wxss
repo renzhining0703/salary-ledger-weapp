@@ -260,6 +260,19 @@
   color: var(--navy-700);
 }
 
+/* 记一笔弹框：标题/保存按钮固定，中间表单区在弹框内部滚动（配合 wxml 的 scroll-view，
+   阻断滚动穿透；全局 .sheet 的 overflow-y:auto 被 overflow:hidden 覆盖） */
+.form-sheet {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.form-scroll {
+  /* scroll-view 需要固定高度才能内部滚动，不能用 max-height / flex 分配值 */
+  height: 62vh;
+}
+
 /* picker-val / sheet-actions 见 app.wxss 全局定义 */
 /* 月份切换头 */
 .month-head {

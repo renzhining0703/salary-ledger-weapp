@@ -72,8 +72,8 @@
   </block>
 
   <!-- 新增表单 -->
-  <view wx:if="{{showForm}}" class="mask {{showFormClosing ? 'mask-out' : ''}}" bindtap="closeForm"></view>
-  <view wx:if="{{showForm}}" class="sheet {{showFormClosing ? 'sheet-out' : ''}}">
+  <view wx:if="{{showForm}}" class="mask {{showFormClosing ? 'mask-out' : ''}}" bindtap="closeForm" catchtouchmove="preventTouchmove"></view>
+  <view wx:if="{{showForm}}" class="sheet {{showFormClosing ? 'sheet-out' : ''}}" catchtouchmove="preventTouchmove">
     <view class="sheet-title">添加信用卡</view>
 
     <view class="form-item">
@@ -111,8 +111,8 @@
   </view>
 
   <!-- 编辑账单 -->
-  <view wx:if="{{showEdit}}" class="mask {{showEditClosing ? 'mask-out' : ''}}" bindtap="closeEdit"></view>
-  <view wx:if="{{showEdit}}" class="sheet {{showEditClosing ? 'sheet-out' : ''}}">
+  <view wx:if="{{showEdit}}" class="mask {{showEditClosing ? 'mask-out' : ''}}" bindtap="closeEdit" catchtouchmove="preventTouchmove"></view>
+  <view wx:if="{{showEdit}}" class="sheet {{showEditClosing ? 'sheet-out' : ''}}" catchtouchmove="preventTouchmove">
     <view class="sheet-title">更新「{{editBank}}」账单</view>
     <view class="form-item">
       <text class="form-label">本期应还金额（元）</text>

@@ -71,8 +71,8 @@
   </block>
 
   <!-- 新增表单 -->
-  <view wx:if="{{showForm}}" class="mask {{showFormClosing ? 'mask-out' : ''}}" bindtap="closeForm"></view>
-  <view wx:if="{{showForm}}" class="sheet {{showFormClosing ? 'sheet-out' : ''}}">
+  <view wx:if="{{showForm}}" class="mask {{showFormClosing ? 'mask-out' : ''}}" bindtap="closeForm" catchtouchmove="preventTouchmove"></view>
+  <view wx:if="{{showForm}}" class="sheet {{showFormClosing ? 'sheet-out' : ''}}" catchtouchmove="preventTouchmove">
     <view class="sheet-title">记录收入</view>
 
     <view class="form-item">
@@ -105,8 +105,8 @@
   </view>
 
   <!-- 发薪日设置弹层 -->
-  <view wx:if="{{showPayday}}" class="mask {{showPaydayClosing ? 'mask-out' : ''}}" bindtap="closePayday"></view>
-  <view wx:if="{{showPayday}}" class="sheet {{showPaydayClosing ? 'sheet-out' : ''}}">
+  <view wx:if="{{showPayday}}" class="mask {{showPaydayClosing ? 'mask-out' : ''}}" bindtap="closePayday" catchtouchmove="preventTouchmove"></view>
+  <view wx:if="{{showPayday}}" class="sheet {{showPaydayClosing ? 'sheet-out' : ''}}" catchtouchmove="preventTouchmove">
     <view class="sheet-title">每月几号发薪</view>
     <view class="form-item">
       <picker mode="selector" range="{{paydayRange}}" value="{{formPayday - 1}}" bindchange="onPaydayChange">

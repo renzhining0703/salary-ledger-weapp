@@ -8,7 +8,7 @@
  * 3. 体验版联调推送时把 miniprogramState 改为 'trial'，正式发布后保持 'formal'
  */
 const cloud = require('wx-server-sdk')
-const { fmtDate, calcDueDate } = require('./lib/date')
+const { fmtDate, calcDueDate, nowInChina } = require('./lib/date')
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
@@ -22,7 +22,7 @@ exports.main = async () => {
     return { skipped: 'no-template' }
   }
 
-  const now = new Date()
+  const now = nowInChina()
   const tomorrow = new Date(now.getTime() + 86400000)
   const tomorrowStr = fmtDate(tomorrow)
 

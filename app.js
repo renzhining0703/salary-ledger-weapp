@@ -7,6 +7,17 @@ const config = require('./utils/config')
 const chatStorage = require('./utils/chatStorage')
 const themeUtil = require('./utils/theme')
 
+// 全局注入 preventTouchmove：所有页面默认拥有该方法，
+// 供 .mask / .sheet 的 catchtouchmove 绑定，阻止弹框滚动穿透到底部页面。
+// 组件需在其自己的 methods 中声明同名方法（见 ai-chat-sheet）。
+const originalPage = Page
+Page = function (options = {}) {
+  if (typeof options.preventTouchmove !== 'function') {
+    options.preventTouchmove = function () {}
+  }
+  return originalPage(options)
+}
+
 App({
   globalData: {
     openid: '',

@@ -138,19 +138,21 @@
   </view>
 
   <!-- F 当日明细 sheet：点击日期/格子弹出，底部「记一笔」预填日期跳记账页 -->
-  <view wx:if="{{showDay}}" class="mask {{showDayClosing ? 'mask-out' : ''}}" bindtap="closeDay"></view>
-  <view wx:if="{{showDay}}" class="sheet {{showDayClosing ? 'sheet-out' : ''}}">
+  <view wx:if="{{showDay}}" class="mask {{showDayClosing ? 'mask-out' : ''}}" bindtap="closeDay" catchtouchmove="preventTouchmove"></view>
+  <view wx:if="{{showDay}}" class="sheet {{showDayClosing ? 'sheet-out' : ''}}" catchtouchmove="preventTouchmove">
     <view class="sheet-title">{{dayData.dateLabel}}<text class="sheet-title-sub">{{dayData.weekText}}</text></view>
-    <view class="day-total">共 <text class="day-total-amt">¥{{dayData.totalText}}</text> · {{dayData.count}} 笔</view>
+    <scroll-view class="sheet-scroll" scroll-y="{{true}}" enhanced="{{true}}" bounces="{{false}}">
+      <view class="day-total">共 <text class="day-total-amt">¥{{dayData.totalText}}</text> · {{dayData.count}} 笔</view>
 
-    <block wx:if="{{dayData.items.length}}">
-      <view wx:for="{{dayData.items}}" wx:key="_id" class="day-row">
-        <view class="tag tag-navy">{{item.category}}</view>
-        <text class="day-note">{{item.note}}</text>
-        <view class="day-amt">¥{{item.amountText}}</view>
-      </view>
-    </block>
-    <view wx:else class="empty">这天没有开销，享受了宁静的一天</view>
+      <block wx:if="{{dayData.items.length}}">
+        <view wx:for="{{dayData.items}}" wx:key="_id" class="day-row">
+          <view class="tag tag-navy">{{item.category}}</view>
+          <text class="day-note">{{item.note}}</text>
+          <view class="day-amt">¥{{item.amountText}}</view>
+        </view>
+      </block>
+      <view wx:else class="empty">这天没有开销，享受了宁静的一天</view>
+    </scroll-view>
 
     <view class="sheet-actions">
       <view class="btn btn-ghost" bindtap="closeDay">收下</view>

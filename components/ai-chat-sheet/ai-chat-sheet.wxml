@@ -1,6 +1,6 @@
 <!-- 账本君聊天 sheet 公共组件(首页 / 账单页共用) -->
-<view wx:if="{{show}}" class="mask {{closing ? 'mask-out' : ''}}" bindtap="close"></view>
-<view wx:if="{{show}}" class="sheet ai-chat-sheet {{closing ? 'sheet-out' : ''}}" style="height: {{sheetHeight}}; padding-bottom: {{sheetPaddingBottom}};">
+<view wx:if="{{show}}" class="mask {{closing ? 'mask-out' : ''}}" bindtap="close" catchtouchmove="preventTouchmove"></view>
+<view wx:if="{{show}}" class="sheet ai-chat-sheet {{closing ? 'sheet-out' : ''}}" style="height: {{sheetHeight}}; padding-bottom: {{sheetPaddingBottom}};" catchtouchmove="preventTouchmove">
   <view class="sheet-title ai-chat-title">
     <view class="ai-chat-avatar"><image class="ai-chat-avatar-img" src="/static/avatar/avatar-c-200.png" mode="aspectFill" /></view>
     <view class="ai-chat-title-text">

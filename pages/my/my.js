@@ -80,6 +80,10 @@ Page({
     recurCount: 0,
     showRecur: false,
     showRecurClosing: false,
+    // 固定支出列表 scroll-view 动态高度：默认 56vh（与全局 .sheet-scroll 一致，保留滚动）；
+    // openRecur 弹框入场后由 _fitRecurScrollHeight 测量并按需收敛成内容真实像素高度，
+    // 避免只有 2-3 项时 sheet 被撑到 ~70% 屏高、底部留大片空白。
+    recurScrollHeight: '56vh',
     showRecurForm: false,
     showRecurFormClosing: false,
     recurSaving: false,
@@ -120,6 +124,10 @@ Page({
         recurTotal: util.moneyThousand(recurTotal),
         recurCount: recurList.filter((r) => r.active !== false).length
       })
+      // 弹层打开时,增删行会让内容高度变化,需重新收敛 scroll-view 高度
+      if (this.data.showRecur) {
+        setTimeout(() => this._fitRecurScrollHeight(), 50)
+      }
     } catch (err) {
       console.error('加载固定支出失败', err)
     }
@@ -747,10 +755,53 @@ Page({
   openRecur() {
     if (this._closeTimer) { clearTimeout(this._closeTimer); this._closeTimer = null }
     util.openSheet(this, 'showRecur')
+    // 弹框入场动画 0.28s 结束后再测量（此时 scroll-view 已渲染出真实内容高度）
+    setTimeout(() => this._fitRecurScrollHeight(), 320)
   },
 
   closeRecur() {
     this._closeTimer = util.closeSheet(this, 'showRecur')
+    // 关闭后重置：下次再打开默认仍走 56vh（避免开-关-开残留低高度）
+    this.setData({ recurScrollHeight: '56vh' })
+  },
+
+  /**
+   * 测量固定支出列表真实内容高度，按需收敛 scroll-view height：
+   * - 内容 ≤ 56vh → scroll-view height = 内容真实像素高度 + 8rpx 缓冲（自适应，无空白）
+   * - 内容 > 56vh → scroll-view height = 56vh（保留 WX scroll-view 内部滚动能力）
+   * WX scroll-view 内部滚动容器必须拿到确定 height 才能滚动，所以保留 fixed 兜底；
+   * 只在内容少时"放权"给内容自然撑开——这是 scroll-view 既能适应内容又能滚动的唯一折中。
+   */
+  _fitRecurScrollHeight() {
+    if (!this.data.showRecur) return
+    try {
+      const query = wx.createSelectorQuery().in(this)
+      query.select('.recur-tip').boundingClientRect()
+      query.selectAll('.recur-row').boundingClientRect()
+      query.exec((res) => {
+        if (!this.data.showRecur) return  // 测量期间用户可能已关闭
+        const tip = res[0]
+        const rows = res[1] || []
+        if (!tip) return
+        const win = wx.getWindowInfo()
+        const rpx = win.windowWidth / 750
+        // 内容真实底部 = max(最后一个 row 底部, tip 底部)
+        let contentBottom = tip.top + tip.height
+        if (rows.length) {
+          const lastRowBottom = Math.max(...rows.map((r) => r.top + r.height))
+          if (lastRowBottom > contentBottom) contentBottom = lastRowBottom
+        }
+        // 内容像素高度 + 8rpx 缓冲(避免最后一行贴底被裁);rpx 用窗口宽 / 750 换算
+        const contentPx = Math.round((contentBottom - tip.top) + 8 * rpx)
+        const maxPx = 0.56 * win.windowHeight  // 56vh
+        const target = contentPx <= maxPx ? Math.ceil(contentPx) : Math.floor(maxPx)
+        this.setData({ recurScrollHeight: `${target}px` })
+      })
+    } catch (err) {
+      console.warn('fitRecurScrollHeight fail', err)
+      // 兜底保持 56vh（保留滚动能力，不破坏既有行为）
+      this.setData({ recurScrollHeight: '56vh' })
+    }
   },
 
   openRecurForm() {
