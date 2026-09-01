@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>薪账本首页改造设计稿 v3 · 账本君说（含空态状态机）</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #1a1a2e;
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 32px;
+    padding: 32px;
+    color: #e8edf3;
+  }
+
+  /* ====== 左侧设计规范面板 ====== */
+  .spec-panel {
+    width: 440px;
+    flex-shrink: 0;
+    background: #162033;
+    border-radius: 20px;
+    padding: 28px;
+    border: 1px solid #2d3a4d;
+    max-height: calc(100vh - 64px);
+    overflow-y: auto;
+  }
+  .spec-panel::-webkit-scrollbar { width: 4px; }
+  .spec-panel::-webkit-scrollbar-thumb { background: #2d3a4d; border-radius: 4px; }
+  .spec-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: #e5c26b;
+    margin-bottom: 20px;
+    letter-spacing: 0.04em;
+  }
+  .spec-section { margin-bottom: 24px; }
+  .spec-section-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: #a8b4c5;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #2d3a4d;
+  }
+  .spec-item {
+    font-size: 13px;
+    color: #8a96a8;
+    line-height: 1.7;
+    margin-bottom: 6px;
+    padding-left: 12px;
+    position: relative;
+  }
+  .spec-item::before {
+    content: "•";
+    position: absolute;
+    left: 0;
+    color: #e5c26b;
+  }
+  .spec-item b { color: #c8d4e4; }
+  .spec-code {
+    font-family: "SF Mono", Monaco, monospace;
+    font-size: 12px;
+    background: #0e1620;
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: #b5ccdf;
+  }
+  .spec-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-top: 8px;
+  }
+  .spec-table th {
+    text-align: left;
+    color: #a8b4c5;
+    font-weight: 600;
+    padding: 6px 8px;
+    border-bottom: 1px solid #2d3a4d;
+  }
+  .spec-table td {
+    padding: 5px 8px;
+    color: #8a96a8;
+    border-bottom: 1px solid #1f2a37;
+  }
+  .theme-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: linear-gradient(135deg, #4a6b8a, #283a52);
+    color: #fff;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 8px;
+  }
+  .theme-toggle-btn:hover { opacity: 0.9; }
+  .rejected {
+    background: #2A1A1A;
+    border: 1px solid #5A2A2A;
+    border-radius: 12px;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+  }
+  .rejected-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #E55858;
+    margin-bottom: 4px;
+  }
+  .rejected-desc {
+    font-size: 12px;
+    color: #a8b4c5;
+    line-height: 1.6;
+  }
+
+  /* ====== 右侧手机原型 ====== */
+  .phone-wrap {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .phone-label {
+    font-size: 13px;
+    color: #6e7b8e;
+    margin-bottom: 10px;
+    text-align: center;
+  }
+  .phone {
+    width: 375px;
+    height: 780px;
+    border-radius: 44px;
+    border: 10px solid #2a3441;
+    background: var(--bg);
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.5);
+    transition: background 0.3s;
+  }
+  .phone-notch {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 140px;
+    height: 30px;
+    background: #2a3441;
+    border-radius: 0 0 18px 18px;
+    z-index: 10;
+  }
+  .phone-content {
+    height: 100%;
+    overflow-y: auto;
+    padding-bottom: 40px;
+    scrollbar-width: none;
+  }
+  .phone-content::-webkit-scrollbar { display: none; }
+
+  /* ====== 浅色主题变量（默认） ====== */
+  .phone {
+    --navy-900: #0A1828;
+    --navy-800: #0E2238;
+    --navy-700: #14304F;
+    --navy-600: #1F4E79;
+    --navy-300: #4A6B8A;
+    --gold: #C8A04D;
+    --gold-light: #F7EDD8;
+    --gold-700: #A3823A;
+    --text: #2B2620;
+    --text-sub: #82766A;
+    --text-mute: #ADA294;
+    --bg: #F6F2EA;
+    --card: #FFFEF9;
+    --border: #E7E0D1;
+    --border-light: #F0EBE0;
+    --danger: #BE4A3A;
+    --danger-bg: #FAEFE9;
+    --warn: #C98A2D;
+    --warn-bg: #FBF3E1;
+    --success: #2F9B6B;
+    --success-bg: #EDF4E9;
+    --fill-bg: #EFE8DB;
+    --chip-bg: #F5F0E6;
+    --press-bg: #EDE6D8;
+    --input-bg: #F9F5EC;
+    --danger-border: #F2D2C8;
+    --warn-border: #F5E0B8;
+    --shadow-card: rgba(140, 116, 74, 0.06);
+    --shadow-strong: rgba(140, 116, 74, 0.20);
+    --shadow-deep: rgba(140, 116, 74, 0.32);
+    --tint-gold-06: rgba(200, 160, 77, 0.06);
+    --tint-gold-12: rgba(200, 160, 77, 0.12);
+    --tint-gold-18: rgba(200, 160, 77, 0.18);
+  }
+
+  /* ====== 深色主题变量 ====== */
+  .phone.dark {
+    --navy-900: #1F2D40;
+    --navy-800: #283A52;
+    --navy-700: #4A6B8A;
+    --navy-600: #5C82A8;
+    --navy-300: #8AA4C2;
+    --gold: #E5C26B;
+    --gold-light: #2D2519;
+    --gold-700: #B89043;
+    --text: #E8EDF3;
+    --text-sub: #A8B4C5;
+    --text-mute: #6E7B8E;
+    --bg: #0E1620;
+    --card: #1A2532;
+    --border: #2D3A4D;
+    --border-light: #1F2A37;
+    --danger: #E55858;
+    --danger-bg: #2A1A1A;
+    --warn: #E0A055;
+    --warn-bg: #2A2114;
+    --success: #4FB78A;
+    --success-bg: #142A1F;
+    --fill-bg: #243042;
+    --chip-bg: #243042;
+    --press-bg: #2A3545;
+    --input-bg: #1F2A37;
+    --danger-border: #5A2A2A;
+    --warn-border: #5A4220;
+    --shadow-card: rgba(0, 0, 0, 0.28);
+    --shadow-strong: rgba(0, 0, 0, 0.45);
+    --shadow-deep: rgba(0, 0, 0, 0.55);
+    --tint-gold-06: rgba(229, 194, 107, 0.10);
+    --tint-gold-12: rgba(229, 194, 107, 0.16);
+    --tint-gold-18: rgba(229, 194, 107, 0.28);
+  }
+
+  /* ====== 导航栏（恢复原样：纯标题居中） ====== */
+  .navbar {
+    background: var(--card);
+    padding-top: 44px;
+    border-bottom: 1px solid var(--border-light);
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    transition: background 0.3s, border-color 0.3s;
+  }
+  .phone.dark .navbar {
+    background: var(--navy-800);
+    border-bottom-color: transparent;
+  }
+  .navbar-inner {
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 16px;
+  }
+  .navbar-title {
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: 0.04em;
+  }
+  .phone.dark .navbar-title { color: #fff; }
+
+  /* ====== 卡片基础 ====== */
+  .card {
+    background: var(--card);
+    border-radius: 16px;
+    padding: 20px 16px;
+    margin: 12px 16px;
+    box-shadow: 0 4px 14px var(--shadow-card);
+    border: 1px solid var(--border-light);
+    transition: background 0.3s, border-color 0.3s;
+  }
+  .card-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 14px;
+    letter-spacing: 0.02em;
+  }
+
+  /* ====== 月度看板 ====== */
+  .board-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+  .board-arrow {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    color: var(--text-sub);
+    background: var(--input-bg);
+    border-radius: 50%;
+  }
+  .board-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-sub);
+    letter-spacing: 0.02em;
+  }
+  .board-balance {
+    text-align: center;
+    padding: 8px 0 18px;
+  }
+  .bb-label {
+    font-size: 12px;
+    color: var(--text-sub);
+  }
+  .bb-num {
+    font-size: 42px;
+    font-weight: 700;
+    margin-top: 2px;
+    font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+    letter-spacing: -0.02em;
+    color: var(--gold);
+  }
+  .bb-carry {
+    font-size: 12px;
+    margin-top: 4px;
+    color: var(--text-sub);
+    font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+  }
+  .overview-grid {
+    display: flex;
+    gap: 10px;
+  }
+  .ov-item {
+    flex: 1;
+    text-align: center;
+    background: var(--input-bg);
+    border-radius: 10px;
+    padding: 10px 0 8px;
+  }
+  .ov-num {
+    font-size: 16px;
+    font-weight: 700;
+    font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+  }
+  .ov-num.income { color: var(--gold); }
+  .ov-num.expense { color: var(--text); }
+  .ov-label {
+    font-size: 12px;
+    color: var(--text-sub);
+    margin-top: 3px;
+  }
+  .board-formula {
+    margin-top: 14px;
+    font-size: 12px;
+    color: var(--text-mute);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .board-current {
+    margin-left: 6px;
+    background: var(--tint-gold-06);
+    color: var(--gold);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+  }
+  .share-btn {
+    margin-top: 14px;
+    padding: 10px 0;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--navy-700);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg);
+    cursor: pointer;
+  }
+  .phone.dark .share-btn {
+    color: var(--navy-300);
+  }
+
+  /* ====== 账本君说：看板内智能区块（改造核心） ====== */
+  .board-ai {
+    position: relative;
+    display: flex;
+    align-items: center;
+    margin-top: 14px;
+    padding: 12px 14px;
+    background: var(--tint-gold-06);
+    border: 1px solid var(--tint-gold-12);
+    border-radius: 14px;
+    cursor: pointer;
+    transition: transform 0.12s;
+  }
+  .board-ai:hover { transform: scale(1.01); }
+  .bai-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--gold), #E8B85E);
+    color: var(--navy-900);
+    font-size: 13px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    flex-shrink: 0;
+    margin-right: 10px;
+    box-shadow: 0 0 0 2px var(--tint-gold-12), 0 3px 8px var(--tint-gold-18);
+  }
+  .bai-badge {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 3px;
+    border-radius: 999px;
+    background: #E24B4A;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    border: 2px solid var(--card);
+    box-sizing: border-box;
+  }
+  .phone.dark .bai-badge { border-color: var(--navy-800); }
+  .bai-main {
+    flex: 1;
+    min-width: 0;
+  }
+  .bai-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    line-height: 1.4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .bai-amt {
+    font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+    font-size: 15px;
+    font-weight: 800;
+    color: var(--gold);
+    margin: 0 2px;
+  }
+  .bai-sub {
+    font-size: 11px;
+    color: var(--text-sub);
+    margin-top: 2px;
+  }
+  .bai-arrow {
+    font-size: 18px;
+    color: var(--text-mute);
+    line-height: 1;
+    margin-left: 6px;
+    flex-shrink: 0;
+  }
+  /* 改造点小红标 */
+  .change-tag {
+    position: absolute;
+    top: -8px;
+    right: 10px;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: #E55858;
+    color: #fff;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  /* ====== 账本君说 · 引导态动作按钮 ====== */
+  .bai-action {
+    flex-shrink: 0;
+    margin-left: 8px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, var(--gold), var(--gold-700));
+    color: var(--navy-900);
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+    box-shadow: 0 2px 6px var(--tint-gold-18);
+  }
+  .bai-sub-hint { color: var(--gold-700); }
+
+  /* ====== 状态切换器（设计稿预览用，非小程序组件） ====== */
+  .state-switcher {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .state-btn {
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid #2d3a4d;
+    background: #162033;
+    color: #8a96a8;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .state-btn:hover { color: #c8d4e4; }
+  .state-btn.active {
+    background: linear-gradient(135deg, #C8A04D, #A3823A);
+    color: #0A1828;
+    border-color: transparent;
+    font-weight: 700;
+  }
+  .state-label {
+    font-size: 12px;
+    color: #e5c26b;
+    margin-top: 10px;
+    text-align: center;
+    line-height: 1.6;
+    max-width: 375px;
+  }
+
+  /* ====== 收支趋势 ====== */
+  .trend-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .trend-legend {
+    display: flex;
+    gap: 10px;
+    font-size: 11px;
+    color: var(--text-sub);
+  }
+  .trend-legend .lg {
+    display: flex;
+    align-items: center;
+  }
+  .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 2px;
+    margin-right: 3px;
+  }
+  .dot-income { background: var(--navy-700); }
+  .dot-expense { background: var(--danger); }
+  .dot-balance { background: var(--gold); border-radius: 50%; }
+  .trend-chart {
+    height: 140px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-around;
+    padding: 0 8px;
+    gap: 8px;
+  }
+  .trend-bar-group {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    min-width: 0;
+  }
+  .trend-bar-wrap {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 110px;
+    width: 100%;
+    justify-content: center;
+  }
+  .trend-bar {
+    width: 10px;
+    border-radius: 3px 3px 0 0;
+    min-height: 4px;
+  }
+  .trend-bar.inc { background: var(--navy-700); }
+  .trend-bar.exp { background: var(--danger); }
+  .trend-bar-label {
+    font-size: 10px;
+    color: var(--text-mute);
+    white-space: nowrap;
+  }
+
+  /* ====== FAB ====== */
+  .fab {
+    position: absolute;
+    right: 18px;
+    bottom: 32px;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--gold), var(--gold-700));
+    color: var(--navy-900);
+    font-size: 28px;
+    font-weight: 300;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-bottom: 3px;
+    box-shadow: 0 6px 18px var(--shadow-deep);
+    cursor: pointer;
+    z-index: 8;
+  }
+</style>
+</head>
+<body>
+
+<!-- ====== 左侧设计规范 ====== -->
+<div class="spec-panel">
+  <div class="spec-title">首页改造设计规范 v3 · 含空态状态机</div>
+
+  <div class="spec-section">
+    <div class="spec-section-title">改造概览</div>
+    <div class="spec-item">账本君入口：独立卡片 → <b>看板底部「账本君说」智能区块</b>，融入数据展示，不额外占卡片</div>
+    <div class="spec-item">日均可花：独立双列大卡片 → <b>并入「账本君说」</b>——账本君算出日均可花，以"人话"呈现</div>
+    <div class="spec-item">首页卡片数 <b>-1</b>，纵向节省约 <b>200rpx</b>，卡片流更干净</div>
+  </div>
+
+  <div class="spec-section">
+    <div class="spec-section-title">为什么不用导航栏方案（已否决）</div>
+    <div class="rejected">
+      <div class="rejected-title">✕ 右侧放置 — 不可行</div>
+      <div class="rejected-desc">微信系统胶囊（约 87px 宽）固定占位右上角，自定义内容必被遮挡。</div>
+    </div>
+    <div class="rejected">
+      <div class="rejected-title">✕ 左侧放置 — 已否决</div>
+      <div class="rejected-desc">形似品牌 logo，无"对话"心智；亮点功能只留一个图标 = 埋没能力。</div>
+    </div>
+    <div class="spec-item"><b>结论</b>：亮点功能要<b>展示能力</b>（一句话 + 数据），而不是只留一个入口图标。「账本君说」让 AI 以"说话人"身份出现，人设鲜明、数据即能力。</div>
+  </div>
+
+  <div class="spec-section">
+    <div class="spec-section-title">1. 「账本君说」区块结构</div>
+    <div class="spec-item">位置：看板卡片内，公式行与「生成账单卡片」按钮之间</div>
+    <div class="spec-item">头像：32rpx 金色渐变圆「账」字 + 未读红点（复用 <span class="spec-code">aiUnread</span>）</div>
+    <div class="spec-item">主文案：<span class="spec-code">账本君说 · 今天可以放心花 ¥295.43</span>（金额 gold + DIN）</div>
+    <div class="spec-item">副文案：<span class="spec-code">距发薪 14 天 · 已连续记账 4 天</span></div>
+    <div class="spec-item">背景：<span class="spec-code">--tint-gold-06</span> 淡金底 + <span class="spec-code">--tint-gold-12</span> 细边框圆角，与卡片内容区区分</div>
+    <div class="spec-item">交互：点击整块 → 弹出账本君 chat sheet（绑定 <span class="spec-code">goAskAI</span>）</div>
+  </div>
+
+  <div class="spec-section">
+    <div class="spec-section-title">2. 完整状态机（含新用户 / 空数据）</div>
+    <table class="spec-table">
+      <tr><th>状态</th><th>判定条件</th><th>展示</th></tr>
+      <tr>
+        <td><b style="color:#e5c26b">S1 欢迎</b></td>
+        <td>无收支记录 且 发薪日未设置</td>
+        <td>主：你好，我是账本君<br>副：设置发薪日，开始规划每天能花多少<br>动作：去设置</td>
+      </tr>
+      <tr>
+        <td><b style="color:#e5c26b">S2 待首笔</b></td>
+        <td>发薪日已设置 且 无收支记录</td>
+        <td>主：记一笔工资，开始你的第一份规划<br>副：发薪日已设为每月 X 日<br>动作：去记账</td>
+      </tr>
+      <tr>
+        <td><b style="color:#e5c26b">S3 缺发薪日</b></td>
+        <td>有收支记录 但 发薪日未设置</td>
+        <td>主：今天可以放心花 ¥X<br>副：按本月剩余天数估算 · 设置发薪日更准<br>动作：去设置</td>
+      </tr>
+      <tr>
+        <td><b style="color:#e5c26b">S4 正常</b></td>
+        <td>有记录 且 已设发薪日</td>
+        <td>主：今天可以放心花 ¥X<br>副：距发薪 X 天 · 连续记账 N 天<br>动作：› 弹 chat</td>
+      </tr>
+      <tr>
+        <td>余额不足</td>
+        <td>available &lt; 0</td>
+        <td>手头有点紧，今天省着花</td>
+      </tr>
+      <tr>
+        <td>预算用完</td>
+        <td>预算 &gt; 0 且超支</td>
+        <td>本月预算已用完，先记账再消费</td>
+      </tr>
+      <tr>
+        <td>历史月</td>
+        <td>看板翻到非当前月</td>
+        <td>区块整体隐藏（语义基于今天）</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="spec-section">
+    <div class="spec-section-title">3. 空态设计原则（关键）</div>
+    <div class="spec-item"><b>绝不显示默认发薪日推算的"距发薪 X 天"</b>——默认 15 号是用户从未确认过的值，展示出来即歧义。未设置时副文案走"估算说明 + 去设置"。</div>
+    <div class="spec-item"><b>空态不放 ¥0.00 金额</b>——0 不是"能花 0 元"的意思，是"没数据"。用引导话术替代数字。</div>
+    <div class="spec-item"><b>引导按钮与整块点击分离</b>：右侧动作按钮直达设置页 / 记账页；点击区块其余部分仍弹 chat sheet（账本君可自我介绍）。</div>
+    <div class="spec-item"><b>S3 估算口径</b>：available ÷ 本月剩余天数（含今天），与预算模式 <span class="spec-code">daysLeftInMonth</span> 口径一致，不引入新算法。</div>
+  </div>
+
+  <div class="spec-section">
+    <div class="spec-section-title">4. 数据链路整改建议（开发必读）</div>
+    <div class="spec-item"><span class="spec-code">payday: 0</span> 表示未设置；新用户不再预置 15（现 <span class="spec-code">utils/db.js:147</span> 预置 payday: 15，需移除）</div>
+    <div class="spec-item"><span class="spec-code">index.js:346</span> 的兜底 <span class="spec-code">(user &amp;&amp; user.payday) || 15</span> 改为 <span class="spec-code">|| 0</span>，0 时走 S1/S3 分支</div>
+    <div class="spec-item"><span class="spec-code">calcDailyBudget</span> 增加 <span class="spec-code">paydayUnset</span> 出参：true 时 daysToPayday 按本月剩余天数计，sub 由调用方替换为估算说明</div>
+    <div class="spec-item">存量用户迁移：payday 仍为 15 且从未修改过的（无 paydayUpdatedAt 标记），可保守保留 15 不动，仅<b>新用户</b>从 0 开始，避免误伤老数据</div>
+  </div>
+
+  <div class="spec-section">
+    <div class="spec-section-title">5. 被移除的元素</div>
+    <div class="spec-item">原 <span class="spec-code">.ai-entry-card</span> 独立卡片（头像+标题+副标题+箭头）</div>
+    <div class="spec-item">原 <span class="spec-code">.daily-card</span> 双列大卡片（padding 30rpx 0 32rpx）</div>
+  </div>
+
+  <div class="spec-section">
+    <div class="spec-section-title">Token 映射</div>
+    <table class="spec-table">
+      <tr><th>元素</th><th>Token</th></tr>
+      <tr><td>区块背景</td><td class="spec-code">--tint-gold-06</td></tr>
+      <tr><td>区块边框</td><td class="spec-code">--tint-gold-12</td></tr>
+      <tr><td>金额</td><td class="spec-code">--gold · DIN Alternate</td></tr>
+      <tr><td>头像渐变</td><td class="spec-code">linear-gradient(135deg, --gold, #E8B85E)</td></tr>
+      <tr><td>未读红点</td><td class="spec-code">#E24B4A · border: --card</td></tr>
+      <tr><td>副文案</td><td class="spec-code">11px --text-sub</td></tr>
+    </table>
+  </div>
+
+  <div class="spec-section">
+    <div class="spec-section-title">开发提示</div>
+    <div class="spec-item">wxml：看板卡内公式行后加 <span class="spec-code">.board-ai</span> 区块，<span class="spec-code">bindtap="goAskAI"</span></div>
+    <div class="spec-item">文案字段全部复用 <span class="spec-code">daily.amountText / daily.zeroTip / streak.count</span>，零新增计算</div>
+    <div class="spec-item">原 <span class="spec-code">pages/index/index.wxml</span> 第 111~121 行 <span class="spec-code">.ai-entry-card</span> 整段删除</div>
+    <div class="spec-item">原 daily-card 的 WXML/WXSS 一并删除，看板卡内新增区块</div>
+  </div>
+
+  <button class="theme-toggle-btn" onclick="toggleTheme()">🌓 切换浅 / 深色</button>
+</div>
+
+<!-- ====== 右侧手机原型 ====== -->
+<div class="phone-wrap">
+  <div class="phone-label">改造后首页效果 · 「账本君说」看板融合（点击按钮切换主题）</div>
+  <div class="state-switcher">
+    <button class="state-btn active" data-state="s4" onclick="setState('s4', this)">S4 正常（老用户）</button>
+    <button class="state-btn" data-state="s1" onclick="setState('s1', this)">S1 全新用户</button>
+    <button class="state-btn" data-state="s2" onclick="setState('s2', this)">S2 已设发薪日</button>
+    <button class="state-btn" data-state="s3" onclick="setState('s3', this)">S3 缺发薪日</button>
+  </div>
+  <div class="state-label" id="state-label">S4 正常：有记录且已设发薪日，展示日均可花 + 距发薪 + 连续记账</div>
+  <div class="phone" id="phone">
+    <div class="phone-notch"></div>
+    <div class="phone-content">
+
+      <!-- 导航栏（恢复原样：纯标题居中，无自定义按钮） -->
+      <div class="navbar">
+        <div class="navbar-inner">
+          <div class="navbar-title">首页</div>
+        </div>
+      </div>
+
+      <!-- 月度看板 + 账本君说 -->
+      <div class="card board-card">
+        <div class="board-head">
+          <div class="board-arrow">‹</div>
+          <div class="board-title">2026年9月 结余</div>
+          <div class="board-arrow">›</div>
+        </div>
+        <div class="board-balance">
+          <div class="bb-label">可用余额</div>
+          <div class="bb-num" id="bb-num">¥4,264.57</div>
+          <div class="bb-carry" id="bb-carry">含历史结转 ¥4,401.67</div>
+        </div>
+        <div class="overview-grid">
+          <div class="ov-item">
+            <div class="ov-num income" id="ov-income">¥0.00</div>
+            <div class="ov-label">本月收入</div>
+          </div>
+          <div class="ov-item">
+            <div class="ov-num expense" id="ov-expense">¥137.10</div>
+            <div class="ov-label">本月支出</div>
+          </div>
+        </div>
+        <div class="board-formula">
+          结转 + 收入 − 支出 = 可用
+          <span class="board-current">当前月</span>
+        </div>
+
+        <!-- 账本君说：内容随状态机切换（见左侧规范 §2） -->
+        <div class="board-ai" id="board-ai" onclick="alert('弹出账本君 chat sheet')">
+          <div class="change-tag">改造点</div>
+          <div class="bai-avatar">
+            账
+            <div class="bai-badge">1</div>
+          </div>
+          <div class="bai-main">
+            <div class="bai-title" id="bai-title">账本君说 · 今天可以放心花 <span class="bai-amt">¥295.43</span></div>
+            <div class="bai-sub" id="bai-sub">距发薪 14 天 · 已连续记账 4 天</div>
+          </div>
+          <div class="bai-arrow" id="bai-arrow">›</div>
+        </div>
+
+        <div class="share-btn">生成账单卡片</div>
+      </div>
+
+      <!-- 收支趋势 -->
+      <div class="card">
+        <div class="trend-head">
+          <div class="card-title">收支趋势</div>
+          <div class="trend-legend">
+            <div class="lg"><div class="dot dot-income"></div>收入</div>
+            <div class="lg"><div class="dot dot-expense"></div>支出</div>
+            <div class="lg"><div class="dot dot-balance"></div>结余</div>
+          </div>
+        </div>
+        <div class="trend-chart">
+          <div class="trend-bar-group">
+            <div class="trend-bar-wrap">
+              <div class="trend-bar inc" style="height:35%;"></div>
+              <div class="trend-bar exp" style="height:18%;"></div>
+            </div>
+            <div class="trend-bar-label">4月</div>
+          </div>
+          <div class="trend-bar-group">
+            <div class="trend-bar-wrap">
+              <div class="trend-bar inc" style="height:55%;"></div>
+              <div class="trend-bar exp" style="height:30%;"></div>
+            </div>
+            <div class="trend-bar-label">5月</div>
+          </div>
+          <div class="trend-bar-group">
+            <div class="trend-bar-wrap">
+              <div class="trend-bar inc" style="height:42%;"></div>
+              <div class="trend-bar exp" style="height:65%;"></div>
+            </div>
+            <div class="trend-bar-label">6月</div>
+          </div>
+          <div class="trend-bar-group">
+            <div class="trend-bar-wrap">
+              <div class="trend-bar inc" style="height:60%;"></div>
+              <div class="trend-bar exp" style="height:40%;"></div>
+            </div>
+            <div class="trend-bar-label">7月</div>
+          </div>
+          <div class="trend-bar-group">
+            <div class="trend-bar-wrap">
+              <div class="trend-bar inc" style="height:48%;"></div>
+              <div class="trend-bar exp" style="height:52%;"></div>
+            </div>
+            <div class="trend-bar-label">8月</div>
+          </div>
+          <div class="trend-bar-group">
+            <div class="trend-bar-wrap">
+              <div class="trend-bar inc" style="height:10%;"></div>
+              <div class="trend-bar exp" style="height:25%;"></div>
+            </div>
+            <div class="trend-bar-label">9月</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 底部 FAB -->
+      <div class="fab">+</div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+  function toggleTheme() {
+    const phone = document.getElementById('phone');
+    phone.classList.toggle('dark');
+  }
+
+  /* ====== 「账本君说」状态机（与左侧规范 §2 一一对应） ====== */
+  const STATE_DESC = {
+    s4: 'S4 正常：有记录且已设发薪日，展示日均可花 + 距发薪 + 连续记账',
+    s1: 'S1 全新用户：无记录且未设发薪日 → 欢迎语 + 去设置（绝不显示默认发薪日推算的数据）',
+    s2: 'S2 已设发薪日但无记录：引导记第一笔工资（发薪日已确认，可放心展示）',
+    s3: 'S3 有记录但未设发薪日：给估算值并明确标注口径 + 去设置（不显示"距发薪 X 天"）'
+  };
+  const STATES = {
+    s4: {
+      num: '¥4,264.57',
+      carry: '含历史结转 ¥4,401.67',
+      income: '¥0.00',
+      expense: '¥137.10',
+      title: '账本君说 · 今天可以放心花 <span class="bai-amt">¥295.43</span>',
+      sub: '距发薪 14 天 · 已连续记账 4 天',
+      arrow: '›'
+    },
+    s1: {
+      num: '¥0.00',
+      carry: '',
+      income: '¥0.00',
+      expense: '¥0.00',
+      title: '账本君说 · 你好，我是账本君',
+      sub: '设置发薪日，开始规划每天能花多少',
+      action: '去设置'
+    },
+    s2: {
+      num: '¥0.00',
+      carry: '',
+      income: '¥0.00',
+      expense: '¥0.00',
+      title: '账本君说 · 记一笔工资，开始你的第一份规划',
+      sub: '发薪日已设为每月 15 日',
+      action: '去记账'
+    },
+    s3: {
+      num: '¥1,234.56',
+      carry: '含历史结转 ¥1,800.00',
+      income: '¥0.00',
+      expense: '¥565.44',
+      title: '账本君说 · 今天可以放心花 <span class="bai-amt">¥41.15</span>',
+      sub: '<span class="bai-sub-hint">按本月剩余天数估算 · 设置发薪日更准</span>',
+      action: '去设置'
+    }
+  };
+
+  function setState(key, btn) {
+    const s = STATES[key];
+    document.getElementById('bb-num').textContent = s.num;
+    document.getElementById('bb-carry').textContent = s.carry;
+    document.getElementById('ov-income').textContent = s.income;
+    document.getElementById('ov-expense').textContent = s.expense;
+    document.getElementById('bai-title').innerHTML = s.title;
+    document.getElementById('bai-sub').innerHTML = s.sub;
+    const arrow = document.getElementById('bai-arrow');
+    if (s.action) {
+      arrow.outerHTML = '<div class="bai-action" id="bai-arrow">' + s.action + '</div>';
+    } else {
+      arrow.outerHTML = '<div class="bai-arrow" id="bai-arrow">›</div>';
+    }
+    document.getElementById('state-label').textContent = STATE_DESC[key];
+    document.querySelectorAll('.state-btn').forEach(function (b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+  }
+</script>
+</body>
+</html>

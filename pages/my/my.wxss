@@ -96,10 +96,27 @@
   font-weight: 400;
 }
 
-.my-user-sub {
+.my-user-motto {
   margin-top: 12rpx;
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.motto-text {
   font-size: 23rpx;
   color: var(--text-sub);
+}
+
+.motto-edit-icon {
+  font-size: 22rpx;
+  color: var(--gold);
+  opacity: 0.8;
+}
+
+.motto-input {
+  font-size: 32rpx;
+  font-weight: 500;
 }
 
 /* ---------- 分组卡片 ---------- */
@@ -279,4 +296,210 @@ picker .my-row {
   font-size: 26rpx;
   color: var(--text-sub);
   padding: 16rpx 0;
+}
+
+/* ---------- 分类预算：列表 sheet + 编辑 sheet ---------- */
+/* 列表提示条 */
+.cat-budgets-hint {
+  font-size: 24rpx;
+  color: var(--text-sub);
+  margin-bottom: 20rpx;
+  padding: 16rpx 20rpx;
+  background: var(--input-bg);
+  border-radius: 12rpx;
+}
+/* 分类行：名称+本月已花 | 预算 chip | 箭头 */
+.cat-budget-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 22rpx 8rpx;
+  border-bottom: 1rpx solid var(--border);
+}
+.cat-budget-row:last-child {
+  border-bottom: none;
+}
+.cat-budget-row-hover {
+  opacity: 0.7;
+}
+.cat-budget-row-main {
+  flex: 1;
+  min-width: 0;
+}
+.cat-budget-row-name {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--text);
+}
+.cat-budget-row-spent {
+  font-size: 22rpx;
+  color: var(--text-sub);
+  margin-top: 6rpx;
+}
+/* 预算 chip：未设虚线引导 / 已设金色 / 超支红色（与账单 sheet 视觉一致） */
+.cat-budget-chip {
+  font-size: 22rpx;
+  font-weight: 600;
+  padding: 8rpx 16rpx;
+  border-radius: 999rpx;
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-family: "DIN Alternate", sans-serif;
+}
+.cat-budget-chip.unset {
+  border: 1rpx dashed var(--border);
+  color: var(--text-mute);
+  background: transparent;
+}
+.cat-budget-chip.set {
+  background: rgba(200, 160, 77, 0.15);
+  color: var(--gold);
+}
+.cat-budget-chip.set.over {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+/* 编辑 sheet：本月已花提示条 + 大号金额输入 */
+.cat-budget-hint {
+  font-size: 24rpx;
+  color: var(--text-sub);
+  margin-bottom: 24rpx;
+  padding: 16rpx 20rpx;
+  background: var(--input-bg);
+  border-radius: 12rpx;
+}
+.my-amount-input {
+  font-size: 48rpx;
+  font-weight: 800;
+  color: var(--navy-700);
+}
+.cat-budget-clear-btn {
+  margin-bottom: 12rpx;
+  background: var(--input-bg);
+  color: var(--text-sub);
+}
+
+/* ---------- 固定支出（从记账页移入） ---------- */
+/* 管理弹层 */
+.recur-row {
+  display: flex;
+  align-items: center;
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid var(--border-light);
+  gap: 16rpx;
+}
+
+.recur-row.inactive .recur-name,
+.recur-row.inactive .recur-meta,
+.recur-row.inactive .recur-amount {
+  color: var(--text-mute);
+}
+
+.recur-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.recur-name {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.recur-meta {
+  font-size: 24rpx;
+  color: var(--text-sub);
+  margin-top: 4rpx;
+}
+
+.recur-right {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.recur-amount {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: var(--navy-700);
+  font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+}
+
+.recur-del {
+  font-size: 24rpx;
+  color: var(--danger);
+  padding: 8rpx 4rpx;
+}
+
+.recur-tip {
+  font-size: 24rpx;
+  color: var(--text-sub);
+  margin: -8rpx 0 16rpx;
+}
+
+.recur-record {
+  padding: 10rpx 24rpx;
+  font-size: 24rpx;
+  font-weight: 600;
+  color: var(--gold);
+  border: 2rpx solid var(--gold);
+  border-radius: 999rpx;
+  background: var(--tint-gold-06);
+  white-space: nowrap;
+}
+
+.recur-record:active {
+  background: var(--tint-gold-18);
+}
+
+.recur-record.done {
+  color: var(--text-mute);
+  border-color: var(--border);
+  background: var(--input-bg);
+}
+
+.recur-done-text {
+  color: var(--gold);
+}
+
+.recur-auto {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-top: 8rpx;
+}
+
+.recur-auto-label {
+  font-size: 22rpx;
+  color: var(--text-sub);
+}
+
+.recur-auto switch {
+  transform: scale(0.85);
+  transform-origin: right center;
+}
+
+/* ---------- 分类选择 chips（固定支出表单用） ---------- */
+.cat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+}
+
+.chip {
+  min-width: 120rpx;
+  text-align: center;
+  padding: 16rpx 28rpx;
+  background: var(--chip-bg);
+  border-radius: 999rpx;
+  font-size: 28rpx;
+  color: var(--text-sub);
+  transition: all 0.1s ease;
+}
+
+.chip-active {
+  background: linear-gradient(135deg, var(--navy-700), var(--navy-800));
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 8rpx 20rpx var(--shadow-strong);
 }

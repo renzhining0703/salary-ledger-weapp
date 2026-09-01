@@ -1,0 +1,6 @@
+{
+  "navigationStyle": "custom",
+  "navigationBarTitleText": "消费日历",
+  "enablePullDownRefresh": true,
+  "backgroundColor": "@pageBg"
+}

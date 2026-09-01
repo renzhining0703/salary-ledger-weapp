@@ -1,0 +1,542 @@
+/* ============================================================
+ * 消费日历独立页面：导航栏 + 月度概览 hero + 月历/热力双视图 + 当日明细 sheet
+ * 全部复用项目 CSS 变量（--bg/--card/--heat-0~4/--gold/--navy-*），深浅色自动适配
+ * ============================================================ */
+.page {
+  min-height: 100vh;
+  background: var(--bg);
+  padding-bottom: 48rpx;
+}
+
+/* ---------- A 导航栏（全局 .navbar 基础上补返回/今天按钮） ---------- */
+.navbar-inner {
+  justify-content: flex-start;
+  position: relative;
+}
+.navbar-title {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.nav-back {
+  width: 68rpx;
+  height: 68rpx;
+  border-radius: 20rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 44rpx;
+  font-weight: 300;
+  color: var(--text);
+  background: var(--tint-navy-06);
+  flex: none;
+  line-height: 1;
+}
+.nav-back:active {
+  background: var(--press-bg);
+}
+.nav-today {
+  position: absolute;
+  right: 24rpx;
+  font-size: 24rpx;
+  font-weight: 600;
+  color: var(--gold-700);
+  background: var(--gold-light);
+  border-radius: 999rpx;
+  padding: 10rpx 28rpx;
+  line-height: 1.4;
+}
+.nav-today:active {
+  opacity: 0.8;
+}
+
+.page-body {
+  padding: 24rpx;
+}
+
+/* ---------- B 月度概览 hero ---------- */
+.hero {
+  border-radius: 32rpx;
+  padding: 32rpx;
+  /* 浅色主题：米白卡片 + 深蓝文字，更轻盈 */
+  background: var(--card);
+  box-shadow: 0 8rpx 24rpx rgba(10, 24, 40, 0.08);
+  border: 1rpx solid var(--border-light);
+  position: relative;
+  overflow: hidden;
+  color: var(--navy-700);
+}
+/* 深色下 hero 恢复深蓝渐变 + 白字 */
+@media (prefers-color-scheme: dark) {
+  .hero {
+    background: linear-gradient(135deg, var(--navy-900), var(--navy-800));
+    box-shadow: 0 16rpx 40rpx rgba(0, 0, 0, 0.4);
+    border: none;
+    color: #fff;
+  }
+}
+.theme-force-dark .hero {
+  background: linear-gradient(135deg, var(--navy-900), var(--navy-800));
+  box-shadow: 0 16rpx 40rpx rgba(0, 0, 0, 0.4);
+  border: none;
+  color: #fff;
+}
+.theme-force-light .hero {
+  background: var(--card);
+  box-shadow: 0 8rpx 24rpx rgba(10, 24, 40, 0.08);
+  border: 1rpx solid var(--border-light);
+  color: var(--navy-700);
+}
+.hero::after {
+  content: "";
+  position: absolute;
+  right: -60rpx;
+  top: -80rpx;
+  width: 300rpx;
+  height: 300rpx;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(200, 160, 77, 0.10), transparent 70%);
+  pointer-events: none;
+}
+@media (prefers-color-scheme: dark) {
+  .hero::after {
+    background: radial-gradient(circle, rgba(200, 160, 77, 0.22), transparent 70%);
+  }
+}
+.theme-force-dark .hero::after {
+  background: radial-gradient(circle, rgba(200, 160, 77, 0.22), transparent 70%);
+}
+.theme-force-light .hero::after {
+  background: radial-gradient(circle, rgba(200, 160, 77, 0.10), transparent 70%);
+}
+
+.hero-row1 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20rpx;
+  position: relative;
+  z-index: 1;
+}
+.hero-lbl {
+  font-size: 24rpx;
+  color: var(--navy-300);
+  letter-spacing: 0.08em;
+}
+.hero-chip {
+  font-size: 20rpx;
+  color: #E5C26B;
+  background: rgba(229, 194, 107, 0.14);
+  border: 1rpx solid rgba(229, 194, 107, 0.4);
+  border-radius: 999rpx;
+  padding: 6rpx 20rpx;
+  font-weight: 600;
+}
+.hero-amount {
+  font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+  font-size: 80rpx;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: 0.01em;
+  position: relative;
+  z-index: 1;
+}
+.hero-cny {
+  font-size: 36rpx;
+  font-weight: 600;
+  color: var(--gold);
+  margin-right: 8rpx;
+}
+.hero-stats {
+  display: flex;
+  gap: 24rpx;
+  margin-top: 28rpx;
+  position: relative;
+  z-index: 1;
+}
+.hero-stats .hs {
+  flex: 1;
+}
+.hero-stats .hs-num {
+  font-size: 30rpx;
+  font-weight: 700;
+  font-family: "DIN Alternate", Arial, sans-serif;
+  color: var(--navy-700);
+}
+@media (prefers-color-scheme: dark) {
+  .hero-stats .hs-num { color: #fff; }
+}
+.theme-force-dark .hero-stats .hs-num { color: #fff; }
+.theme-force-light .hero-stats .hs-num { color: var(--navy-700); }
+.hero-stats .hs-lbl {
+  font-size: 20rpx;
+  color: var(--navy-300);
+  margin-top: 4rpx;
+}
+.hero-stats .hs.up .hs-num { color: #E55858; }
+.hero-stats .hs.down .hs-num { color: #4FB78A; }
+
+/* ---------- C 视图切换 ---------- */
+.view-tabs {
+  display: flex;
+  gap: 16rpx;
+  margin: 24rpx 0;
+}
+.view-tab {
+  flex: 1;
+  text-align: center;
+  padding: 18rpx 0;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--text-sub);
+  background: var(--chip-bg);
+  border-radius: 20rpx;
+  transition: all 0.2s ease;
+}
+/* 浅色主题：金色系选中，温暖轻盈 */
+.view-tab.active {
+  color: var(--gold-700);
+  background: var(--gold-light);
+  box-shadow: 0 4rpx 12rpx var(--tint-gold-12);
+}
+/* 深色主题：恢复深蓝渐变 + 白字 */
+@media (prefers-color-scheme: dark) {
+  .view-tab.active {
+    color: #fff;
+    background: linear-gradient(135deg, var(--navy-700), var(--navy-900));
+    box-shadow: 0 12rpx 24rpx var(--shadow-strong);
+  }
+}
+.theme-force-dark .view-tab.active {
+  color: #fff;
+  background: linear-gradient(135deg, var(--navy-700), var(--navy-900));
+  box-shadow: 0 12rpx 24rpx var(--shadow-strong);
+}
+.theme-force-light .view-tab.active {
+  color: var(--gold-700);
+  background: var(--gold-light);
+  box-shadow: 0 4rpx 12rpx var(--tint-gold-12);
+}
+
+/* ---------- 日历卡片（复用 .card 视觉，页面内不套用全局 margin） ---------- */
+.cal-card {
+  background: var(--card);
+  border-radius: 28rpx;
+  padding: 28rpx 24rpx;
+  box-shadow: 0 8rpx 24rpx var(--shadow-card);
+  border: 1rpx solid var(--border-light);
+  box-sizing: border-box;
+}
+
+/* ---------- D 月历视图 ---------- */
+.month-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20rpx;
+}
+.month-arrow {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 16rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32rpx;
+  color: var(--text-sub);
+  background: var(--chip-bg);
+  user-select: none;
+}
+.month-arrow:active {
+  background: var(--press-bg);
+}
+.month-title {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.03em;
+}
+
+.week-row {
+  display: flex;
+  margin-bottom: 8rpx;
+}
+.week-row .wd {
+  flex: 1;
+  text-align: center;
+  font-size: 22rpx;
+  font-weight: 600;
+  color: var(--text-mute);
+  padding: 8rpx 0;
+}
+.week-row .wd.weekend {
+  color: var(--gold-700);
+}
+
+.cal-grid {
+  display: flex;
+  flex-wrap: wrap;
+}
+.day {
+  position: relative;
+  width: 14.2857%;
+  height: 100rpx;
+  box-sizing: border-box;
+  border-radius: 16rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 10rpx;
+  background: transparent;
+  border: 2rpx solid transparent;
+  transition: transform 0.1s ease;
+}
+.day:active {
+  transform: scale(0.94);
+}
+.day .d-num {
+  font-size: 26rpx;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.2;
+}
+.day .d-amt {
+  font-size: 18rpx;
+  font-weight: 600;
+  color: var(--navy-600);
+  margin-top: 4rpx;
+  line-height: 1;
+  max-width: 90%;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.day.heat-1 { background: var(--heat-1); }
+.day.heat-2 { background: var(--heat-2); }
+.day.heat-3 { background: var(--heat-3); }
+.day.heat-4 { background: var(--heat-4); }
+.day.heat-1 .d-num,
+.day.heat-2 .d-num { color: var(--text); }
+.day.heat-3 .d-num,
+.day.heat-4 .d-num { color: #fff; }
+.day.heat-3 .d-amt,
+.day.heat-4 .d-amt { color: rgba(255, 255, 255, 0.92); }
+.day.other-month { background: transparent; }
+.day.other-month .d-num {
+  color: var(--text-mute);
+  font-weight: 500;
+}
+.day.future {
+  opacity: 0.45;
+}
+.day.today {
+  border-color: var(--gold);
+}
+.day.today .d-num {
+  color: var(--gold-700);
+}
+.theme-force-dark .day.today .d-num {
+  color: var(--gold);
+}
+.day.selected {
+  border-color: var(--navy-600);
+}
+.day .d-dot {
+  position: absolute;
+  bottom: 6rpx;
+  width: 10rpx;
+  height: 10rpx;
+  border-radius: 50%;
+  background: var(--gold);
+}
+
+/* 色阶图例 */
+.legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8rpx;
+  margin-top: 20rpx;
+}
+.legend .lg-txt {
+  font-size: 20rpx;
+  color: var(--text-mute);
+}
+.legend .lg-cell {
+  width: 24rpx;
+  height: 24rpx;
+  border-radius: 6rpx;
+}
+.lg-cell.l0 { background: var(--fill-bg); }
+.lg-cell.l1 { background: var(--heat-1); }
+.lg-cell.l2 { background: var(--heat-2); }
+.lg-cell.l3 { background: var(--heat-3); }
+.lg-cell.l4 { background: var(--heat-4); }
+
+/* ---------- E 热力视图 ---------- */
+.range-tabs {
+  display: flex;
+  gap: 16rpx;
+  margin-bottom: 20rpx;
+}
+.range-tab {
+  flex: 1;
+  text-align: center;
+  padding: 16rpx 0;
+  font-size: 24rpx;
+  font-weight: 600;
+  color: var(--text-sub);
+  background: var(--chip-bg);
+  border-radius: 999rpx;
+}
+/* 浅色主题：金色系选中 */
+.range-tab.active {
+  background: var(--gold-light);
+  color: var(--gold-700);
+}
+/* 深色主题：恢复深蓝渐变 */
+@media (prefers-color-scheme: dark) {
+  .range-tab.active {
+    background: linear-gradient(135deg, var(--navy-700), var(--navy-900));
+    color: #fff;
+  }
+}
+.theme-force-dark .range-tab.active {
+  background: linear-gradient(135deg, var(--navy-700), var(--navy-900));
+  color: #fff;
+}
+.theme-force-light .range-tab.active {
+  background: var(--gold-light);
+  color: var(--gold-700);
+}
+
+/* 热力图（迁移自「我的」页完整实现） */
+.heatmap-scroll {
+  white-space: nowrap;
+  padding-bottom: 12rpx;
+}
+.heatmap-grid-wrap {
+  display: inline-block;
+  padding-left: 8rpx;
+}
+.heatmap-months {
+  position: relative;
+  height: 28rpx;
+  font-size: 18rpx;
+  color: var(--text-mute);
+  margin-bottom: 6rpx;
+}
+.heatmap-month-label {
+  position: absolute;
+  top: 0;
+}
+.heatmap-grid {
+  display: flex;
+  gap: 4rpx;
+}
+.heatmap-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+  flex: 1 1 0;
+  min-width: 48rpx;
+}
+.heatmap-cell {
+  width: 100%;
+  height: 48rpx;
+  border-radius: 8rpx;
+  background: var(--heat-0);
+}
+.heatmap-cell.heat-1 { background: var(--heat-1); }
+.heatmap-cell.heat-2 { background: var(--heat-2); }
+.heatmap-cell.heat-3 { background: var(--heat-3); }
+.heatmap-cell.heat-4 { background: var(--heat-4); }
+.heatmap-cell.today {
+  outline: 2rpx solid var(--gold);
+  outline-offset: -2rpx;
+}
+.heatmap-cell:active {
+  transform: scale(0.92);
+}
+
+.heatmap-stats {
+  display: flex;
+  background: var(--input-bg);
+  border-radius: 16rpx;
+  padding: 20rpx 0;
+  margin: 16rpx 0 0;
+}
+.heatmap-stats .hs-item {
+  flex: 1;
+  text-align: center;
+}
+.heatmap-stats .hs-num {
+  font-size: 30rpx;
+  font-weight: 800;
+  font-family: "DIN Alternate", sans-serif;
+  color: var(--text);
+}
+.heatmap-stats .hs-label {
+  font-size: 20rpx;
+  color: var(--text-sub);
+  margin-top: 4rpx;
+}
+
+/* ---------- F 当日明细 sheet ---------- */
+.sheet-title-sub {
+  font-size: 24rpx;
+  font-weight: 500;
+  color: var(--text-sub);
+  margin-left: 12rpx;
+}
+.day-total {
+  text-align: center;
+  font-size: 24rpx;
+  color: var(--text-sub);
+  margin-bottom: 8rpx;
+}
+.day-total-amt {
+  font-family: "DIN Alternate", Arial, sans-serif;
+  color: var(--danger);
+  font-size: 30rpx;
+  font-weight: 700;
+}
+.day-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 22rpx 0;
+  border-bottom: 1rpx solid var(--border-light);
+}
+.day-row:last-child {
+  border-bottom: none;
+}
+.day-note {
+  flex: 1;
+  min-width: 0;
+  font-size: 26rpx;
+  color: var(--text-sub);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.day-amt {
+  font-family: "DIN Alternate", Arial, sans-serif;
+  font-size: 30rpx;
+  font-weight: 700;
+  color: var(--text);
+  flex: none;
+}
+.sheet-actions {
+  display: flex;
+  gap: 16rpx;
+}
+.sheet-actions .btn {
+  flex: 1;
+}
+.sheet-foot {
+  text-align: center;
+  font-size: 20rpx;
+  color: var(--text-mute);
+  margin-top: 14rpx;
+}

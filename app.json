@@ -4,6 +4,7 @@
     "pages/salary/salary",
     "pages/cards/cards",
     "pages/expenses/expenses",
+    "pages/calendar/calendar",
     "pages/my/my",
     "pages/recycle/recycle",
     "pages/lock/lock"
@@ -29,7 +30,7 @@
       },
       {
         "pagePath": "pages/salary/salary",
-        "text": "工资",
+        "text": "收入",
         "iconPath": "images/tab-salary.png",
         "selectedIconPath": "images/tab-salary-active.png"
       },

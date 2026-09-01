@@ -1,4 +1,4 @@
-<view class="page" bindtap="onPageTap">
+<view class="page {{themeClass}}" bindtap="onPageTap">
   <!-- 自定义导航栏（navigationStyle: custom），浅色白底 / 深色深蓝底 -->
   <view class="navbar" style="padding-top: {{statusBarHeight}}px;">
     <view class="navbar-inner">
@@ -6,35 +6,75 @@
     </view>
   </view>
 
+  <!-- 骨架屏：首屏数据到达前的占位（浅灰呼吸条，避免等待期空白） -->
+  <view wx:if="{{!board}}" class="card board-card board-skeleton">
+    <view class="sk-row sk-center">
+      <view class="sk-line sk-w80"></view>
+    </view>
+    <view class="sk-num-wrap"><view class="sk-num"></view></view>
+    <view class="sk-row sk-grid">
+      <view class="sk-line sk-half"></view>
+      <view class="sk-line sk-half"></view>
+    </view>
+  </view>
+
   <!-- 月度结余看板（白色/深色卡片，与下方卡片流视觉统一） -->
-  <view class="card board-card">
+  <view wx:else class="card board-card">
     <view class="board-head">
       <view class="board-arrow" bindtap="prevMonth">‹</view>
-      <view class="board-title">{{board.monthText}} 结余</view>
+      <view class="board-title">{{board.monthText}}<text wx:if="{{board.isThisMonth}}" class="board-current">当前月</text></view>
       <view class="board-arrow" bindtap="nextMonth">›</view>
     </view>
     <view class="board-balance {{board.balancePositive ? 'pos' : 'neg'}}">
-      <text class="bb-label">本月结余</text>
+      <text class="bb-label">可用余额</text>
       <view class="bb-num">{{board.balance}}</view>
+      <view wx:if="{{board.showCarry}}" class="bb-carry {{board.carriedOverPositive ? 'pos' : 'neg'}}">
+        含历史结转 <text wx:if="{{!board.carriedOverPositive}}">−</text>¥{{board.carriedOverText}}
+      </view>
     </view>
     <view class="overview-grid">
       <view class="ov-item">
         <view class="ov-num income">{{board.income}}</view>
-        <view class="ov-label">收入</view>
+        <view class="ov-label">本月收入</view>
       </view>
       <view class="ov-item">
         <view class="ov-num expense">{{board.expense}}</view>
-        <view class="ov-label">支出</view>
-      </view>
-      <view class="ov-item">
-        <view class="ov-num repay">{{board.repay}}</view>
-        <view class="ov-label">已还</view>
+        <view class="ov-label">本月支出</view>
       </view>
     </view>
-    <view class="board-formula">
-      收入 − 支出 − 已还 = 结余
-      <text wx:if="{{board.isThisMonth}}" class="board-current">当前月</text>
+    <view class="board-formula">结转 + 收入 − 支出 = 可用</view>
+
+    <!-- 账本君说：看板内智能区块（日均可花以"人话"呈现；语义基于今天，仅当前月显示）
+         空态状态机（设计稿 v3 §2）：welcome 全新用户 / first 已设发薪日待首笔 / unset 缺发薪日估算 / normal 正常
+         引导按钮 catchtap 与整块点击分离：按钮直达设置/记账，点其余部分仍弹 chat sheet -->
+    <view wx:if="{{board.isThisMonth && daily}}" class="board-ai" bindtap="tapBoardAI" hover-class="board-ai-hover">
+      <view class="bai-avatar {{aiReminders.length > 0 && aiShakeOn ? 'bai-avatar-shake' : ''}}">
+        <image class="bai-avatar-img" src="/static/avatar/avatar-c-200.png" mode="aspectFill" />
+        <view wx:if="{{aiUnread > 0 || aiReminders.length > 0 || briefUnread}}" class="bai-badge bai-badge-pulse">
+          {{aiUnread > 0 ? (aiUnread > 9 ? '9+' : aiUnread) : '1'}}
+        </view>
+      </view>
+      <view class="bai-main">
+        <view class="bai-title">
+          <block wx:if="{{aiReminders.length > 0}}">
+            <text class="bai-reminder-icon">📌</text> {{aiReminders[0].title}}
+          </block>
+          <block wx:elif="{{boardAiState === 'welcome'}}">账本君说 · 你好，我是账本君</block>
+          <block wx:elif="{{boardAiState === 'first'}}">账本君说 · 记一笔工资，开始你的第一份规划</block>
+          <block wx:elif="{{daily.zeroTip === '可用余额不足'}}">账本君说 · 手头有点紧，今天省着花</block>
+          <block wx:elif="{{daily.zeroTip}}">账本君说 · 本月预算已用完，先记账再消费</block>
+          <block wx:else>账本君说 · 今天可以放心花 <text class="bai-amt">¥{{daily.amountText}}</text></block>
+        </view>
+        <view class="bai-sub {{boardAiState === 'unset' && aiReminders.length === 0 ? 'bai-sub-hint' : ''}}">
+          <block wx:if="{{aiReminders.length > 1}}">{{aiReminders[1].title}}</block>
+          <block wx:else>{{boardAiSub}}</block>
+        </view>
+      </view>
+      <view wx:if="{{boardAiState === 'welcome' || boardAiState === 'unset'}}" class="bai-action" catchtap="goSetPayday">去设置</view>
+      <view wx:elif="{{boardAiState === 'first'}}" class="bai-action" catchtap="quickExpense">去记账</view>
+      <view wx:else class="bai-arrow">›</view>
     </view>
+
     <view class="share-btn" bindtap="openShare">生成账单卡片</view>
   </view>
 
@@ -79,19 +119,6 @@
   <view wx:if="{{budgetAlert}}" class="card budget-alert {{budgetAlert.type}}">
     <view class="ba-dot"></view>
     <view class="ba-text">{{budgetAlert.text}}</view>
-  </view>
-
-  <!-- 账本君入口卡：点击弹出 AI 聊天框（未读红点提示主动询问） -->
-  <view class="card ai-entry-card" bindtap="goAskAI">
-    <view class="ai-entry-avatar">
-      账
-      <view wx:if="{{aiUnread > 0}}" class="ai-entry-badge">{{aiUnread > 9 ? '9+' : aiUnread}}</view>
-    </view>
-    <view class="ai-entry-text">
-      <view class="ai-entry-title">问问账本君</view>
-      <view class="ai-entry-sub">记账、查账、还款，一句话搞定</view>
-    </view>
-    <view class="ai-entry-arrow">›</view>
   </view>
 
   <!-- 近 6 个月收支趋势 -->
@@ -161,7 +188,7 @@
   <view wx:if="{{showAiChat}}" class="mask {{showAiChatClosing ? 'mask-out' : ''}}" bindtap="closeAiChat"></view>
   <view wx:if="{{showAiChat}}" class="sheet ai-chat-sheet {{showAiChatClosing ? 'sheet-out' : ''}}" style="height: {{aiSheetMaxHeight}}; padding-bottom: {{aiSheetPaddingBottom}};">
     <view class="sheet-title ai-chat-title">
-      <view class="ai-chat-avatar">账</view>
+      <view class="ai-chat-avatar"><image class="ai-chat-avatar-img" src="/static/avatar/avatar-c-200.png" mode="aspectFill" /></view>
       <view class="ai-chat-title-text">
         <view class="ai-chat-title-main">账本君</view>
         <view class="ai-chat-title-sub">你的 AI 财务助理</view>
@@ -195,7 +222,7 @@
       <view class="ai-chat-last-label">上次你问了</view>
       <block wx:for="{{chatStorage.last}}" wx:key="ts" wx:for-item="m">
         <view class="ai-chat-last-msg {{m.role === 'user' ? 'mine' : 'his'}}">
-          <view wx:if="{{m.role === 'assistant'}}" class="chat-avatar-sm">账</view>
+          <view wx:if="{{m.role === 'assistant'}}" class="chat-avatar-sm"><image class="chat-avatar-sm-img" src="/static/avatar/avatar-c-200.png" mode="aspectFill" /></view>
           <text class="ai-chat-last-bubble">{{m.content}}</text>
         </view>
       </block>
@@ -205,14 +232,13 @@
     <scroll-view class="ai-chat-history" scroll-y="{{true}}" scroll-into-view="{{aiScrollIntoView}}" scroll-top="{{aiScrollTop}}" scroll-with-animation="{{true}}" enhanced="{{true}}" bounces="{{false}}">
       <block wx:for="{{chatMessages}}" wx:key="ts" wx:for-item="m">
         <view id="msg-{{m.ts}}" class="ai-chat-msg {{m.role === 'user' ? 'mine' : 'his'}}">
-          <view wx:if="{{m.role === 'assistant'}}" class="chat-avatar">账</view>
+          <view wx:if="{{m.role === 'assistant'}}" class="chat-avatar"><image class="chat-avatar-img" src="/static/avatar/avatar-c-200.png" mode="aspectFill" /></view>
           <view class="ai-chat-bubble-wrap">
             <text class="ai-chat-bubble">{{m.content}}</text>
             <!-- 账本君记账成功 → 15s 倒计时撤销窗口(气泡显示金额/分类/剩余秒数) -->
             <view wx:if="{{m.undoable && !m.undone}}" class="ai-chat-undo"
                   bindtap="onUndoAiRecord" data-msg-ts="{{m.ts}}" hover-class="ai-chat-undo-hover">
-              <text wx:if="{{m.toolResult.type === 'salary' && m.toolResult.salary.source === 'side'}}">副业 ¥{{m.toolResult.salary.amount}} · {{m.undoCountdown}}s 内撤销</text>
-              <text wx:elif="{{m.toolResult.type === 'salary'}}">工资 ¥{{m.toolResult.salary.amount}} · {{m.undoCountdown}}s 内撤销</text>
+              <text wx:if="{{m.toolResult.type === 'salary'}}">{{m.toolResult.salary.label || '收入'}} ¥{{m.toolResult.salary.amount}} · {{m.undoCountdown}}s 内撤销</text>
               <text wx:elif="{{m.toolResult.expense}}">{{m.toolResult.expense.category}} ¥{{m.toolResult.expense.amount}} · {{m.undoCountdown}}s 内撤销</text>
             </view>
             <!-- 账本君提示"已记过,是否再记" → 一键确认再记(点击即以"再记"回复,云函数 force=true 写入) -->
@@ -222,7 +248,7 @@
         </view>
       </block>
       <view wx:if="{{chatSending}}" id="msg-sending" class="ai-chat-msg his loading">
-        <view class="chat-avatar">账</view>
+        <view class="chat-avatar"><image class="chat-avatar-img" src="/static/avatar/avatar-c-200.png" mode="aspectFill" /></view>
         <view class="ai-chat-spinner"></view>
         <text>账本君在想…</text>
       </view>
@@ -246,11 +272,11 @@
         bindfocus="onAiFocus"
         bindblur="onAiBlur"
         bindkeyboardheightchange="onAiKeyboardChange"
-        bindconfirm="sendAiChat"
+        bindconfirm="sendChat"
         confirm-type="send"
         hold-keyboard="{{true}}"
       />
-      <view class="ai-chat-send {{chatSending || !chatInput.trim() ? 'disabled' : ''}}" bindtap="sendAiChat">发送</view>
+      <view class="ai-chat-send {{chatSending || !chatInput.trim() ? 'disabled' : ''}}" bindtap="sendChat">发送</view>
     </view>
     <view wx:if="{{chatRateError}}" class="ai-chat-error">{{chatRateError}}</view>
   </view>

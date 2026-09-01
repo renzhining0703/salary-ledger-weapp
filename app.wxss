@@ -63,6 +63,59 @@ page {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+/* 手动指定浅色（系统为深色时）：在页面根节点子树内重声明浅色变量，
+ * 覆盖下方媒体查询写到 page 上的深色值。变量清单须与 page 浅色块保持一致。 */
+.theme-force-light {
+  --navy-900: #0A1828;
+  --navy-800: #0E2238;
+  --navy-700: #14304F;
+  --navy-600: #1F4E79;
+  --navy-300: #4A6B8A;
+  --gold: #C8A04D;
+  --gold-light: #F7EDD8;
+  --gold-700: #A3823A;
+  --text: #2B2620;
+  --text-sub: #82766A;
+  --text-mute: #ADA294;
+  --bg: #F6F2EA;
+  --card: #FFFEF9;
+  --border: #E7E0D1;
+  --border-light: #F0EBE0;
+  --danger: #BE4A3A;
+  --danger-bg: #FAEFE9;
+  --warn: #C98A2D;
+  --warn-bg: #FBF3E1;
+  --success: #2F9B6B;
+  --success-bg: #EDF4E9;
+  --fill-bg: #EFE8DB;
+  --chip-bg: #F5F0E6;
+  --press-bg: #EDE6D8;
+  --input-bg: #F9F5EC;
+  --danger-border: #F2D2C8;
+  --warn-border: #F5E0B8;
+  --shadow-card: rgba(140, 116, 74, 0.06);
+  --shadow-strong: rgba(140, 116, 74, 0.20);
+  --shadow-deep: rgba(140, 116, 74, 0.32);
+  --tint-navy-04: rgba(70, 60, 44, 0.04);
+  --tint-navy-06: rgba(70, 60, 44, 0.06);
+  --tint-navy-08: rgba(70, 60, 44, 0.08);
+  --tint-navy-14: rgba(70, 60, 44, 0.14);
+  --tint-navy-18: rgba(70, 60, 44, 0.18);
+  --tint-gold-06: rgba(200, 160, 77, 0.06);
+  --tint-gold-12: rgba(200, 160, 77, 0.12);
+  --tint-gold-16: rgba(200, 160, 77, 0.16);
+  --tint-gold-18: rgba(200, 160, 77, 0.18);
+  --tint-danger-08: rgba(190, 74, 58, 0.08);
+  --tint-danger-22: rgba(190, 74, 58, 0.22);
+  --tint-text-sub-12: rgba(173, 162, 148, 0.14);
+  --tint-danger-strong: #F3DED5;
+  --heat-0: #F1EBDF;
+  --heat-1: #EADFC0;
+  --heat-2: #DCC287;
+  --heat-3: #C8A04D;
+  --heat-4: #C0563C;
+}
+
 /* ==================== 深色模式 ====================
  * 跟随系统设置(WX 端 + iOS/Android 系统深色),无需手动开关。
  * 仅覆盖变量;page *.wxss 通过 var() 自动跟随。
@@ -122,6 +175,69 @@ page {
     --heat-3: #B5CCDF;
     --heat-4: #E55858;
   }
+}
+
+/* 手动指定深色（系统为浅色时）：在页面根节点子树内重声明深色变量。
+ * 变量清单须与上方媒体查询深色块保持一致。 */
+.theme-force-dark {
+  --navy-900: #1F2D40;
+  --navy-800: #283A52;
+  --navy-700: #4A6B8A;
+  --navy-600: #5C82A8;
+  --navy-300: #8AA4C2;
+  --gold: #E5C26B;
+  --gold-light: #2D2519;
+  --gold-700: #B89043;
+  --text: #E8EDF3;
+  --text-sub: #A8B4C5;
+  --text-mute: #6E7B8E;
+  --bg: #0E1620;
+  --card: #1A2532;
+  --border: #2D3A4D;
+  --border-light: #1F2A37;
+  --danger: #E55858;
+  --danger-bg: #2A1A1A;
+  --warn: #E0A055;
+  --warn-bg: #2A2114;
+  --success: #4FB78A;
+  --success-bg: #142A1F;
+  --fill-bg: #243042;
+  --chip-bg: #243042;
+  --press-bg: #2A3545;
+  --input-bg: #1F2A37;
+  --danger-border: #5A2A2A;
+  --warn-border: #5A4220;
+  --shadow-card: rgba(0, 0, 0, 0.28);
+  --shadow-strong: rgba(0, 0, 0, 0.45);
+  --shadow-deep: rgba(0, 0, 0, 0.55);
+  --tint-navy-04: rgba(255, 255, 255, 0.04);
+  --tint-navy-06: rgba(255, 255, 255, 0.06);
+  --tint-navy-08: rgba(255, 255, 255, 0.08);
+  --tint-navy-14: rgba(255, 255, 255, 0.14);
+  --tint-navy-18: rgba(255, 255, 255, 0.18);
+  --tint-gold-06: rgba(229, 194, 107, 0.10);
+  --tint-gold-12: rgba(229, 194, 107, 0.16);
+  --tint-gold-16: rgba(229, 194, 107, 0.22);
+  --tint-gold-18: rgba(229, 194, 107, 0.28);
+  --tint-danger-08: rgba(229, 88, 88, 0.14);
+  --tint-danger-22: rgba(229, 88, 88, 0.32);
+  --tint-text-sub-12: rgba(168, 180, 197, 0.16);
+  --tint-danger-strong: #4A2020;
+  --heat-0: #2A3441;
+  --heat-1: #3A4F66;
+  --heat-2: #6B89A8;
+  --heat-3: #B5CCDF;
+  --heat-4: #E55858;
+}
+
+/* 手动主题下根视图自绘背景：
+ * page 元素背景仍由媒体查询按系统主题渲染（无法被 class 覆盖），
+ * 根视图铺满一屏遮住它，下拉回弹区由 JS setBackgroundColor 兜底。 */
+.theme-force-light,
+.theme-force-dark {
+  min-height: 100vh;
+  background: var(--bg);
+  box-sizing: border-box;
 }
 
 /* 卡片 */
@@ -270,6 +386,7 @@ page {
   z-index: 100;
   max-height: 82vh;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   /* 顶部投影强化面板悬浮感（底面板无需左右/底部阴影） */
   box-shadow: 0 -12rpx 48rpx var(--shadow-strong);
   animation: sheetIn 0.28s cubic-bezier(0.32, 0.72, 0.34, 1);
@@ -389,6 +506,23 @@ page {
   .navbar-title {
     color: #fff;
   }
+}
+
+/* 手动主题下导航栏跟随生效主题（而非系统主题）：
+ * force class 选择器优先级高于上方媒体查询里的 .navbar，可覆盖其深色硬编码 */
+.theme-force-dark .navbar {
+  background: var(--navy-800);
+  border-bottom-color: transparent;
+}
+.theme-force-dark .navbar-title {
+  color: #fff;
+}
+.theme-force-light .navbar {
+  background: var(--card);
+  border-bottom-color: var(--border-light);
+}
+.theme-force-light .navbar-title {
+  color: var(--text);
 }
 
 /* 全局悬浮「记一笔」快捷入口（仅首页），右下角圆形按钮 */

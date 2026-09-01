@@ -80,7 +80,7 @@
   gap: 12rpx;
 }
 
-/* 收入来源标签:主业金色(品牌主色)/ 副业蓝色(区别于主业) */
+/* 收入来源标签:主业金 / 副业蓝 / 年终奖红 / 红包橙 / 理财绿 / 其他灰 */
 .source-tag {
   display: inline-block;
   font-size: 22rpx;
@@ -98,6 +98,51 @@
   background: rgba(72, 128, 200, 0.12);
   color: #2c5fa3;
   border: 1rpx solid rgba(72, 128, 200, 0.35);
+}
+.source-tag.bonus {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border: 1rpx solid var(--danger-border);
+}
+.source-tag.gift {
+  background: var(--warn-bg);
+  color: var(--warn);
+  border: 1rpx solid var(--warn-border);
+}
+.source-tag.invest {
+  background: var(--success-bg);
+  color: var(--success);
+  border: 1rpx solid rgba(47, 155, 107, 0.35);
+}
+.source-tag.other {
+  background: var(--chip-bg);
+  color: var(--text-sub);
+  border: 1rpx solid var(--border);
+}
+
+/* 收入类型 chips(与记账页分类 chips 同款,页面样式隔离需各自定义) */
+.cat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+}
+
+.chip {
+  min-width: 120rpx;
+  text-align: center;
+  padding: 16rpx 28rpx;
+  background: var(--chip-bg);
+  border-radius: 999rpx;
+  font-size: 28rpx;
+  color: var(--text-sub);
+  transition: all 0.1s ease;
+}
+
+.chip-active {
+  background: linear-gradient(135deg, var(--navy-700), var(--navy-800));
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 8rpx 20rpx var(--shadow-strong);
 }
 
 .row-note {

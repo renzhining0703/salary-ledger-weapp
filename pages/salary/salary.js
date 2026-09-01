@@ -1,6 +1,10 @@
 const util = require('../../utils/util')
 const dbApi = require('../../utils/db')
 const config = require('../../utils/config')
+const themeUtil = require('../../utils/theme')
+
+const SOURCE_LABELS = {}
+config.INCOME_SOURCES.forEach((s) => { SOURCE_LABELS[s.value] = s.label })
 
 Page({
   data: {
@@ -18,11 +22,8 @@ Page({
     formAmount: '',
     formNote: '',
     formSource: 'main',
-    sourceOptions: [
-      { label: '主业',   value: 'main' },
-      { label: '副业/兼职', value: 'side' }
-    ],
-    sourceLabels: { main: '主业', side: '副业' }
+    sourceOptions: config.INCOME_SOURCES,
+    sourceLabels: SOURCE_LABELS
   },
 
   onLoad() {
@@ -32,7 +33,19 @@ Page({
 
   onShow() {
     util.checkLock()
-    this.loadData()
+    themeUtil.applyToPage(this)
+    const app = getApp()
+    const loading = this.loadData()
+    // 首页「账本君说」空态引导「去设置」：直达并自动弹发薪日设置弹层（quickExpense 同模式）
+    if (app.globalData.autoOpenPayday) {
+      app.globalData.autoOpenPayday = false
+      loading.then(() => this.openPayday()).catch(() => {})
+    }
+  },
+
+  /** 外观偏好 / 系统主题变化时由 app 统一回调 */
+  applyTheme() {
+    themeUtil.applyToPage(this)
   },
 
   async onPullDownRefresh() {
@@ -61,8 +74,9 @@ Page({
         ...s,
         amountText: util.moneyThousand(s.amount),
         dateText: s.payDate,
-        sourceText: (s.source === 'side') ? '副业' : '主业',
-        sourceClass: (s.source === 'side') ? 'side' : 'main'
+        // 旧数据无 source 字段,兜底展示「主业」
+        sourceText: SOURCE_LABELS[s.source] || '主业',
+        sourceClass: s.source || 'main'
       }))
 
       this._loaded = true
@@ -134,20 +148,28 @@ Page({
   },
 
   onAmountInput(e) {
-    this.setData({ formAmount: e.detail.value })
+    this._formAmount = e.detail.value
+  },
+  onAmountBlur(e) {
+    this.setData({ formAmount: this._formAmount || e.detail.value })
   },
 
   onNoteInput(e) {
-    this.setData({ formNote: e.detail.value })
+    this._formNote = e.detail.value
+  },
+  onNoteBlur(e) {
+    this.setData({ formNote: this._formNote || e.detail.value })
   },
 
-  onSourceChange(e) {
-    // picker 返回索引;sourceOptions 顺序:0=main,1=side
-    this.setData({ formSource: this.data.sourceOptions[e.detail.value].value })
+  onSourceTap(e) {
+    this.setData({ formSource: e.currentTarget.dataset.source })
   },
 
   async saveSalary() {
-    const { formDate, formAmount, formNote, formSource } = this.data
+    // 输入过程中未触发 blur 时，优先取实时值兜底
+    const formAmount = (this._formAmount !== undefined ? this._formAmount : this.data.formAmount) || ''
+    const formNote = (this._formNote !== undefined ? this._formNote : this.data.formNote) || ''
+    const { formDate, formSource } = this.data
     const amount = Number(formAmount)
     if (!formDate) {
       wx.showToast({ title: '请选择日期', icon: 'none' })

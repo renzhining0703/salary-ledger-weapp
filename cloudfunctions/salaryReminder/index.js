@@ -5,7 +5,7 @@
  * 上线前必做：
  * 1. 已与前端 utils/config.js 同步模板 ID（utils/config.js: SALARY_REMIND_TEMPLATE_ID）
  * 2. 模板字段 thing1（询问文案）/ date2（日期），需与后台模板一致
- * 3. 体验版联调推送时把 miniprogramState 改为 'trial'，正式发布后保持 'formal'
+ * 3. miniprogramState 已配置为 'formal'；体验版联调推送时临时改回 'trial'
  * 4. 用户须在前端订阅授权后才会被推送（依赖 users.salaryRemindSubscribed 字段）
  */
 const cloud = require('wx-server-sdk')
@@ -22,16 +22,19 @@ const TEMPLATE_ID = '_7wp6rvHVPYC9QUj3SobEOUtXvW5l9076SUDh_4zrzg'
 const FIRST_PROMPT = '今天工资到账了吗?跟账本君说"发了 12000"就行 ✓'
 const SECOND_PROMPT = '本月的工资还没记录,要不要补一笔?点我跟账本君说'
 
-exports.main = async () => {
+exports.main = async (event) => {
   if (TEMPLATE_ID.indexOf('请填入') === 0) {
     console.log('尚未配置订阅消息模板 ID，本次跳过提醒')
     return { skipped: 'no-template' }
   }
 
-  // 区分两轮触发：用当前小时判断（17 号 10:00 cron 触发 → 沉默期）
+  // 区分两轮触发：优先用触发器名（config.json 的 TriggerName，不受时区/触发时间偏移影响）；
+  // 手动在控制台测试调用时没有 TriggerName，按小时兜底（17 号 10:00 → 沉默期）
   const now = new Date()
-  const hour = now.getHours()
-  const isSecondRound = (hour === 10)
+  const triggerName = (event && event.TriggerName) || ''
+  const isSecondRound = triggerName
+    ? triggerName === 'salaryRemindSecond'
+    : now.getHours() === 10
 
   // 1. 拉所有订阅了"工资询问"的用户
   const usersRes = await db.collection('users')
@@ -98,7 +101,7 @@ exports.main = async () => {
         touser: uid,
         templateId: TEMPLATE_ID,
         page: 'pages/index/index?from=salary_reminder',
-        miniprogramState: 'trial', // 开发联调时改成 'trial'，正式发布用 'formal'
+        miniprogramState: 'formal', // 正式发布用 'formal'；体验版联调时改回 'trial'
         data: {
           thing1: { value: questionText },
           date2: { value: todayStr }

@@ -14,6 +14,11 @@ const KEY_WELCOMED = 'aiChat_welcomed_v1'
 // 账本君主动询问的工资问题(云函数 salaryReminder 推送时写入,用户回应或忽略后清除)
 // 结构: { text: '询问文案', ts: 时间戳, round: 1|2 }
 const KEY_PENDING_QUESTION = 'aiChat_pendingQuestion_v1'
+// 账本君主动开场白去重:同一天同一场景只说一次,避免每次打开聊天都重复唠叨
+// 结构: { date: 'YYYY-MM-DD', budget: bool, repay: bool }
+// v2:开场白改「追加到消息末尾」后,旧 v1 标记(顶部埋没时期误写入的「已提醒」)作废,
+//     否则同一天被去重永久挡住,用户永远看不到提醒。升版本让存量标记失效、重新生效。
+const KEY_HINTS = 'aiChat_activeHints_v2'
 
 /**
  * 保存最近 50 条消息
@@ -108,5 +113,69 @@ function clearPendingQuestion() {
   catch (e) {}
 }
 
+/**
+ * 读取今天的主动开场白标记。非今天的旧标记直接作废返回 { date: 今天 }。
+ * @param {string} date 'YYYY-MM-DD'
+ * @returns {{ date: string, budget?: boolean, repay?: boolean }}
+ */
+function loadHints(date) {
+  try {
+    const v = wx.getStorageSync(KEY_HINTS)
+    if (v && typeof v === 'object' && v.date === date) return v
+  } catch (e) {}
+  return { date }
+}
+
+/** 标记今天某个场景已主动说过（budget / repay） */
+function markHintShown(date, key) {
+  try {
+    const v = loadHints(date)
+    v[key] = true
+    wx.setStorageSync(KEY_HINTS, v)
+  } catch (e) {}
+}
+
+/** 清除开场白标记（重置全部数据时调用，让主动提醒重新生效） */
+function clearHints() {
+  try { wx.removeStorageSync(KEY_HINTS) }
+  catch (e) {}
+}
+
+// AI 待办提醒已读标记：用户打开 chat sheet 看到提醒后，今日不再重复提示/角标
+const KEY_REMINDER_READ = 'aiChat_reminderRead_v1'
+
+function markReminderRead(date) {
+  try { wx.setStorageSync(KEY_REMINDER_READ, { date }) } catch (e) {}
+}
+function isReminderRead(date) {
+  try {
+    const v = wx.getStorageSync(KEY_REMINDER_READ)
+    return v && v.date === date
+  } catch (e) { return false }
+}
+function clearReminderRead() {
+  try { wx.removeStorageSync(KEY_REMINDER_READ) } catch (e) {}
+}
+
+// 每日 board-brief（"今天9月1号，按你的余额和节奏…"）已读标记：
+// 当天看过一次即不再主动弹出/角标（内容随日期与余额变化，跨天自动重新生效）
+const KEY_BRIEF_READ = 'aiChat_briefRead_v1'
+
+function markBriefRead(date) {
+  try { wx.setStorageSync(KEY_BRIEF_READ, { date }) } catch (e) {}
+}
+function isBriefRead(date) {
+  try {
+    const v = wx.getStorageSync(KEY_BRIEF_READ)
+    return v && v.date === date
+  } catch (e) { return false }
+}
+function clearBriefRead() {
+  try { wx.removeStorageSync(KEY_BRIEF_READ) } catch (e) {}
+}
+
 module.exports = { save, load, loadSummary, clear, isWelcomed, markWelcomed, clearWelcomed,
-  savePendingQuestion, loadPendingQuestion, clearPendingQuestion }
+  savePendingQuestion, loadPendingQuestion, clearPendingQuestion,
+  loadHints, markHintShown, clearHints,
+  markReminderRead, isReminderRead, clearReminderRead,
+  markBriefRead, isBriefRead, clearBriefRead }

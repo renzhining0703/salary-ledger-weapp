@@ -1,6 +1,7 @@
 const util = require('../../utils/util')
 const dbApi = require('../../utils/db')
 const config = require('../../utils/config')
+const themeUtil = require('../../utils/theme')
 
 Page({
   data: {
@@ -11,7 +12,13 @@ Page({
 
   onShow() {
     util.checkLock()
+    themeUtil.applyToPage(this)
     this.loadData()
+  },
+
+  /** 外观偏好 / 系统主题变化时由 app 统一回调 */
+  applyTheme() {
+    themeUtil.applyToPage(this)
   },
 
   async onPullDownRefresh() {

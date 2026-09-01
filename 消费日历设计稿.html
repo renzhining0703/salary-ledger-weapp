@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>薪账本 · 消费日历独立页面 — 高保真设计稿</title>
+<style>
+  /* ============================================================
+     设计稿外壳（深色文档风，与 IDE 暗色主题协调）
+     ============================================================ */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #0B1119;
+    color: #DDE4EC;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .ds-wrap { max-width: 1320px; margin: 0 auto; padding: 40px 32px 80px; }
+
+  /* ---- Header ---- */
+  .ds-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap; margin-bottom: 36px; }
+  .ds-kicker { font-size: 12px; letter-spacing: 0.3em; color: #C8A04D; font-weight: 600; margin-bottom: 8px; }
+  .ds-title { font-size: 30px; font-weight: 800; color: #F2F5F9; letter-spacing: 0.02em; }
+  .ds-sub { font-size: 13px; color: #8A96A6; margin-top: 6px; }
+  .ds-meta { display: flex; gap: 10px; flex-wrap: wrap; }
+  .ds-badge {
+    font-size: 11px; padding: 5px 12px; border-radius: 999px;
+    border: 1px solid #2D3A4D; color: #A8B4C5; background: #141C26;
+  }
+  .ds-badge.gold { border-color: rgba(200,160,77,.5); color: #E5C26B; }
+
+  /* ---- 主体两栏 ---- */
+  .ds-main { display: grid; grid-template-columns: 430px 1fr; gap: 40px; align-items: start; }
+
+  /* ---- 左侧：设计规范 ---- */
+  .spec { position: sticky; top: 24px; display: flex; flex-direction: column; gap: 20px; max-height: calc(100vh - 48px); overflow: auto; padding-right: 8px; }
+  .spec::-webkit-scrollbar { width: 4px; }
+  .spec::-webkit-scrollbar-thumb { background: #2D3A4D; border-radius: 4px; }
+
+  .spec-card {
+    background: #121A24; border: 1px solid #222D3D; border-radius: 16px;
+    padding: 20px 22px;
+  }
+  .spec-card h3 {
+    font-size: 14px; font-weight: 700; color: #F2F5F9;
+    display: flex; align-items: center; gap: 8px; margin-bottom: 14px;
+    letter-spacing: 0.04em;
+  }
+  .spec-card h3 .num {
+    width: 20px; height: 20px; border-radius: 6px; background: linear-gradient(135deg,#C8A04D,#A3823A);
+    color: #0A1828; font-size: 11px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center;
+  }
+  .spec-card p, .spec-card li { font-size: 12.5px; color: #A8B4C5; }
+  .spec-card ul { list-style: none; }
+  .spec-card li { padding-left: 16px; position: relative; margin-bottom: 6px; }
+  .spec-card li::before { content: "·"; position: absolute; left: 4px; color: #C8A04D; font-weight: 800; }
+  .spec-card li b { color: #DDE4EC; font-weight: 600; }
+
+  /* 信息架构图 */
+  .arch { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+  .arch-item {
+    display: flex; align-items: center; gap: 10px;
+    background: #0E1620; border: 1px solid #222D3D; border-radius: 10px; padding: 9px 12px;
+  }
+  .arch-item .idx { font-size: 10px; font-weight: 800; color: #C8A04D; width: 16px; }
+  .arch-item .nm { font-size: 12.5px; color: #E8EDF3; font-weight: 600; width: 108px; flex: none; }
+  .arch-item .desc { font-size: 11px; color: #6E7B8E; }
+  .arch-line { width: 1px; height: 6px; background: #2D3A4D; margin-left: 20px; }
+
+  /* Token 表 */
+  table.tokens { width: 100%; border-collapse: collapse; font-size: 11.5px; margin-top: 4px; }
+  table.tokens th {
+    text-align: left; color: #6E7B8E; font-weight: 500; font-size: 10.5px;
+    padding: 4px 6px; border-bottom: 1px solid #222D3D;
+  }
+  table.tokens td { padding: 6px; border-bottom: 1px solid #1A2532; color: #A8B4C5; }
+  table.tokens td:first-child { color: #E8EDF3; font-weight: 600; white-space: nowrap; }
+  table.tokens .tok { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 10.5px; color: #E5C26B; }
+  .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 6px; border: 1px solid rgba(255,255,255,.12); }
+
+  /* 色阶条 */
+  .heat-ramp { display: flex; gap: 6px; margin: 8px 0 4px; }
+  .heat-ramp .step { flex: 1; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
+  .heat-cap { display: flex; justify-content: space-between; font-size: 10.5px; color: #6E7B8E; }
+
+  /* 状态样式示例 */
+  .states { display: flex; gap: 12px; margin-top: 6px; flex-wrap: wrap; }
+  .state-demo { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: #A8B4C5; }
+  .state-cell {
+    width: 42px; height: 42px; border-radius: 10px; background: #2A3441;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; color: #E8EDF3; border: 2px solid transparent;
+  }
+  .state-cell.today { border-color: #E5C26B; }
+  .state-cell.sel { border-color: #4A6B8A; background: #283A52; }
+  .state-cell.mute { color: #6E7B8E; background: transparent; }
+  .state-cell small { font-size: 8px; font-weight: 500; color: #8AA4C2; }
+
+  .callout {
+    background: rgba(200,160,77,.08); border: 1px solid rgba(200,160,77,.3);
+    border-radius: 12px; padding: 12px 14px; font-size: 12px; color: #D9C9A3;
+  }
+  .callout b { color: #E5C26B; }
+
+  /* ---- 右侧：原型舞台 ---- */
+  .stage { display: flex; flex-direction: column; align-items: center; gap: 20px; }
+
+  .stage-controls { display: flex; align-items: center; gap: 12px; }
+  .stage-controls .lbl { font-size: 12px; color: #8A96A6; }
+  .seg { display: flex; background: #141C26; border: 1px solid #222D3D; border-radius: 999px; padding: 4px; gap: 4px; }
+  .seg button {
+    border: none; background: transparent; color: #A8B4C5; font-size: 12px; font-weight: 600;
+    padding: 6px 18px; border-radius: 999px; cursor: pointer; transition: all .18s ease; font-family: inherit;
+  }
+  .seg button.active { background: linear-gradient(135deg,#14304F,#0A1828); color: #fff; }
+
+  /* ============================================================
+     手机原型 — 消费日历页面（浅色/深色两套 token，与项目一致）
+     ============================================================ */
+  .phone-wrap { position: relative; }
+  .phone {
+    width: 375px; height: 780px; border-radius: 44px; overflow: hidden;
+    background: #000; padding: 12px; box-shadow: 0 30px 80px rgba(0,0,0,.6), 0 0 0 1px #223046;
+  }
+  .phone-screen {
+    position: relative; width: 100%; height: 100%; border-radius: 34px; overflow: hidden;
+    background: var(--bg);
+  }
+  /* 刘海 */
+  .notch { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 110px; height: 24px; background: #000; border-radius: 20px; z-index: 60; }
+
+  /* --- 原型 token：浅色 --- */
+  .phone-screen {
+    --navy-900: #0A1828;
+    --navy-800: #0E2238;
+    --navy-700: #14304F;
+    --navy-600: #1F4E79;
+    --navy-300: #4A6B8A;
+    --gold: #C8A04D;
+    --gold-light: #F7EDD8;
+    --gold-700: #A3823A;
+    --text: #2B2620;
+    --text-sub: #82766A;
+    --text-mute: #ADA294;
+    --bg: #F6F2EA;
+    --card: #FFFEF9;
+    --border: #E7E0D1;
+    --border-light: #F0EBE0;
+    --danger: #BE4A3A;
+    --danger-bg: #FAEFE9;
+    --warn: #C98A2D;
+    --warn-bg: #FBF3E1;
+    --success: #2F9B6B;
+    --success-bg: #EDF4E9;
+    --fill-bg: #EFE8DB;
+    --chip-bg: #F5F0E6;
+    --press-bg: #EDE6D8;
+    --input-bg: #F9F5EC;
+    --shadow-card: rgba(140,116,74,.06);
+    --shadow-strong: rgba(140,116,74,.20);
+    --tint-gold-12: rgba(200,160,77,.12);
+    --tint-navy-06: rgba(70,60,44,.06);
+    --heat-0: #F1EBDF; --heat-1: #EADFC0; --heat-2: #DCC287; --heat-3: #C8A04D; --heat-4: #C0563C;
+  }
+  /* --- 原型 token：深色 --- */
+  .phone-screen[data-theme="dark"] {
+    --navy-900: #1F2D40;
+    --navy-800: #283A52;
+    --navy-700: #4A6B8A;
+    --navy-600: #5C82A8;
+    --navy-300: #8AA4C2;
+    --gold: #E5C26B;
+    --gold-light: #2D2519;
+    --gold-700: #B89043;
+    --text: #E8EDF3;
+    --text-sub: #A8B4C5;
+    --text-mute: #6E7B8E;
+    --bg: #0E1620;
+    --card: #1A2532;
+    --border: #2D3A4D;
+    --border-light: #1F2A37;
+    --danger: #E55858;
+    --danger-bg: #2A1A1A;
+    --warn: #E0A055;
+    --warn-bg: #2A2114;
+    --success: #4FB78A;
+    --success-bg: #142A1F;
+    --fill-bg: #243042;
+    --chip-bg: #243042;
+    --press-bg: #2A3545;
+    --input-bg: #1F2A37;
+    --shadow-card: rgba(0,0,0,.28);
+    --shadow-strong: rgba(0,0,0,.45);
+    --tint-gold-12: rgba(229,194,107,.16);
+    --tint-navy-06: rgba(255,255,255,.06);
+    --heat-0: #2A3441; --heat-1: #3A4F66; --heat-2: #6B89A8; --heat-3: #B5CCDF; --heat-4: #E55858;
+  }
+
+  /* ---------- 页面骨架 ---------- */
+  .phone-screen .page { position: relative; width: 100%; height: 100%; overflow-y: auto; padding-bottom: 24px; background: var(--bg); }
+  .phone-screen .page::-webkit-scrollbar { width: 0; }
+
+  /* 导航栏 */
+  .navbar { background: var(--card); padding-top: 44px; border-bottom: 1px solid var(--border-light); position: relative; z-index: 30; }
+  .phone-screen[data-theme="dark"] .navbar { background: var(--navy-800); border-bottom-color: transparent; }
+  .navbar-inner { height: 50px; display: flex; align-items: center; padding: 0 12px; position: relative; }
+  .nav-back {
+    width: 34px; height: 34px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+    font-size: 20px; color: var(--text); background: var(--tint-navy-06); flex: none;
+  }
+  .navbar-title { position: absolute; left: 50%; transform: translateX(-50%); font-size: 17px; font-weight: 700; color: var(--text); letter-spacing: .06em; }
+  .phone-screen[data-theme="dark"] .navbar-title { color: #fff; }
+  .nav-today {
+    margin-left: auto; font-size: 12px; font-weight: 600; color: var(--gold-700);
+    background: var(--gold-light); border-radius: 999px; padding: 6px 14px; cursor: pointer;
+  }
+
+  /* 内容 */
+  .page-body { padding: 16px 16px 0; }
+
+  /* ---------- 月度概览 hero ---------- */
+  .hero {
+    border-radius: 20px; padding: 18px 20px;
+    background: linear-gradient(135deg, #14304F 0%, #0A1828 100%);
+    box-shadow: 0 10px 28px rgba(10,24,40,.35);
+    position: relative; overflow: hidden; color: #fff;
+  }
+  .phone-screen[data-theme="dark"] .hero { background: linear-gradient(135deg, #1F2D40 0%, #283A52 100%); box-shadow: 0 10px 28px rgba(0,0,0,.4); }
+  .hero::after {
+    content: ""; position: absolute; right: -30px; top: -40px; width: 150px; height: 150px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(200,160,77,.22), transparent 70%);
+  }
+  .hero .hero-row1 { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .hero .hero-lbl { font-size: 12px; color: #A8B4C5; letter-spacing: .08em; }
+  .hero .hero-chip {
+    font-size: 10.5px; color: #E5C26B; background: rgba(229,194,107,.14);
+    border: 1px solid rgba(229,194,107,.4); border-radius: 999px; padding: 3px 10px; font-weight: 600;
+  }
+  .hero .hero-amount { font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif; font-size: 40px; font-weight: 800; line-height: 1.1; letter-spacing: .01em; }
+  .hero .hero-amount small { font-size: 18px; font-weight: 600; color: #E5C26B; margin-right: 4px; }
+  .hero .hero-stats { display: flex; gap: 18px; margin-top: 14px; }
+  .hero .hs { flex: 1; }
+  .hero .hs-num { font-size: 15px; font-weight: 700; font-family: "DIN Alternate", Arial, sans-serif; }
+  .hero .hs-lbl { font-size: 10px; color: #8AA4C2; margin-top: 2px; }
+  .hero .hs.down .hs-num { color: #4FB78A; }
+  .hero .hs.up .hs-num { color: #E55858; }
+
+  /* ---------- 视图切换 ---------- */
+  .view-tabs { display: flex; gap: 8px; margin: 16px 0 12px; }
+  .view-tab {
+    flex: 1; text-align: center; padding: 9px 0; font-size: 13px; font-weight: 600;
+    color: var(--text-sub); background: var(--chip-bg); border-radius: 12px; cursor: pointer;
+    transition: all .2s ease; border: 1px solid transparent;
+  }
+  .view-tab.active {
+    color: #fff; background: linear-gradient(135deg, var(--navy-700), var(--navy-900));
+    box-shadow: 0 6px 16px var(--shadow-strong);
+  }
+  .phone-screen[data-theme="dark"] .view-tab.active { color: #fff; }
+
+  /* ---------- 卡片 ---------- */
+  .cal-card {
+    background: var(--card); border-radius: 20px; padding: 16px 14px;
+    box-shadow: 0 8px 24px var(--shadow-card); border: 1px solid var(--border-light);
+  }
+
+  /* 月份切换器 */
+  .month-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding: 0 4px; }
+  .month-arrow {
+    width: 32px; height: 32px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+    font-size: 16px; color: var(--text-sub); background: var(--chip-bg); cursor: pointer; user-select: none;
+  }
+  .month-arrow:active { background: var(--press-bg); }
+  .month-title { font-size: 16px; font-weight: 700; color: var(--text); letter-spacing: .03em; }
+  .month-today-btn { font-size: 12px; font-weight: 600; color: var(--gold-700); cursor: pointer; padding: 5px 4px; }
+
+  /* 周标签 */
+  .week-row { display: grid; grid-template-columns: repeat(7, 1fr); margin-bottom: 6px; }
+  .week-row .wd { text-align: center; font-size: 11px; font-weight: 600; color: var(--text-mute); padding: 4px 0; }
+  .week-row .wd.weekend { color: var(--gold-700); }
+
+  /* 日历网格 */
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+  .day {
+    position: relative; aspect-ratio: 1 / 1.06; border-radius: 11px; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+    padding-top: 6px; background: transparent; transition: transform .1s ease;
+    border: 2px solid transparent;
+  }
+  .day .d-num { font-size: 13px; font-weight: 700; color: var(--text); line-height: 1.2; }
+  .day .d-amt { font-size: 8.5px; font-weight: 600; color: var(--navy-600); margin-top: 3px; line-height: 1; max-width: 90%; overflow: hidden; white-space: nowrap; }
+  .phone-screen[data-theme="dark"] .day .d-amt { color: #fff; }
+  .day.heat-0 { background: transparent; }
+  .day.heat-1 { background: var(--heat-1); }
+  .day.heat-2 { background: var(--heat-2); }
+  .day.heat-3 { background: var(--heat-3); }
+  .day.heat-4 { background: var(--heat-4); }
+  .day.heat-1 .d-num, .day.heat-2 .d-num { color: var(--text); }
+  .day.heat-3 .d-num, .day.heat-4 .d-num { color: #fff; }
+  .day.heat-3 .d-amt, .day.heat-4 .d-amt { color: rgba(255,255,255,.92); }
+  .day.other-month .d-num { color: var(--text-mute); font-weight: 500; }
+  .day.future { opacity: .45; cursor: default; }
+  .day.today { border-color: var(--gold); }
+  .day.today .d-num { color: var(--gold-700); }
+  .phone-screen[data-theme="dark"] .day.today .d-num { color: var(--gold); }
+  .day.selected { border-color: var(--navy-600); }
+  .day.selected:not(.today)::after {
+    content: ""; position: absolute; bottom: 4px; width: 5px; height: 5px; border-radius: 50%; background: var(--gold);
+  }
+  .day .d-dot { position: absolute; bottom: 4px; width: 5px; height: 5px; border-radius: 50%; background: var(--gold); }
+
+  /* 图例 */
+  .legend { display: flex; align-items: center; justify-content: flex-end; gap: 5px; margin-top: 12px; }
+  .legend .lg-txt { font-size: 10px; color: var(--text-mute); }
+  .legend .lg-cell { width: 13px; height: 13px; border-radius: 4px; }
+  .lg-cell.l0 { background: var(--fill-bg); }
+  .lg-cell.l1 { background: var(--heat-1); }
+  .lg-cell.l2 { background: var(--heat-2); }
+  .lg-cell.l3 { background: var(--heat-3); }
+  .lg-cell.l4 { background: var(--heat-4); }
+
+  /* ---------- 热力视图 ---------- */
+  .heat-view { display: none; }
+  .heat-view.show { display: block; }
+  .cal-view { display: block; }
+  .cal-view.hide { display: none; }
+
+  .range-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+  .range-tab {
+    flex: 1; text-align: center; padding: 8px 0; font-size: 12.5px; font-weight: 600;
+    color: var(--text-sub); background: var(--chip-bg); border-radius: 999px; cursor: pointer;
+    transition: all .2s ease;
+  }
+  .range-tab.active { background: linear-gradient(135deg, var(--navy-700), var(--navy-900)); color: #fff; }
+
+  .heat-scroll { overflow-x: auto; padding: 4px 2px 6px; }
+  .heat-scroll::-webkit-scrollbar { height: 0; }
+  .heat-grid-wrap { display: inline-block; }
+  .heat-months { position: relative; height: 16px; font-size: 9px; color: var(--text-mute); margin-bottom: 4px; }
+  .heat-months .hm { position: absolute; top: 0; }
+  .heat-grid { display: flex; gap: 3px; }
+  .heat-col { display: flex; flex-direction: column; gap: 3px; }
+  .hcell { width: 11px; height: 11px; border-radius: 3px; background: var(--heat-0); cursor: pointer; }
+  .hcell.heat-1 { background: var(--heat-1); }
+  .hcell.heat-2 { background: var(--heat-2); }
+  .hcell.heat-3 { background: var(--heat-3); }
+  .hcell.heat-4 { background: var(--heat-4); }
+  .hcell.today { outline: 2px solid var(--gold); outline-offset: -1px; border-radius: 4px; }
+
+  .heat-stats { display: flex; background: var(--input-bg); border-radius: 14px; padding: 12px 0; margin-top: 10px; }
+  .hs-item { flex: 1; text-align: center; }
+  .hs-num { font-size: 15px; font-weight: 800; font-family: "DIN Alternate", Arial, sans-serif; color: var(--text); }
+  .hs-lbl { font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+
+  /* ---------- 当日明细 sheet ---------- */
+  .mask {
+    position: absolute; inset: 0; background: rgba(30,24,16,.45); z-index: 90;
+    opacity: 0; pointer-events: none; transition: opacity .22s ease;
+  }
+  .mask.show { opacity: 1; pointer-events: auto; }
+  .day-sheet {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 100;
+    background: var(--card); border-radius: 24px 24px 0 0; padding: 18px 18px 26px;
+    box-shadow: 0 -10px 40px var(--shadow-strong);
+    transform: translateY(105%); transition: transform .28s cubic-bezier(.32,.72,.34,1);
+  }
+  .day-sheet.show { transform: translateY(0); }
+  .sheet-grab { width: 36px; height: 4px; border-radius: 4px; background: var(--border); margin: 0 auto 14px; }
+  .sheet-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; }
+  .sheet-date { font-size: 17px; font-weight: 700; color: var(--text); }
+  .sheet-date small { font-size: 12px; font-weight: 500; color: var(--text-sub); margin-left: 6px; }
+  .sheet-total { font-size: 12px; color: var(--text-sub); margin-bottom: 14px; }
+  .sheet-total b { font-family: "DIN Alternate", Arial, sans-serif; color: var(--danger); font-size: 15px; }
+  .row { display: flex; align-items: center; gap: 10px; padding: 11px 0; border-bottom: 1px solid var(--border-light); }
+  .row:last-child { border-bottom: none; }
+  .row .cat { font-size: 11px; font-weight: 600; color: var(--navy-700); background: var(--chip-bg); border-radius: 999px; padding: 4px 10px; flex: none; }
+  .row .note { font-size: 12.5px; color: var(--text-sub); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .row .amt { font-family: "DIN Alternate", Arial, sans-serif; font-size: 14.5px; font-weight: 700; color: var(--text); flex: none; }
+  .sheet-empty { text-align: center; color: var(--text-mute); font-size: 12.5px; padding: 26px 0; }
+  .sheet-actions { display: flex; gap: 10px; margin-top: 16px; }
+  .btn { flex: 1; text-align: center; padding: 12px 0; border-radius: 14px; font-size: 13px; font-weight: 600; cursor: pointer; transition: transform .1s ease; }
+  .btn:active { transform: scale(.97); }
+  .btn-primary { background: linear-gradient(135deg, var(--navy-700), var(--navy-900)); color: #fff; box-shadow: 0 8px 20px var(--shadow-strong); }
+  .btn-ghost { background: var(--chip-bg); color: var(--navy-700); }
+  .phone-screen[data-theme="dark"] .btn-ghost { color: var(--navy-300); }
+
+  .sheet-foot { text-align: center; font-size: 10px; color: var(--text-mute); margin-top: 10px; }
+
+  /* ---------- 页脚标注 ---------- */
+  .stage-caption { text-align: center; font-size: 11.5px; color: #6E7B8E; }
+  .stage-caption b { color: #A8B4C5; }
+
+  @media (max-width: 1000px) {
+    .ds-main { grid-template-columns: 1fr; }
+    .spec { position: static; max-height: none; }
+  }
+</style>
+</head>
+<body>
+<div class="ds-wrap">
+
+  <!-- ================= Header ================= -->
+  <header class="ds-header">
+    <div>
+      <div class="ds-kicker">薪账本 · XINZHANGBEN DESIGN</div>
+      <h1 class="ds-title">消费日历 · 独立页面设计稿</h1>
+      <p class="ds-sub">从「我的 → 消费日历」半屏 sheet 重构为独立页面 · 兼容深浅色 · 保留并升级现有热力图功能 · v1.0</p>
+    </div>
+    <div class="ds-meta">
+      <span class="ds-badge gold">月历视图 · 新增</span>
+      <span class="ds-badge">热力视图 · 保留升级</span>
+      <span class="ds-badge">深色模式 · 自动适配</span>
+    </div>
+  </header>
+
+  <div class="ds-main">
+
+    <!-- ================= 左：设计规范 ================= -->
+    <aside class="spec">
+
+      <div class="spec-card">
+        <h3><span class="num">1</span>设计目标</h3>
+        <ul>
+          <li><b>从弹层到页面</b>：消费日历是高频回看的全局数据洞察，从 sheet 升级为独立页面，给足信息层级与操作空间。</li>
+          <li><b>日历为主</b>：进入即见完整月历，日期 + 当日消费热力色一目了然；原有 GitHub 热力图降为第二视图保留。</li>
+          <li><b>零成本深浅色</b>：全部沿用项目现有 CSS 变量（<span class="tok">--bg/--card/--heat-0~4/--gold…</span>），无任何硬编码色值。</li>
+          <li><b>能力不减</b>：近 3 月/半年/一年范围、统计条、单日流水明细、点击格子看当天，全部继承。</li>
+        </ul>
+      </div>
+
+      <div class="spec-card">
+        <h3><span class="num">2</span>页面信息架构</h3>
+        <div class="arch">
+          <div class="arch-item"><span class="idx">A</span><span class="nm">自定义导航栏</span><span class="desc">返回 + 「消费日历」+ 右侧「今天」快捷回跳</span></div>
+          <div class="arch-line"></div>
+          <div class="arch-item"><span class="idx">B</span><span class="nm">月度概览卡</span><span class="desc">本月支出大数字 · 日均 / 笔数 / 环比（深蓝渐变 hero）</span></div>
+          <div class="arch-line"></div>
+          <div class="arch-item"><span class="idx">C</span><span class="nm">视图切换</span><span class="desc">月历 ｜ 热力（segmented，默认月历）</span></div>
+          <div class="arch-line"></div>
+          <div class="arch-item"><span class="idx">D</span><span class="nm">月历视图</span><span class="desc">月份切换器 → 周标签 → 7 列网格 → 色阶图例</span></div>
+          <div class="arch-line"></div>
+          <div class="arch-item"><span class="idx">E</span><span class="nm">热力视图</span><span class="desc">近 3 月 / 半年 / 一年 · 横向滚动热力图 · 统计条</span></div>
+          <div class="arch-line"></div>
+          <div class="arch-item"><span class="idx">F</span><span class="nm">当日明细</span><span class="desc">点击日期/格子弹出：分类 + 备注 + 金额 + 「记一笔」</span></div>
+        </div>
+      </div>
+
+      <div class="spec-card">
+        <h3><span class="num">3</span>组件 → 现有 Token 映射</h3>
+        <table class="tokens">
+          <tr><th>新组件</th><th>复用项目变量 / 样式</th></tr>
+          <tr><td>导航栏</td><td><span class="tok">.navbar / .navbar-title</span>（全局已有深浅适配）</td></tr>
+          <tr><td>概览卡</td><td><span class="tok">--navy-700→900</span> 渐变 · <span class="tok">--gold</span> 点缀 · DIN 大数字</td></tr>
+          <tr><td>月历格子</td><td><span class="tok">--heat-0~4</span> 色阶 · <span class="tok">--gold</span> 今天描边 · <span class="tok">--navy-600</span> 选中</td></tr>
+          <tr><td>热力图</td><td>完整复用 <span class="tok">.heatmap-cell/col/tab</span> 现有实现</td></tr>
+          <tr><td>统计条</td><td><span class="tok">.heatmap-stats .hs-item</span> 结构不变</td></tr>
+          <tr><td>明细 sheet</td><td><span class="tok">.mask / .sheet</span> 动画 + <span class="tok">.tag</span> 分类</td></tr>
+          <tr><td>按钮</td><td><span class="tok">.btn-primary / .btn-ghost</span></td></tr>
+        </table>
+      </div>
+
+      <div class="spec-card">
+        <h3><span class="num">4</span>热力色阶（5 档）</h3>
+        <p style="margin-bottom:4px;">金额分档沿用现有算法：<b>非零金额按 25 / 50 / 75 分位动态分桶</b>，避免极端值把格子挤进同一档。色值即 <span class="tok">--heat-0~4</span>。</p>
+        <div class="heat-ramp">
+          <div class="step" style="background:#F1EBDF;color:#82766A;border:1px solid #E7E0D1;">0</div>
+          <div class="step" style="background:#EADFC0;color:#82766A;">1</div>
+          <div class="step" style="background:#DCC287;color:#5a4a2a;">2</div>
+          <div class="step" style="background:#C8A04D;color:#fff;">3</div>
+          <div class="step" style="background:#C0563C;color:#fff;">4</div>
+        </div>
+        <div class="heat-cap"><span>无消费 / 空</span><span>低频小额</span><span>高频大额</span></div>
+        <p style="margin-top:10px;font-size:11.5px;color:#6E7B8E;">深色模式自动切换为深蓝→亮金→警示红阶（<span class="tok">--heat-0: #2A3441 → --heat-4: #E55858</span>），与项目全局一致。</p>
+      </div>
+
+      <div class="spec-card">
+        <h3><span class="num">5</span>日期状态规范</h3>
+        <div class="states">
+          <div class="state-demo"><div class="state-cell">12</div>普通有消费</div>
+          <div class="state-demo"><div class="state-cell today">1<small>今天</small></div>今天 · 金描边</div>
+          <div class="state-demo"><div class="state-cell sel">9<small>选中</small></div>选中 · 蓝描边</div>
+          <div class="state-demo"><div class="state-cell mute">31</div>他月日期置灰</div>
+        </div>
+        <ul style="margin-top:12px;">
+          <li><b>无消费</b>：格子透明（不显示金额小字），点击 toast「这天没开销」。</li>
+          <li><b>未来日期</b>：整体降透明，不可点。</li>
+          <li><b>金额缩写</b>：格子内金额 ≥1000 显示 <b>1.2k</b>，<1000 显示整数（<b>236</b>），不显示 ¥ 避免拥挤。</li>
+        </ul>
+      </div>
+
+      <div class="spec-card">
+        <h3><span class="num">6</span>交互清单</h3>
+        <ul>
+          <li>点日期 → 弹出当日明细 sheet，格子进入「选中」态；无消费弹轻提示。</li>
+          <li>月份切换器 ‹ › 前后翻月；导航栏「今天」一键回当前月并高亮今天。</li>
+          <li>热力视图内点格子 → 同样弹当日明细（原功能不变）。</li>
+          <li>明细底部「记一笔」→ 跳记账页并预填该日期（新增快捷能力）。</li>
+          <li>深色模式随系统 / 手动主题自动生效，无需单独开关。</li>
+        </ul>
+      </div>
+
+      <div class="callout">
+        <b>开发落地提示</b>：新建 <span class="tok">pages/calendar/</span>；「我的」页入口把 <span class="tok">openHeatmap</span>（弹 sheet）改为 <span class="tok">wx.navigateTo</span> 跳转，原 sheet 相关 JS/WXSS 可整体迁移复用；月历网格建议用现有 <span class="tok">buildHeatmapCells</span> 同款分桶逻辑，仅改渲染形态。
+      </div>
+
+    </aside>
+
+    <!-- ================= 右：交互原型 ================= -->
+    <div class="stage">
+      <div class="stage-controls">
+        <span class="lbl">原型预览</span>
+        <div class="seg" id="themeSeg">
+          <button data-theme="light" class="active">☀ 浅色</button>
+          <button data-theme="dark">🌙 深色</button>
+        </div>
+      </div>
+
+      <div class="phone-wrap">
+        <div class="phone">
+          <div class="phone-screen" id="screen" data-theme="light">
+            <div class="notch"></div>
+
+            <!-- 页面主体 -->
+            <div class="page">
+              <!-- A 导航栏 -->
+              <div class="navbar">
+                <div class="navbar-inner">
+                  <div class="nav-back">‹</div>
+                  <div class="navbar-title">消费日历</div>
+                  <div class="nav-today" onclick="goToday()">今天</div>
+                </div>
+              </div>
+
+              <div class="page-body">
+                <!-- B 月度概览 -->
+                <div class="hero">
+                  <div class="hero-row1">
+                    <span class="hero-lbl" id="heroLbl">本月支出</span>
+                    <span class="hero-chip" id="heroChip">发薪日已过 1 天</span>
+                  </div>
+                  <div class="hero-amount"><small>¥</small><span id="heroAmount">2,846.50</span></div>
+                  <div class="hero-stats">
+                    <div class="hs"><div class="hs-num" id="hsAvg">¥94.9</div><div class="hs-lbl">日均</div></div>
+                    <div class="hs"><div class="hs-num" id="hsCnt">32 笔</div><div class="hs-lbl">共记</div></div>
+                    <div class="hs down"><div class="hs-num" id="hsDelta">↓ 12.4%</div><div class="hs-lbl">较上月</div></div>
+                  </div>
+                </div>
+
+                <!-- C 视图切换 -->
+                <div class="view-tabs">
+                  <div class="view-tab active" data-view="cal" onclick="switchView('cal')">📅 月历</div>
+                  <div class="view-tab" data-view="heat" onclick="switchView('heat')">▦ 热力</div>
+                </div>
+
+                <!-- D 月历视图 -->
+                <div class="cal-view" id="calView">
+                  <div class="cal-card">
+                    <div class="month-bar">
+                      <div class="month-arrow" onclick="shiftMonth(-1)">‹</div>
+                      <div class="month-title" id="monthTitle">2026 年 9 月</div>
+                      <div class="month-arrow" onclick="shiftMonth(1)">›</div>
+                    </div>
+                    <div class="week-row">
+                      <div class="wd">一</div><div class="wd">二</div><div class="wd">三</div>
+                      <div class="wd">四</div><div class="wd">五</div>
+                      <div class="wd weekend">六</div><div class="wd weekend">日</div>
+                    </div>
+                    <div class="cal-grid" id="calGrid"></div>
+                    <div class="legend">
+                      <span class="lg-txt">少</span>
+                      <span class="lg-cell l0"></span><span class="lg-cell l1"></span><span class="lg-cell l2"></span>
+                      <span class="lg-cell l3"></span><span class="lg-cell l4"></span>
+                      <span class="lg-txt">多</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- E 热力视图 -->
+                <div class="heat-view" id="heatView">
+                  <div class="cal-card">
+                    <div class="range-tabs">
+                      <div class="range-tab active">近 3 月</div>
+                      <div class="range-tab">近半年</div>
+                      <div class="range-tab">近一年</div>
+                    </div>
+                    <div class="heat-scroll">
+                      <div class="heat-grid-wrap">
+                        <div class="heat-months" id="heatMonths"></div>
+                        <div class="heat-grid" id="heatGrid"></div>
+                      </div>
+                    </div>
+                    <div class="heat-stats">
+                      <div class="hs-item"><div class="hs-num">38</div><div class="hs-lbl">有开销天数</div></div>
+                      <div class="hs-item"><div class="hs-num">¥6,842</div><div class="hs-lbl">总开销</div></div>
+                      <div class="hs-item"><div class="hs-num">¥75</div><div class="hs-lbl">日均</div></div>
+                      <div class="hs-item"><div class="hs-num">08-15</div><div class="hs-lbl">最高单日</div></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- F 当日明细 sheet -->
+            <div class="mask" id="mask" onclick="closeSheet()"></div>
+            <div class="day-sheet" id="daySheet">
+              <div class="sheet-grab"></div>
+              <div class="sheet-head">
+                <div class="sheet-date" id="sDate">9 月 12 日<small>周六</small></div>
+              </div>
+              <div class="sheet-total">共 <b id="sTotal">¥236.40</b> · <span id="sCount">4</span> 笔</div>
+              <div id="sRows"></div>
+              <div class="sheet-actions">
+                <div class="btn btn-ghost" onclick="closeSheet()">收下</div>
+                <div class="btn btn-primary" onclick="closeSheet()">＋ 记一笔</div>
+              </div>
+              <div class="sheet-foot">「记一笔」将预填该日期，方便补记漏账</div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <p class="stage-caption">原型为可交互设计稿：切换 <b>浅色 / 深色</b>、<b>月历 / 热力</b> 视图、翻月、点击任意日期查看当日流水</p>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   演示数据（真实实现中由 db 按日期聚合）
+   ============================================================ */
+const DAYS = {
+  '2026-08-01': [{ c: '餐饮', n: '早午餐', a: 42 }],
+  '2026-08-03': [{ c: '交通', n: '地铁充值', a: 50 }],
+  '2026-08-05': [{ c: '购物', n: '日用品', a: 138 }],
+  '2026-08-07': [{ c: '餐饮', n: '朋友聚餐', a: 216 }],
+  '2026-08-09': [{ c: '孩子', n: '玩具', a: 89 }],
+  '2026-08-10': [{ c: '餐饮', n: '外卖', a: 35 }],
+  '2026-08-12': [{ c: '居住', n: '水费', a: 68 }],
+  '2026-08-13': [{ c: '购物', n: '衣物', a: 429 }],
+  '2026-08-15': [{ c: '其他', n: '礼物', a: 1240 }],
+  '2026-08-16': [{ c: '餐饮', n: '家庭晚餐', a: 158 }],
+  '2026-08-18': [{ c: '交通', n: '打车', a: 27 }],
+  '2026-08-20': [{ c: '孩子', n: '课外班', a: 880 }],
+  '2026-08-21': [{ c: '餐饮', n: '咖啡', a: 26 }],
+  '2026-08-23': [{ c: '购物', n: '超市', a: 172 }],
+  '2026-08-25': [{ c: '交通', n: '油费', a: 200 }],
+  '2026-08-27': [{ c: '餐饮', n: '夜宵', a: 45 }],
+  '2026-08-28': [{ c: '居住', n: '物业费', a: 320 }],
+  '2026-08-30': [{ c: '孩子', n: '零食', a: 38 }],
+  '2026-08-31': [{ c: '餐饮', n: '早餐', a: 16 }],
+  '2026-09-01': [{ c: '餐饮', n: '早餐', a: 18.5 }],
+  '2026-09-02': [{ c: '餐饮', n: '午餐', a: 58 }, { c: '交通', n: '打车', a: 36.2 }, { c: '购物', n: '超市', a: 123.7 }],
+  '2026-09-05': [{ c: '孩子', n: '课外班', a: 880 }, { c: '餐饮', n: '晚饭', a: 400 }],
+  '2026-09-08': [{ c: '交通', n: '地铁', a: 8 }, { c: '餐饮', n: '早餐', a: 12.5 }, { c: '餐饮', n: '午餐', a: 24.7 }],
+  '2026-09-12': [{ c: '餐饮', n: '早餐', a: 18.5 }, { c: '餐饮', n: '午餐', a: 58 }, { c: '交通', n: '打车', a: 36.2 }, { c: '购物', n: '超市', a: 123.7 }],
+  '2026-09-15': [{ c: '其他', n: '份子钱', a: 500 }],
+  '2026-09-18': [{ c: '餐饮', n: '家庭晚餐', a: 168 }],
+  '2026-09-22': [{ c: '购物', n: '衣物', a: 310.8 }],
+  '2026-09-26': [{ c: '交通', n: '地铁', a: 8 }, { c: '餐饮', n: '咖啡', a: 26 }],
+  '2026-09-28': [{ c: '居住', n: '电费', a: 185 }]
+};
+
+/* 月度聚合展示用（演示静态值） */
+const MONTH_STATS = {
+  '2026-08': { amount: '3,249.40', avg: '¥104.8', cnt: '18 笔', delta: '↑ 6.2%', deltaCls: 'up', chip: '发薪日已过 14 天' },
+  '2026-09': { amount: '2,846.50', avg: '¥94.9', cnt: '32 笔', delta: '↓ 12.4%', deltaCls: 'down', chip: '发薪日已过 1 天' },
+  '2026-10': { amount: '0.00', avg: '¥0', cnt: '0 笔', delta: '—', deltaCls: 'down', chip: '本月刚开始' }
+};
+
+const WEEK = ['一','二','三','四','五','六','日'];
+const TODAY = '2026-09-01';
+let curYm = '2026-09';   // 当前显示月
+let selDate = '2026-09-12';
+
+/* ============================================================
+   月历渲染
+   ============================================================ */
+function fmt(n) {
+  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+  return String(Math.round(n));
+}
+
+function dayTotal(dateStr) {
+  const arr = DAYS[dateStr] || [];
+  return arr.reduce((s, x) => s + x.a, 0);
+}
+
+function levelOf(total) {
+  if (!total) return 0;
+  if (total < 50) return 1;
+  if (total < 200) return 2;
+  if (total < 500) return 3;
+  return 4;
+}
+
+function renderCal() {
+  const [y, m] = curYm.split('-').map(Number);
+  const firstDow = (new Date(y, m - 1, 1).getDay() + 6) % 7; // 周一=0
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const prevDays = new Date(y, m, 0).getDate();
+  const todayStr = TODAY;
+
+  let html = '';
+  const totalCells = Math.ceil((firstDow + daysInMonth) / 7) * 7;
+
+  for (let i = 0; i < totalCells; i++) {
+    let d, dateStr, inMonth;
+    if (i < firstDow) {
+      d = prevDays - firstDow + 1 + i;
+      dateStr = `${y}-${String(m - 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      inMonth = false;
+    } else if (i >= firstDow + daysInMonth) {
+      d = i - firstDow - daysInMonth + 1;
+      dateStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      inMonth = false;
+    } else {
+      d = i - firstDow + 1;
+      dateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      inMonth = true;
+    }
+
+    const total = dayTotal(dateStr);
+    const lv = levelOf(total);
+    const isToday = dateStr === todayStr;
+    const isFuture = dateStr > todayStr;
+    const isSel = dateStr === selDate;
+
+    let cls = `day heat-${lv}`;
+    if (!inMonth) cls += ' other-month';
+    if (isFuture) cls += ' future';
+    if (isToday) cls += ' today';
+    if (isSel) cls += ' selected';
+
+    const amtHtml = inMonth && total > 0 ? `<div class="d-amt">${fmt(total)}</div>` : '';
+    const dotHtml = isToday ? '<div class="d-dot"></div>' : '';
+    html += `<div class="${cls}" onclick="${isFuture ? '' : `tapDay('${dateStr}')`}">
+      <div class="d-num">${d}</div>${amtHtml}${dotHtml}</div>`;
+  }
+  document.getElementById('calGrid').innerHTML = html;
+  document.getElementById('monthTitle').textContent = `${y} 年 ${m} 月`;
+}
+
+function renderMonth() {
+  document.getElementById('monthTitle').textContent = curYm.replace('-', ' 年 ') + ' 月';
+}
+
+function shiftMonth(dir) {
+  const [y, m] = curYm.split('-').map(Number);
+  const d = new Date(y, m - 1 + dir, 1);
+  curYm = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  applyHero(curYm);
+  renderCal();
+}
+
+function goToday() {
+  curYm = TODAY.slice(0, 7);
+  selDate = TODAY;
+  applyHero(curYm);
+  renderCal();
+}
+
+/* ============================================================
+   概览卡
+   ============================================================ */
+function applyHero(ym) {
+  const s = MONTH_STATS[ym] || { amount: '0.00', avg: '¥0', cnt: '0 笔', delta: '—', deltaCls: 'down', chip: '暂无数据' };
+  const heroLbl = document.getElementById('heroLbl');
+  heroLbl.textContent = `${Number(ym.slice(5))} 月支出`;
+  document.getElementById('heroAmount').textContent = s.amount;
+  document.getElementById('hsAvg').textContent = s.avg;
+  document.getElementById('hsCnt').textContent = s.cnt;
+  const delta = document.getElementById('hsDelta');
+  delta.textContent = s.delta;
+  delta.parentElement.className = 'hs ' + s.deltaCls;
+  document.getElementById('heroChip').textContent = s.chip;
+}
+
+/* ============================================================
+   视图切换
+   ============================================================ */
+function switchView(v) {
+  document.querySelectorAll('.view-tab').forEach(t => t.classList.toggle('active', t.dataset.view === v));
+  document.getElementById('calView').classList.toggle('hide', v !== 'cal');
+  document.getElementById('heatView').classList.toggle('show', v === 'heat');
+}
+
+/* ============================================================
+   当日明细 sheet
+   ============================================================ */
+function tapDay(dateStr) {
+  selDate = dateStr;
+  renderCal();
+  const arr = DAYS[dateStr] || [];
+  const total = arr.reduce((s, x) => s + x.a, 0);
+
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const weekCn = '日一二三四五六'[new Date(y, m - 1, d).getDay()];
+  document.getElementById('sDate').innerHTML = `${m} 月 ${d} 日<small>周${weekCn}</small>`;
+
+  if (!arr.length) {
+    document.getElementById('sTotal').textContent = '¥0.00';
+    document.getElementById('sCount').textContent = '0';
+    document.getElementById('sRows').innerHTML = '<div class="sheet-empty">这天没有开销，享受了宁静的一天</div>';
+  } else {
+    document.getElementById('sTotal').textContent = '¥' + total.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    document.getElementById('sCount').textContent = arr.length;
+    document.getElementById('sRows').innerHTML = arr.map(x => `
+      <div class="row">
+        <span class="cat">${x.c}</span>
+        <span class="note">${x.n}</span>
+        <span class="amt">¥${x.a.toLocaleString('zh-CN', { minimumFractionDigits: x.a % 1 ? 2 : 0 })}</span>
+      </div>`).join('');
+  }
+  document.getElementById('mask').classList.add('show');
+  document.getElementById('daySheet').classList.add('show');
+}
+
+function closeSheet() {
+  document.getElementById('mask').classList.remove('show');
+  document.getElementById('daySheet').classList.remove('show');
+}
+
+/* ============================================================
+   热力图（近 3 月演示，动态生成）
+   ============================================================ */
+function buildHeatmap() {
+  const end = new Date(2026, 8, 1); // 2026-09-01
+  const cols = 13;
+  const start = new Date(end);
+  start.setDate(end.getDate() - cols * 7 + 1);
+
+  let monthsHtml = '';
+  let lastM = -1;
+  const grid = [];
+  const cur = new Date(start);
+  const todayStr = TODAY;
+
+  for (let c = 0; c < cols; c++) {
+    const col = [];
+    const firstDate = '';
+    for (let r = 0; r < 7; r++) {
+      const ds = fmtDate(cur);
+      const total = dayTotal(ds);
+      const lv = levelOf(total);
+      const isToday = ds === todayStr;
+      col.push(`<div class="hcell heat-${lv} ${isToday ? 'today' : ''}" onclick="tapDay('${ds}')"></div>`);
+      if (r === 0) {
+        const m = Number(ds.slice(5, 7));
+        if (m !== lastM) {
+          monthsHtml += `<span class="hm" style="left:${c * 14}px">${m}月</span>`;
+          lastM = m;
+        }
+      }
+      cur.setDate(cur.getDate() + 1);
+    }
+    grid.push(`<div class="heat-col">${col.join('')}</div>`);
+  }
+  document.getElementById('heatMonths').innerHTML = monthsHtml;
+  document.getElementById('heatGrid').innerHTML = grid.join('');
+}
+
+function fmtDate(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
+/* ============================================================
+   主题切换
+   ============================================================ */
+document.getElementById('themeSeg').addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  document.querySelectorAll('#themeSeg button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('screen').dataset.theme = btn.dataset.theme;
+});
+
+/* ============================================================
+   初始化
+   ============================================================ */
+renderCal();
+applyHero(curYm);
+buildHeatmap();
+</script>
+</body>
+</html>

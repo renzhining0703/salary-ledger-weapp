@@ -1,8 +1,8 @@
-<view class="page">
+<view class="page {{themeClass}}">
   <!-- 自定义导航栏（navigationStyle: custom），跟随系统主题 -->
   <view class="navbar" style="padding-top: {{statusBarHeight}}px;">
     <view class="navbar-inner">
-      <view class="navbar-title">工资</view>
+      <view class="navbar-title">收入</view>
     </view>
   </view>
 
@@ -47,7 +47,7 @@
 
     <!-- 记录列表 -->
     <view class="card">
-      <view class="card-title">发薪记录</view>
+      <view class="card-title">收入记录</view>
       <block wx:if="{{list.length}}">
         <view wx:for="{{list}}" wx:key="_id" class="row">
           <view class="row-left">
@@ -55,7 +55,7 @@
               <text>{{item.dateText}}</text>
               <text class="source-tag {{item.sourceClass}}">{{item.sourceText}}</text>
             </view>
-            <view class="row-note">{{item.note || '工资'}}</view>
+            <view class="row-note">{{item.note || '收入'}}</view>
           </view>
           <view class="row-right">
             <view class="row-amount">¥{{item.amountText}}</view>
@@ -63,45 +63,48 @@
           </view>
         </view>
       </block>
-      <view wx:else class="empty">还没有发薪记录，点下方按钮添加</view>
+      <view wx:else class="empty">还没有收入记录，点下方按钮添加</view>
     </view>
 
     <!-- 悬浮添加 -->
-    <view class="fab" bindtap="openForm">＋ 记录发薪</view>
+    <view class="fab" bindtap="openForm">＋ 记录收入</view>
   </block>
 
   <!-- 新增表单 -->
   <view wx:if="{{showForm}}" class="mask {{showFormClosing ? 'mask-out' : ''}}" bindtap="closeForm"></view>
   <view wx:if="{{showForm}}" class="sheet {{showFormClosing ? 'sheet-out' : ''}}">
-    <view class="sheet-title">记录发薪</view>
+    <view class="sheet-title">记录收入</view>
 
     <view class="form-item">
       <text class="form-label">到账日期</text>
       <picker mode="date" value="{{formDate}}" bindchange="onDateChange">
         <view class="form-input picker-val">{{formDate}}</view>
       </picker>
-      <view class="form-tip">按工资实际到账日填写，计入该月结余。如 7 月工资 8 月 15 到账，填 8 月 15（备注写「7月工资」）</view>
+      <view class="form-tip">按实际到账日填写，计入该月结余。如 7 月工资 8 月 15 到账，填 8 月 15（备注写「7月工资」）</view>
     </view>
 
     <view class="form-item">
       <text class="form-label">收入类型</text>
-      <picker mode="selector" range="{{sourceOptions}}" range-key="label"
-              value="{{formSource === 'side' ? 1 : 0}}" bindchange="onSourceChange">
-        <view class="form-input picker-val">
-          <text class="source-tag {{formSource === 'side' ? 'side' : 'main'}}">{{formSource === 'side' ? '副业/兼职' : '主业'}}</text>
-        </view>
-      </picker>
-      <view class="form-tip">主业工资每月固定的月薪;副业/兼职/稿费等劳动性收入</view>
+      <view class="cat-chips">
+        <view
+          wx:for="{{sourceOptions}}"
+          wx:key="value"
+          class="chip {{formSource === item.value ? 'chip-active' : ''}}"
+          bindtap="onSourceTap"
+          data-source="{{item.value}}"
+        >{{item.label}}</view>
+      </view>
+      <view class="form-tip">只有真正到手的钱才记收入；借款/朋友还钱不算收入，不入账</view>
     </view>
 
     <view class="form-item">
       <text class="form-label">实发金额（元）</text>
-      <input class="form-input" type="digit" placeholder="如 12500" value="{{formAmount}}" bindinput="onAmountInput" />
+      <input class="form-input" type="digit" placeholder="如 12500" cursor-spacing="60" bindinput="onAmountInput" bindblur="onAmountBlur" />
     </view>
 
     <view class="form-item">
       <text class="form-label">备注（可选）</text>
-      <input class="form-input" placeholder="如：8月工资 / 年终奖" value="{{formNote}}" bindinput="onNoteInput" />
+      <input class="form-input" placeholder="如：8月工资 / 年终奖" cursor-spacing="60" bindinput="onNoteInput" bindblur="onNoteBlur" />
     </view>
 
     <view class="sheet-actions">
@@ -117,7 +120,7 @@
       <picker mode="selector" range="{{paydayRange}}" value="{{formPayday - 1}}" bindchange="onPaydayChange">
         <view class="form-input picker-val">每月 {{formPayday}} 号</view>
       </picker>
-      <view class="form-tip">设置一次即可，之后每次记录发薪会自动带出该日期</view>
+      <view class="form-tip">设置一次即可，之后每次记录收入会自动带出该日期</view>
     </view>
     <view class="sheet-actions">
       <view class="btn btn-primary" bindtap="savePayday">保存</view>

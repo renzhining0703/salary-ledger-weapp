@@ -1,9 +1,10 @@
 const dbApi = require('../../utils/db')
+const themeUtil = require('../../utils/theme')
 
-// 主题色：跟随系统深浅色,保证锁页画布在两种模式下都清晰可辨
+// 主题色：跟随生效主题（手动指定优先于系统深浅色），保证锁页画布清晰可辨
 function themeColors() {
   const app = getApp()
-  const isDark = app && app.globalData && app.globalData.theme === 'dark'
+  const isDark = app && app.resolvedTheme() === 'dark'
   return isDark
     ? { NAVY: '#8AA4C2', GOLD: '#E5C26B', GRID: '#3A4A60', ERR: '#E55858' }
     : { NAVY: '#14304F', GOLD: '#C8A04D', GRID: '#D8DFE7', ERR: '#C94040' }
@@ -28,6 +29,16 @@ Page({
     this._mode = options.mode || 'verify'
     this.setData({ mode: this._mode })
     this.init()
+  },
+
+  onShow() {
+    themeUtil.applyToPage(this)
+  },
+
+  /** 外观偏好 / 系统主题变化时由 app 统一回调：刷 class 并重绘手势画布 */
+  applyTheme() {
+    themeUtil.applyToPage(this)
+    if (this._ctx) this.drawGesture(null)
   },
 
   async init() {

@@ -1,0 +1,161 @@
+<view class="page {{themeClass}}">
+
+  <!-- A 自定义导航栏（navigationStyle: custom）：返回 + 标题 + 今天回跳 -->
+  <view class="navbar" style="padding-top: {{statusBarHeight}}px;">
+    <view class="navbar-inner">
+      <view class="nav-back" bindtap="goBack">‹</view>
+      <view class="navbar-title">消费日历</view>
+      <view class="nav-today" bindtap="goToday">今天</view>
+    </view>
+  </view>
+
+  <view class="page-body">
+
+    <!-- B 月度概览 hero -->
+    <view class="hero">
+      <view class="hero-row1">
+        <view class="hero-lbl">{{hero.monthLabel}}</view>
+        <view class="hero-chip">{{hero.chip}}</view>
+      </view>
+      <view class="hero-amount"><text class="hero-cny">¥</text>{{hero.amountText}}</view>
+      <view class="hero-stats">
+        <view class="hs">
+          <view class="hs-num">{{hero.avgText}}</view>
+          <view class="hs-lbl">日均</view>
+        </view>
+        <view class="hs">
+          <view class="hs-num">{{hero.countText}}</view>
+          <view class="hs-lbl">共记</view>
+        </view>
+        <view class="hs {{hero.deltaDir}}">
+          <view class="hs-num">{{hero.deltaText}}</view>
+          <view class="hs-lbl">较上月</view>
+        </view>
+      </view>
+    </view>
+
+    <!-- C 视图切换：月历 ｜ 热力 -->
+    <view class="view-tabs">
+      <view class="view-tab {{view === 'cal' ? 'active' : ''}}" bindtap="switchView" data-view="cal">📅 月历</view>
+      <view class="view-tab {{view === 'heat' ? 'active' : ''}}" bindtap="switchView" data-view="heat">▦ 热力</view>
+    </view>
+
+    <!-- D 月历视图（默认） -->
+    <view wx:if="{{view === 'cal'}}" class="cal-card">
+      <view class="month-bar">
+        <view class="month-arrow" bindtap="shiftMonth" data-dir="-1">‹</view>
+        <view class="month-title">{{monthTitle}}</view>
+        <view class="month-arrow" bindtap="shiftMonth" data-dir="1">›</view>
+      </view>
+
+      <view class="week-row">
+        <view class="wd">一</view>
+        <view class="wd">二</view>
+        <view class="wd">三</view>
+        <view class="wd">四</view>
+        <view class="wd">五</view>
+        <view class="wd weekend">六</view>
+        <view class="wd weekend">日</view>
+      </view>
+
+      <view class="cal-grid">
+        <view
+          wx:for="{{calDays}}"
+          wx:key="date"
+          class="day heat-{{item.level}} {{item.inMonth ? '' : 'other-month'}} {{item.future ? 'future' : ''}} {{item.today ? 'today' : ''}} {{item.selected ? 'selected' : ''}}"
+          bindtap="tapDay"
+          data-date="{{item.date}}"
+        >
+          <view class="d-num">{{item.day}}</view>
+          <view wx:if="{{item.amtText}}" class="d-amt">{{item.amtText}}</view>
+          <view wx:if="{{item.today}}" class="d-dot"></view>
+        </view>
+      </view>
+
+      <view class="legend">
+        <text class="lg-txt">少</text>
+        <view class="lg-cell l0"></view>
+        <view class="lg-cell l1"></view>
+        <view class="lg-cell l2"></view>
+        <view class="lg-cell l3"></view>
+        <view class="lg-cell l4"></view>
+        <text class="lg-txt">多</text>
+      </view>
+    </view>
+
+    <!-- E 热力视图（迁移自「我的」页完整热力图） -->
+    <view wx:if="{{view === 'heat'}}" class="cal-card">
+      <view class="range-tabs">
+        <view class="range-tab {{heatmapRange === 'q' ? 'active' : ''}}" bindtap="switchHeatmapRange" data-range="q">近 3 月</view>
+        <view class="range-tab {{heatmapRange === 'h' ? 'active' : ''}}" bindtap="switchHeatmapRange" data-range="h">近半年</view>
+        <view class="range-tab {{heatmapRange === 'y' ? 'active' : ''}}" bindtap="switchHeatmapRange" data-range="y">近一年</view>
+      </view>
+
+      <scroll-view class="heatmap-scroll" scroll-x="{{true}}">
+        <view class="heatmap-grid-wrap">
+          <view class="heatmap-months">
+            <block wx:for="{{heatmapMonthLabels}}" wx:key="weekIndex" wx:for-item="ml">
+              <view class="heatmap-month-label" style="left: {{ml.left}}rpx;">{{ml.label}}</view>
+            </block>
+          </view>
+          <view class="heatmap-grid">
+            <block wx:for="{{heatmapGrid}}" wx:for-item="week" wx:key="weekIndex">
+              <view class="heatmap-col">
+                <block wx:for="{{week}}" wx:key="date" wx:for-item="cell">
+                  <view
+                    class="heatmap-cell heat-{{cell.level}} {{cell.today ? 'today' : ''}}"
+                    bindtap="tapHeatmapCell"
+                    data-date="{{cell.date}}"
+                    data-amount="{{cell.amount}}"
+                  ></view>
+                </block>
+              </view>
+            </block>
+          </view>
+        </view>
+      </scroll-view>
+
+      <view wx:if="{{heatmapStats}}" class="heatmap-stats">
+        <view class="hs-item">
+          <view class="hs-num">{{heatmapStats.totalDays}}</view>
+          <view class="hs-label">有开销天数</view>
+        </view>
+        <view class="hs-item">
+          <view class="hs-num">¥{{heatmapStats.totalAmountText}}</view>
+          <view class="hs-label">总开销</view>
+        </view>
+        <view class="hs-item">
+          <view class="hs-num">¥{{heatmapStats.avgAmountText}}</view>
+          <view class="hs-label">日均</view>
+        </view>
+        <view class="hs-item">
+          <view class="hs-num">{{heatmapStats.maxDay}}</view>
+          <view class="hs-label">最高单日</view>
+        </view>
+      </view>
+    </view>
+
+  </view>
+
+  <!-- F 当日明细 sheet：点击日期/格子弹出，底部「记一笔」预填日期跳记账页 -->
+  <view wx:if="{{showDay}}" class="mask {{showDayClosing ? 'mask-out' : ''}}" bindtap="closeDay"></view>
+  <view wx:if="{{showDay}}" class="sheet {{showDayClosing ? 'sheet-out' : ''}}">
+    <view class="sheet-title">{{dayData.dateLabel}}<text class="sheet-title-sub">{{dayData.weekText}}</text></view>
+    <view class="day-total">共 <text class="day-total-amt">¥{{dayData.totalText}}</text> · {{dayData.count}} 笔</view>
+
+    <block wx:if="{{dayData.items.length}}">
+      <view wx:for="{{dayData.items}}" wx:key="_id" class="day-row">
+        <view class="tag tag-navy">{{item.category}}</view>
+        <text class="day-note">{{item.note}}</text>
+        <view class="day-amt">¥{{item.amountText}}</view>
+      </view>
+    </block>
+    <view wx:else class="empty">这天没有开销，享受了宁静的一天</view>
+
+    <view class="sheet-actions">
+      <view class="btn btn-ghost" bindtap="closeDay">收下</view>
+      <view class="btn btn-primary" bindtap="recordOnDay">＋ 记一笔</view>
+    </view>
+    <view class="sheet-foot">「记一笔」将预填该日期，方便补记漏账</view>
+  </view>
+</view>

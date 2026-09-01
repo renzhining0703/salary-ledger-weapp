@@ -2,19 +2,45 @@ const config = require('../../utils/config')
 const util = require('../../utils/util')
 const dbApi = require('../../utils/db')
 const chatStorage = require('../../utils/chatStorage')
+const themeUtil = require('../../utils/theme')
 
 /**
- * 「我的」页：设置中心。
- * 方法自 pages/index/index.js 平移而来（业务逻辑原样），仅去掉了弹层
- * （showProfile sheet）相关的开合适配 —— 本页是独立 tab 页，无弹层。
+ * 统计区间内的总开销 / 有开销天数 / 日均 / 最高单日。
+ */
+function computeHeatmapStats(byDay) {
+  const days = Object.keys(byDay).filter((d) => byDay[d] > 0)
+  if (days.length === 0) {
+    return {
+      totalDays: 0,
+      totalAmountText: '0.00',
+      avgAmountText: '0.00',
+      maxDay: '—'
+    }
+  }
+  const total = days.reduce((s, d) => s + byDay[d], 0)
+  const maxKey = days.reduce((a, b) => (byDay[a] > byDay[b] ? a : b))
+  return {
+    totalDays: days.length,
+    totalAmountText: util.moneyThousand(total),
+    avgAmountText: util.moneyThousand(Math.round(total / days.length)),
+    maxDay: maxKey.slice(5)  // 只显示 MM-DD,简洁
+  }
+}
+
+/**
+ * 「我的」页：设置中心 + 数据洞察（消费日历、固定支出）。
  */
 Page({
   data: {
     user: {},
+    categories: config.CATEGORIES,
     saving: false,
     recycleDays: config.RECYCLE_DAYS,
     privacyOptions: ['关闭', '手势图案', '指纹解锁'],
     privacyIndex: 0,
+    // 外观主题（浅色/深色/跟随系统，默认跟随系统）
+    themeOptions: ['跟随系统', '浅色', '深色'],
+    themeIndex: 0,
     formAvatar: '',
     formNickname: '',
     formPayday: 15,
@@ -25,12 +51,78 @@ Page({
     showEditProfileClosing: false,
     editAvatar: '',
     editNickname: '',
-    editSaving: false
+    editSaving: false,
+    // 总预算编辑弹框
+    showBudgetEdit: false,
+    showBudgetEditClosing: false,
+    budgetEditInput: '',
+    budgetEditFocus: false,
+    // 签名
+    defaultMotto: '记录烟火收支，积攒人间安稳',
+    formMotto: '',
+    showMottoEdit: false,
+    showMottoEditClosing: false,
+    mottoEditInput: '',
+    mottoEditFocus: false,
+    // 分类预算（正式设置入口；此前藏在记账页账单 sheet 的分类行里，太深）
+    catBudgetSetCount: 0,             // 已设预算的分类数（入口行右侧展示）
+    showCatBudgets: false,            // 分类预算列表 sheet
+    showCatBudgetsClosing: false,
+    catBudgetRows: [],                // [{name, spent, spentText, budget, budgetText, over}]
+    showCatBudget: false,             // 单分类预算编辑 sheet
+    showCatBudgetClosing: false,
+    catBudgetEditing: null,           // {name, spentText, budget, remainingText}
+    catBudgetInput: '',
+    catBudgetFocus: false,
+    // 每月固定支出（从记账页移入）
+    recurList: [],
+    recurTotal: '0.00',
+    recurCount: 0,
+    showRecur: false,
+    showRecurClosing: false,
+    showRecurForm: false,
+    showRecurFormClosing: false,
+    recurSaving: false,
+    rName: '',
+    rAmount: '',
+    rCategory: '居住',
+    // 消费日历（一行入口：副标题汇总文案；完整月历/热力/单日明细在独立页 pages/calendar）
+    heatmapSubText: '加载中…'
   },
 
   onShow() {
     util.checkLock()
+    // 外观偏好 / 系统主题刷新根节点 class + 窗口背景；picker 选中值同步当前模式
+    themeUtil.applyToPage(this)
+    this.setData({ themeIndex: this.themeIndexOf(themeUtil.getMode()) })
     this.loadUser()
+    this.loadRecurring()
+    this._loadHeatmapPreview()
+  },
+
+  /** 外观偏好 / 系统主题变化时由 app 统一回调 */
+  applyTheme() {
+    themeUtil.applyToPage(this)
+  },
+
+  /** 加载固定支出列表（供入口卡片和管理弹层用） */
+  async loadRecurring() {
+    try {
+      const recurList = await dbApi.listRecurring(true)
+      const recurTotal = recurList
+        .filter((r) => r.active !== false)
+        .reduce((s, r) => s + (r.amount || 0), 0)
+      this.setData({
+        recurList: recurList.map((r) => ({
+          ...r,
+          amountText: util.moneyThousand(r.amount)
+        })),
+        recurTotal: util.moneyThousand(recurTotal),
+        recurCount: recurList.filter((r) => r.active !== false).length
+      })
+    } catch (err) {
+      console.error('加载固定支出失败', err)
+    }
   },
 
   onLoad() {
@@ -66,12 +158,38 @@ Page({
       formNickname: (u && u.nickname) || '',
       formPayday: (u && u.payday) || 15,
       formBudget: String((u && u.budget) || 4000),
-      privacyIndex: this.privacyIndexOf(u && u.privacyLock)
+      formMotto: (u && u.motto) || '',
+      privacyIndex: this.privacyIndexOf(u && u.privacyLock),
+      catBudgetSetCount: Object.keys((u && u.budgets) || {}).length
     })
   },
 
   privacyIndexOf(mode) {
     return mode === 'gesture' ? 1 : mode === 'finger' ? 2 : 0
+  },
+
+  /* ---------- 外观主题 ---------- */
+  themeIndexOf(mode) {
+    return mode === 'light' ? 1 : mode === 'dark' ? 2 : 0
+  },
+
+  /**
+   * 切换外观主题：本地立即生效（storage + 根节点 class + 导航栏/tabBar +
+   * 页面栈内所有页面刷新），云端写 users.themeMode 持久化（跨设备同步）。
+   * 云端写失败不影响本机使用，只提示一下。
+   */
+  onThemeModeChange(e) {
+    const idx = Number(e.detail.value)
+    const mode = ['system', 'light', 'dark'][idx]
+    if (!mode || mode === themeUtil.getMode()) return
+    getApp().setThemeMode(mode)
+    this.setData({ themeIndex: idx })
+    dbApi.updateMyUser({ themeMode: mode })
+      .then(() => this.syncUser({ themeMode: mode }))
+      .catch((err) => {
+        console.error('保存外观偏好失败', err)
+        wx.showToast({ title: '已在本机生效，云端同步失败', icon: 'none' })
+      })
   },
 
   /* ---------- 隐私锁 ---------- */
@@ -153,6 +271,125 @@ Page({
     this.setData({ user: app.globalData.user })
   },
 
+  /* ---------- 分类预算：列表 sheet + 单分类编辑 sheet ---------- */
+  /** 打开分类预算列表：拉本月支出按分类聚合（60s 缓存，通常零额外云调用） */
+  async openCatBudgets() {
+    if (this._catBudgetsCloseTimer) { clearTimeout(this._catBudgetsCloseTimer); this._catBudgetsCloseTimer = null }
+    util.openSheet(this, 'showCatBudgets')
+    await this._buildCatBudgetRows()
+  },
+
+  async _buildCatBudgetRows() {
+    try {
+      const month = util.thisMonthStr()
+      const list = await dbApi.listExpenses(month)
+      const spentByCat = {}
+      list.forEach((x) => {
+        const k = x.category || '其他'
+        spentByCat[k] = (spentByCat[k] || 0) + (x.amount || 0)
+      })
+      const budgetMap = (this.data.user && this.data.user.budgets) || {}
+      const rows = (config.CATEGORIES || []).map((name) => {
+        const spent = spentByCat[name] || 0
+        const b = budgetMap[name]
+        const budget = typeof b === 'number' && b > 0 ? b : 0
+        return {
+          name,
+          spent,
+          spentText: util.moneyThousand(spent),
+          budget,
+          budgetText: budget > 0 ? util.moneyThousand(budget) : '',
+          over: budget > 0 && spent > budget
+        }
+      })
+      this.setData({ catBudgetRows: rows })
+    } catch (err) {
+      console.error('加载分类预算失败', err)
+      wx.showToast({ title: '加载失败，请重试', icon: 'none' })
+    }
+  },
+
+  closeCatBudgets() {
+    if (this._catBudgetsCloseTimer) { clearTimeout(this._catBudgetsCloseTimer); this._catBudgetsCloseTimer = null }
+    this._catBudgetsCloseTimer = util.closeSheet(this, 'showCatBudgets')
+  },
+
+  /** 点某个分类 → 弹编辑 sheet（本月已花 + 预算输入） */
+  onCatRowTap(e) {
+    const name = e.currentTarget.dataset.cat
+    const row = (this.data.catBudgetRows || []).find((r) => r.name === name)
+    if (!row) return
+    const remaining = row.budget > 0 ? Math.max(0, row.budget - row.spent) : 0
+    this.setData({
+      showCatBudget: true,
+      showCatBudgetClosing: false,
+      catBudgetEditing: {
+        name: row.name,
+        spentText: row.spentText,
+        budget: row.budget,
+        remainingText: remaining > 0 ? util.moneyThousand(remaining) : '0'
+      },
+      catBudgetInput: row.budget > 0 ? String(row.budget) : '',
+      catBudgetFocus: true
+    })
+  },
+
+  onCatBudgetInput(e) {
+    // 只允许数字 + 小数点;粘贴含其他字符时清洗
+    const raw = (e.detail.value || '').replace(/[^\d.]/g, '')
+    this.setData({ catBudgetInput: raw })
+  },
+
+  closeCatBudget() {
+    if (this._catBudgetCloseTimer) { clearTimeout(this._catBudgetCloseTimer); this._catBudgetCloseTimer = null }
+    this._catBudgetCloseTimer = util.closeSheet(this, 'showCatBudget')
+  },
+
+  async saveCatBudget() {
+    const v = Number(this.data.catBudgetInput)
+    if (!v || v <= 0) {
+      wx.showToast({ title: '请输入有效金额', icon: 'none' })
+      return
+    }
+    await this._updateCatBudget(this.data.catBudgetEditing.name, v)
+  },
+
+  async clearCatBudget() {
+    await this._updateCatBudget(this.data.catBudgetEditing.name, 0)
+  },
+
+  /** 保存到 users.budgets；本地同步 user/globalData + 刷新列表行，不重查云 */
+  async _updateCatBudget(cat, value) {
+    const user = this.data.user || {}
+    const next = Object.assign({}, user.budgets || {})
+    if (value > 0) {
+      next[cat] = value
+    } else {
+      delete next[cat]
+    }
+    try {
+      await dbApi.updateMyUser({ budgets: next })
+      // 同步本地 + globalData，其他页面(首页预算预警/账单 sheet)下次 loadData 读到新值
+      this.syncUser({ budgets: next })
+      this.setData({ catBudgetSetCount: Object.keys(next).length })
+      this.closeCatBudget()
+      // 本地刷新对应行（本月已花已在前台，无需再查）
+      const rows = (this.data.catBudgetRows || []).map((r) => r.name === cat
+        ? {
+            ...r,
+            budget: value > 0 ? value : 0,
+            budgetText: value > 0 ? util.moneyThousand(value) : '',
+            over: value > 0 && r.spent > value
+          }
+        : r)
+      this.setData({ catBudgetRows: rows })
+      wx.showToast({ title: '已保存', icon: 'success' })
+    } catch (err) {
+      console.error('保存分类预算失败', err)
+      wx.showToast({ title: '保存失败', icon: 'none' })
+    }
+  },
+
   /* ---------- 回收站 ---------- */
   openRecycle() {
     wx.navigateTo({ url: '/pages/recycle/recycle' })
@@ -163,8 +400,35 @@ Page({
    * 打开编辑资料弹层：用当前顶部展示的 formAvatar / formNickname 初始化。
    * 注意：选头像（onChooseEditAvatar）只更新 editAvatar 预览，不立即上传；
    * 点保存按钮（saveEditProfile）时才统一上传头像 + 一次性 updateMyUser。
+   *
+   * 隐私授权前置检查：chooseAvatar / type=nickname 均为隐私接口，
+   * 用户未同意隐私协议时 iOS 真机上静默失效（点击无反应、无昵称快捷栏、无报错），
+   * 这里在打开弹层前主动唤起授权弹窗，拒绝时明确提示而非静默失败。
    */
   openEditProfile() {
+    if (wx.getPrivacySetting) {
+      wx.getPrivacySetting({
+        success: (res) => {
+          if (res.needAuthorization) {
+            wx.requirePrivacyAuthorize({
+              success: () => this._doOpenEditProfile(),
+              fail: () => {
+                wx.showToast({ title: '需同意隐私协议后才能设置头像昵称', icon: 'none', duration: 2500 })
+              }
+            })
+          } else {
+            this._doOpenEditProfile()
+          }
+        },
+        fail: () => this._doOpenEditProfile()
+      })
+    } else {
+      // 低版本基础库无隐私接口，直接打开（由后台隐私指引兜底）
+      this._doOpenEditProfile()
+    }
+  },
+
+  _doOpenEditProfile() {
     util.openSheet(this, 'showEditProfile', {
       editAvatar: this.data.formAvatar || '',
       editNickname: this.data.formNickname || '',
@@ -241,8 +505,73 @@ Page({
     this.setData({ formPayday: Number(e.detail.value) + 1 })
   },
 
-  onBudgetInput(e) {
-    this.setData({ formBudget: e.detail.value })
+  /* ---------- 总预算编辑弹框 ---------- */
+  openBudgetEdit() {
+    util.openSheet(this, 'showBudgetEdit', {
+      budgetEditInput: String(this.data.formBudget || ''),
+      budgetEditFocus: true
+    })
+  },
+  closeBudgetEdit() {
+    if (this._budgetEditCloseTimer) { clearTimeout(this._budgetEditCloseTimer); this._budgetEditCloseTimer = null }
+    this._budgetEditCloseTimer = util.closeSheet(this, 'showBudgetEdit')
+  },
+  onBudgetEditInput(e) {
+    const raw = (e.detail.value || '').replace(/[^\d.]/g, '')
+    this.setData({ budgetEditInput: raw })
+  },
+  async saveBudgetEdit() {
+    const v = Number(this.data.budgetEditInput)
+    if (!v || v <= 0) {
+      wx.showToast({ title: '请输入有效金额', icon: 'none' })
+      return
+    }
+    try {
+      await dbApi.updateMyUser({ budget: v })
+      this.syncUser({ budget: v })
+      this.setData({ formBudget: String(v) })
+      this.closeBudgetEdit()
+      wx.showToast({ title: '已保存', icon: 'success' })
+    } catch (err) {
+      console.error('保存预算失败', err)
+      wx.showToast({ title: '保存失败', icon: 'none' })
+    }
+  },
+
+  /* ---------- 签名编辑 ---------- */
+  openMottoEdit() {
+    util.openSheet(this, 'showMottoEdit', {
+      mottoEditInput: this.data.formMotto || this.data.defaultMotto,
+      mottoEditFocus: true
+    })
+  },
+  closeMottoEdit() {
+    if (this._mottoEditCloseTimer) { clearTimeout(this._mottoEditCloseTimer); this._mottoEditCloseTimer = null }
+    this._mottoEditCloseTimer = util.closeSheet(this, 'showMottoEdit')
+  },
+  onMottoEditInput(e) {
+    this.setData({ mottoEditInput: e.detail.value })
+  },
+  async saveMottoEdit() {
+    const v = (this.data.mottoEditInput || '').trim()
+    if (!v) {
+      wx.showToast({ title: '签名不能为空', icon: 'none' })
+      return
+    }
+    if (v === this.data.formMotto) {
+      this.closeMottoEdit()
+      return
+    }
+    try {
+      await dbApi.updateMyUser({ motto: v })
+      this.syncUser({ motto: v })
+      this.setData({ formMotto: v })
+      this.closeMottoEdit()
+      wx.showToast({ title: '已保存', icon: 'success' })
+    } catch (err) {
+      console.error('保存签名失败', err)
+      wx.showToast({ title: '保存失败', icon: 'none' })
+    }
   },
 
   async saveProfile() {
@@ -402,6 +731,9 @@ Page({
           chatStorage.clear()
           chatStorage.clearPendingQuestion()
           chatStorage.clearWelcomed()
+          chatStorage.clearHints()
+          chatStorage.clearReminderRead()
+          chatStorage.clearBriefRead()
           wx.showToast({ title: '已重置', icon: 'success' })
           this.loadUser()
         } catch (e) {
@@ -409,5 +741,163 @@ Page({
         }
       }
     })
+  },
+
+  /* ---------- 固定支出管理（从记账页移入） ---------- */
+  openRecur() {
+    if (this._closeTimer) { clearTimeout(this._closeTimer); this._closeTimer = null }
+    util.openSheet(this, 'showRecur')
+  },
+
+  closeRecur() {
+    this._closeTimer = util.closeSheet(this, 'showRecur')
+  },
+
+  openRecurForm() {
+    if (this._closeTimer) { clearTimeout(this._closeTimer); this._closeTimer = null }
+    util.openSheet(this, 'showRecurForm', {
+      rName: '',
+      rAmount: '',
+      rCategory: '居住'
+    })
+  },
+
+  closeRecurForm() {
+    this._closeTimer = util.closeSheet(this, 'showRecurForm')
+  },
+
+  onRNameInput(e) {
+    this.setData({ rName: e.detail.value })
+  },
+
+  onRAmountInput(e) {
+    this.setData({ rAmount: e.detail.value })
+  },
+
+  onRCategoryTap(e) {
+    this.setData({ rCategory: e.currentTarget.dataset.cat })
+  },
+
+  async saveRecurring() {
+    const { rName, rAmount, rCategory } = this.data
+    const amount = Number(rAmount)
+    if (!rName.trim()) {
+      wx.showToast({ title: '请填写名称', icon: 'none' })
+      return
+    }
+    if (!amount || amount <= 0) {
+      wx.showToast({ title: '请输入正确金额', icon: 'none' })
+      return
+    }
+    if (this.data.recurSaving) return
+    this.setData({ recurSaving: true })
+    try {
+      await dbApi.addRecurring({
+        name: rName.trim(),
+        amount,
+        category: rCategory
+      })
+      wx.showToast({ title: '已添加模板', icon: 'success' })
+      util.closeSheet(this, 'showRecurForm')
+      this.loadRecurring()
+    } catch (e) {
+      console.error('添加固定支出失败', e)
+      const msg = e && e.isCollectionMissing ? e.message : '保存失败'
+      wx.showToast({ title: msg, icon: 'none' })
+    } finally {
+      this.setData({ recurSaving: false })
+    }
+  },
+
+  /* 手动确认记账：点了「记入本月」才生成一条真实开销（不自动扣） */
+  recordRecurringItem(e) {
+    const { id, name, amount, recorded } = e.currentTarget.dataset
+    if (recorded) {
+      wx.showToast({ title: '本月已记过这笔了', icon: 'none' })
+      return
+    }
+    wx.showModal({
+      title: '记入本月',
+      content: `确认已支付「${name}」¥${amount}？确认后按今天日期记一笔开销。`,
+      success: async (res) => {
+        if (!res.confirm) return
+        try {
+          const r = await dbApi.recordRecurring(id)
+          if (r && r.dup) {
+            wx.showToast({ title: '本月已记过这笔了', icon: 'none' })
+          } else {
+            wx.showToast({ title: '已记账', icon: 'success' })
+          }
+          dbApi.invalidateFinCache(util.thisMonthStr())
+          this.loadRecurring()
+        } catch (err) {
+          console.error('固定支出记账失败', err)
+          wx.showToast({ title: '记账失败', icon: 'none' })
+        }
+      }
+    })
+  },
+
+  /* 切换「每月自动落账」开关（乐观更新,失败回滚） */
+  async toggleAutoRecord(e) {
+    const id = e.currentTarget.dataset.id
+    const newVal = e.detail.value === true
+    const before = (this.data.recurList || []).find((r) => r._id === id)
+    if (!before || before.autoRecord === newVal) return
+    const list = (this.data.recurList || []).map((r) =>
+      r._id === id ? { ...r, autoRecord: newVal } : r
+    )
+    this.setData({ recurList: list })
+    try {
+      await dbApi.updateRecurring(id, { autoRecord: newVal })
+      wx.showToast({
+        title: newVal ? '已开启自动落账' : '已关闭自动落账',
+        icon: 'none',
+        duration: 1500
+      })
+    } catch (err) {
+      const rollback = (this.data.recurList || []).map((r) =>
+        r._id === id ? { ...r, autoRecord: !newVal } : r
+      )
+      this.setData({ recurList: rollback })
+      wx.showToast({ title: '切换失败', icon: 'none' })
+    }
+  },
+
+  removeRecurringItem(e) {
+    const { id, name } = e.currentTarget.dataset
+    wx.showModal({
+      title: '删除固定支出',
+      content: `删除「${name}」仅移除模板，已记入流水的记录保留。删除后可在回收站恢复。确定删除吗？`,
+      confirmColor: '#ef4444',
+      success: async (res) => {
+        if (!res.confirm) return
+        try {
+          await dbApi.removeRecurring(id)
+          wx.showToast({ title: '已移入回收站', icon: 'success' })
+          this.loadRecurring()
+        } catch (err) {
+          wx.showToast({ title: '删除失败', icon: 'none' })
+        }
+      }
+    })
+  },
+
+  /* ---------- 消费日历（入口卡片：点击跳转独立页 pages/calendar） ---------- */
+  goCalendar() {
+    wx.navigateTo({ url: '/pages/calendar/calendar' })
+  },
+
+  /** 入口行副标题：近 3 月支出汇总（完整热力图在独立页） */
+  async _loadHeatmapPreview(force) {
+    try {
+      const { byDay } = await dbApi.listExpensesForHeatmap(4, force)
+      const stats = computeHeatmapStats(byDay)
+      this.setData({
+        heatmapSubText: `近 3 月支出 ¥${stats.totalAmountText}・${stats.totalDays} 天有开销`
+      })
+    } catch (err) {
+      console.warn('消费日历统计失败', err)
+    }
   }
 })

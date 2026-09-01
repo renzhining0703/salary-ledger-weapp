@@ -2,111 +2,13 @@ const config = require('../../utils/config')
 const util = require('../../utils/util')
 const dbApi = require('../../utils/db')
 const finTemplate = require('../../utils/finTemplate')
-const aiChat = require('../../utils/aiChat')
-const chatStorage = require('../../utils/chatStorage')
+const chatController = require('../../utils/chatController')
+const themeUtil = require('../../utils/theme')
 
-/**
- * 构造 GitHub 风格 grid：7 行 × N 列,补齐首末日附近的空格,确保每列是完整周（周日→周六）。
- * 返回 [[{date, amount, level}, ...]]
- * level ∈ 0..4,基于非零金额 25/50/75 分位动态分桶（避免极端值把所有格子挤到 1 档）。
- */
-function buildHeatmapCells(byDay, totalDays) {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const endDate = new Date(today)
-  const dow = endDate.getDay()  // 0=Sun
-  // 列数 = ceil((totalDays + dow + 1) / 7),+1 是把今天自己算进去
-  const cols = Math.ceil((totalDays + dow + 1) / 7)
-  // 起始日期 = 向前推 cols*7 天,确保第一列从周日开始,最后一列止于今天
-  const startDate = new Date(endDate)
-  startDate.setDate(endDate.getDate() - cols * 7 + 1)
-
-  // 分桶阈值(percentile)
-  const amts = Object.values(byDay).filter((a) => a > 0).sort((a, b) => a - b)
-  const p = (q) => amts.length
-    ? (amts[Math.min(amts.length - 1, Math.floor(amts.length * q))] || 0)
-    : 0
-  const t1 = p(0.25)
-  const t2 = p(0.50)
-  const t3 = p(0.75)
-
-  // 填格
-  const grid = []
-  const cur = new Date(startDate)
-  for (let wi = 0; wi < cols; wi++) {
-    const col = []
-    for (let r = 0; r < 7; r++) {
-      const dateStr = util.fmtDate(cur)
-      const amount = byDay[dateStr] || 0
-      let level = 0
-      if (amount > 0) {
-        level = amount <= t1 ? 1 : amount <= t2 ? 2 : amount <= t3 ? 3 : 4
-      }
-      col.push({ date: dateStr, amount, level })
-      cur.setDate(cur.getDate() + 1)
-    }
-    grid.push(col)
-  }
-  return grid
-}
-
-/**
- * 在每月第一周上方显示月份 label。
- * 返回 [{weekIndex, left, label}],left 是 rpx(基于 cellSize + gap 4rpx)。
- */
-function buildHeatmapMonthLabels(grid, cellSize) {
-  const labels = []
-  let lastMonth = -1
-  const cellWidth = (cellSize || 48) + 4  // cell + gap
-  grid.forEach((col, wi) => {
-    const c = col[0]
-    if (!c) return
-    const m = Number(c.date.slice(5, 7))
-    if (m !== lastMonth) {
-      labels.push({ weekIndex: wi, left: wi * cellWidth, label: `${m}月` })
-      lastMonth = m
-    }
-  })
-  return labels
-}
-
-/**
- * 统计区间内的总开销 / 有开销天数 / 日均 / 最高单日。
- */
-function computeHeatmapStats(byDay) {
-  const days = Object.keys(byDay).filter((d) => byDay[d] > 0)
-  if (days.length === 0) {
-    return {
-      totalDays: 0,
-      totalAmountText: '0.00',
-      avgAmountText: '0.00',
-      maxDay: '—'
-    }
-  }
-  const total = days.reduce((s, d) => s + byDay[d], 0)
-  const maxKey = days.reduce((a, b) => (byDay[a] > byDay[b] ? a : b))
-  return {
-    totalDays: days.length,
-    totalAmountText: util.moneyThousand(total),
-    avgAmountText: util.moneyThousand(Math.round(total / days.length)),
-    maxDay: maxKey.slice(5)  // 只显示 MM-DD,简洁
-  }
-}
-
-/**
- * 按 date 分组明细,供点击单元格时 O(1) 取当天所有流水。
- */
-function groupItemsByDate(items) {
-  const out = {}
-  for (const x of items) {
-    const d = x.date
-    if (!d) continue
-    ;(out[d] = out[d] || []).push(x)
-  }
-  return out
-}
 
 Page({
+  behaviors: [chatController],
+
   data: {
     categories: config.CATEGORIES,
     viewMonth: '',
@@ -127,18 +29,10 @@ Page({
     formCategory: '餐饮',
     formDate: '',
     formNote: '',
-    // 固定支出
+    // 固定支出（数据供账单弹框用，管理入口已移到「我的」页）
     recurList: [],
     recurTotal: '0.00',
     recurCount: 0,
-    showRecur: false,
-    showRecurClosing: false,
-    showRecurForm: false,
-    showRecurFormClosing: false,
-    recurSaving: false,
-    rName: '',
-    rAmount: '',
-    rCategory: '居住',
     // 本月账单 sheet
     showStatement: false,
     showStatementClosing: false,
@@ -151,25 +45,7 @@ Page({
                          //   insightText, insightSource: 'cache'|'llm'|'template' }
     // 账本君对话问答
     chatOpen: false,           // 是否展开 chat 区
-    chatInput: '',             // 当前输入框文本
-    chatSending: false,        // 请求中
-    chatMessages: [],          // [{ role:'user'|'assistant', content, ts, source? }]
-    chatRateError: '',         // 限流错误文案(2 秒后自动消)
     stmtScrollTop: 0,          // sheet 内主 scroll-view 滚到 sheet 底(超大值即可,自动 clamp)
-    quickChips: ['哪个分类花最多', '还剩多少预算', '最近买了啥'],  // 输入框上方 chip,点一下即发
-    // 消费日历热力图
-    heatmapSubText: '加载中…',         // 入口卡副标题(动态统计)
-    heatmapPreview: [],               // [{date, level}] 最近 91 天格子
-    heatmapRange: 'q',                // 'q' 近3月 / 'h' 半年 / 'y' 全年
-    heatCellSize: 40,                 // 动态算:13 列撑满 sheet 内宽的 cell 边长(rpx)
-    showHeatmap: false,
-    showHeatmapClosing: false,
-    heatmapGrid: null,                // [[{date, amount, level, today?}, ...]] 7 行 N 列
-    heatmapMonthLabels: [],           // [{weekIndex, left, label}] 月份标记位置
-    heatmapStats: null,               // {totalDays, totalAmountText, avgAmountText, maxDay}
-    showHeatmapDay: false,
-    showHeatmapDayClosing: false,
-    heatmapDay: null,                 // {date, items, totalText, count}
     // 分类预算设置 sheet（从账单 sheet 分类行点 +预算 / 预算金额 弹出）
     showCatBudget: false,
     showCatBudgetClosing: false,
@@ -178,14 +54,20 @@ Page({
     catBudgetFocus: true              // 打开 sheet 时自动 focus 输入框
   },
 
-  onLoad() {
+  onLoad(options) {
     // 自定义导航栏（navigationStyle: custom）：状态栏高度需 JS 注入
     this.setData({ statusBarHeight: wx.getWindowInfo().statusBarHeight || 44 })
+    // 消费日历「记一笔」预填日期：仅接受合法 YYYY-MM-DD，openForm 时应用后即焚
+    const d = options && options.date
+    if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+      this._prefillDate = d
+    }
   },
 
   onShow() {
     util.checkLock()
-    this._computeHeatCellSize()
+    // 外观偏好 / 系统主题刷新根节点 class + 窗口背景
+    themeUtil.applyToPage(this)
     // force=true:切到记账页时强制重查。云函数写库(账本君记账)不触发 dbApi 缓存失效,
     // 不 force 的话流水列表 / 预算条不显示账本君刚记的那笔
     this.loadData(true)
@@ -195,25 +77,30 @@ Page({
       app.globalData.quickExpense = false
       setTimeout(() => this.openForm(), 120)
     }
-    // 主题切换重绘本月账单饼图（颜色取自主题）
-    if (this._stmtThemeHandler) wx.offThemeChange(this._stmtThemeHandler)
-    this._stmtThemeHandler = () => {
-      const a = getApp()
-      a.syncTheme()
-      a.applyNavBarColor()
-      if (this.data.showStatement) {
-        const stmt = this._buildStatementData()
-        this.setData({ statement: { ...stmt, insightText: this.data.statement.insightText, insightSource: this.data.statement.insightSource } })
+    // 消费日历「记一笔」跳转：switchTab 不能带参数，靠 globalData 传递预填日期
+    if (app.globalData.prefillExpenseDate) {
+      const d = app.globalData.prefillExpenseDate
+      app.globalData.prefillExpenseDate = null
+      if (/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+        this._prefillDate = d
+        setTimeout(() => this.openForm(), 120)
       }
     }
-    wx.onThemeChange(this._stmtThemeHandler)
+  },
+
+  /**
+   * 外观偏好 / 系统主题变化时由 app 统一回调（app.onThemeChange / setThemeMode）：
+   * 刷根节点 class；账单 sheet 打开中时重算（饼图配色取自生效主题）。
+   */
+  applyTheme() {
+    themeUtil.applyToPage(this)
+    if (this.data.showStatement) {
+      const stmt = this._buildStatementData()
+      this.setData({ statement: { ...stmt, insightText: this.data.statement.insightText, insightSource: this.data.statement.insightSource } })
+    }
   },
 
   onUnload() {
-    if (this._stmtThemeHandler) {
-      wx.offThemeChange(this._stmtThemeHandler)
-      this._stmtThemeHandler = null
-    }
     if (this._undoTimer) {
       clearInterval(this._undoTimer)
       this._undoTimer = null
@@ -266,28 +153,32 @@ Page({
       const percent = budget > 0 ? Math.round((monthTotal / budget) * 100) : 0
       const overAmount = budget > 0 && monthTotal > budget ? monthTotal - budget : 0
 
-      // 收入 / 还款：仅本月（按 payDate 归月，与首页一致口径）
+      // 收入：仅本月（按 payDate 归月，与首页一致口径）
       const income = salaryList
         .filter((s) => (s.payDate || '').startsWith(month))
         .reduce((s, x) => s + (x.amount || 0), 0)
-      const repayByMonth = {}
-      cards.forEach((c) => {
-        const hist = c.history || []
-        if (hist.length) {
-          hist.forEach((h) => {
-            const m = (h.date || '').slice(0, 7)
-            if (m) repayByMonth[m] = (repayByMonth[m] || 0) + (h.amount || 0)
-          })
-        } else if (c.status === 'paid' && c.repayDate) {
-          const m = c.repayDate.slice(0, 7)
-          repayByMonth[m] = (repayByMonth[m] || 0) + (c.amount || 0)
-        }
-      })
-      const repay = repayByMonth[month] || 0
       // 还款流水已经包含在 monthTotal(标记已还会自动写一条 category=还款 的流水),
-      // 这里不能再减一次,否则还款金额被算两遍(支出减一次 + 还款再减一次)
+      // 还款并入支出，结余 = 收入 - 支出（含还款），不再单独扣减
       const balance = income - monthTotal
       const savingsRate = income > 0 ? (balance / income) * 100 : 0
+
+      // 【累计口径】账单弹框顶部用滚动结转，和首页看板一致
+      const cumIncome = salaryList
+        .filter((s) => (s.payDate || '').slice(0, 7) <= month)
+        .reduce((s, x) => s + (x.amount || 0), 0)
+      let cumExpense = 0
+      const expAgg = user && user.expAgg
+      if (expAgg && typeof expAgg === 'object') {
+        cumExpense = Object.entries(expAgg)
+          .filter(([k]) => k <= month)
+          .reduce((s, [, v]) => s + (v || 0), 0)
+      } else {
+        // 快照缺失时先用本月近似（首页 loadData 通常已触发对账，极少走到这里）
+        cumExpense = monthTotal
+        console.warn('[expenses] 月度支出快照缺失，累计支出用本月近似')
+      }
+      const available = cumIncome - cumExpense
+      const cumSavingsRate = cumIncome > 0 ? (available / cumIncome) * 100 : 0
 
       // 分类统计
       const catMap = {}
@@ -343,11 +234,17 @@ Page({
         _monthTotalNum: monthTotal,
         _lastMonthTotalNum: lastMonthTotal,
         _overAmountNum: overAmount,
+        _monthIncomeNum: income,      // 本月收入（自然月口径，给 statement 算结转用）
         // 本月账单 sheet 用（不 setData,留给 statement 拼数据）
+        // income/balance/savingsRate 保持自然月口径（AI 解读/兜底模板依赖）
         _stmtIncome: income,
-        _stmtRepay: repay,
         _stmtBalance: balance,
         _stmtSavingsRate: savingsRate,
+        // 累计口径：账单弹框顶部展示用，与首页看板一致
+        _stmtCumIncome: cumIncome,
+        _stmtCumExpense: cumExpense,
+        _stmtAvailable: available,
+        _stmtCumSavingsRate: cumSavingsRate,
         _stmtPrevYearTotal: prevYearTotal,
         _stmtHasPrevYear: prevYearList.length > 0
       })
@@ -360,8 +257,6 @@ Page({
         util.animateNumber(this, 'overAmount', overAmount, { duration: 500, decimals: 2, thousand: true, prefix: '¥' })
       ]
 
-      // 热力图入口卡预览(异步,不阻塞主流程)
-      this._loadHeatmapPreview(force).catch((err) => console.warn('热力图预览失败', err))
     } catch (e) {
       this._loaded = true
       this.setData({ loading: false })
@@ -413,10 +308,13 @@ Page({
   /* ---------- 新增 ---------- */
   openForm() {
     if (this._closeTimer) { clearTimeout(this._closeTimer); this._closeTimer = null }
+    // 消费日历跳转预填的日期：用一次就清掉，避免下次打开仍停留补记日期
+    const prefillDate = this._prefillDate
+    if (prefillDate) this._prefillDate = null
     util.openSheet(this, 'showForm', {
       formAmount: '',
       formCategory: '餐饮',
-      formDate: util.todayStr(),
+      formDate: prefillDate || util.todayStr(),
       formNote: ''
     })
   },
@@ -488,148 +386,6 @@ Page({
     })
   },
 
-  /* ---------- 固定支出管理 ---------- */
-  openRecur() {
-    if (this._closeTimer) { clearTimeout(this._closeTimer); this._closeTimer = null }
-    util.openSheet(this, 'showRecur')
-  },
-
-  closeRecur() {
-    this._closeTimer = util.closeSheet(this, 'showRecur')
-  },
-
-  openRecurForm() {
-    if (this._closeTimer) { clearTimeout(this._closeTimer); this._closeTimer = null }
-    util.openSheet(this, 'showRecurForm', {
-      rName: '',
-      rAmount: '',
-      rCategory: '居住'
-    })
-  },
-
-  closeRecurForm() {
-    this._closeTimer = util.closeSheet(this, 'showRecurForm')
-  },
-
-  onRNameInput(e) {
-    this.setData({ rName: e.detail.value })
-  },
-
-  onRAmountInput(e) {
-    this.setData({ rAmount: e.detail.value })
-  },
-
-  onRCategoryTap(e) {
-    this.setData({ rCategory: e.currentTarget.dataset.cat })
-  },
-
-  async saveRecurring() {
-    const { rName, rAmount, rCategory } = this.data
-    const amount = Number(rAmount)
-    if (!rName.trim()) {
-      wx.showToast({ title: '请填写名称', icon: 'none' })
-      return
-    }
-    if (!amount || amount <= 0) {
-      wx.showToast({ title: '请输入正确金额', icon: 'none' })
-      return
-    }
-    if (this.data.recurSaving) return
-    this.setData({ recurSaving: true })
-    try {
-      await dbApi.addRecurring({
-        name: rName.trim(),
-        amount,
-        category: rCategory
-      })
-      wx.showToast({ title: '已添加模板', icon: 'success' })
-      util.closeSheet(this, 'showRecurForm')
-      this.loadData()
-    } catch (e) {
-      console.error('添加固定支出失败', e)
-      const msg = e && e.isCollectionMissing ? e.message : '保存失败'
-      wx.showToast({ title: msg, icon: 'none' })
-    } finally {
-      this.setData({ recurSaving: false })
-    }
-  },
-
-  /* 手动确认记账：点了「记入本月」才生成一条真实开销（不自动扣） */
-  recordRecurringItem(e) {
-    const { id, name, amount, recorded } = e.currentTarget.dataset
-    if (recorded) {
-      wx.showToast({ title: '本月已记过这笔了', icon: 'none' })
-      return
-    }
-    wx.showModal({
-      title: '记入本月',
-      content: `确认已支付「${name}」¥${amount}？确认后按今天日期记一笔开销。`,
-      success: async (res) => {
-        if (!res.confirm) return
-        try {
-          const r = await dbApi.recordRecurring(id)
-          if (r && r.dup) {
-            wx.showToast({ title: '本月已记过这笔了', icon: 'none' })
-          } else {
-            wx.showToast({ title: '已记账', icon: 'success' })
-          }
-          // 失效本月 AI 解读缓存
-          dbApi.invalidateFinCache(util.thisMonthStr())
-          this.loadData()
-        } catch (err) {
-          console.error('固定支出记账失败', err)
-          wx.showToast({ title: '记账失败', icon: 'none' })
-        }
-      }
-    })
-  },
-
-  /* 切换「每月自动落账」开关（乐观更新,失败回滚） */
-  async toggleAutoRecord(e) {
-    const id = e.currentTarget.dataset.id
-    const newVal = e.detail.value === true
-    const before = (this.data.recurList || []).find((r) => r._id === id)
-    if (!before || before.autoRecord === newVal) return
-    // 乐观更新 UI,立即反馈
-    const list = (this.data.recurList || []).map((r) =>
-      r._id === id ? { ...r, autoRecord: newVal } : r
-    )
-    this.setData({ recurList: list })
-    try {
-      await dbApi.updateRecurring(id, { autoRecord: newVal })
-      wx.showToast({
-        title: newVal ? '已开启自动落账' : '已关闭自动落账',
-        icon: 'none',
-        duration: 1500
-      })
-    } catch (err) {
-      // 写库失败 → 回滚 UI
-      const rollback = (this.data.recurList || []).map((r) =>
-        r._id === id ? { ...r, autoRecord: !newVal } : r
-      )
-      this.setData({ recurList: rollback })
-      wx.showToast({ title: '切换失败', icon: 'none' })
-    }
-  },
-
-  removeRecurringItem(e) {
-    const { id, name } = e.currentTarget.dataset
-    wx.showModal({
-      title: '删除固定支出',
-      content: `删除「${name}」仅移除模板，已记入流水的记录保留。删除后可在回收站恢复。确定删除吗？`,
-      confirmColor: '#ef4444',
-      success: async (res) => {
-        if (!res.confirm) return
-        try {
-          await dbApi.removeRecurring(id)
-          wx.showToast({ title: '已移入回收站', icon: 'success' })
-          this.loadData()
-        } catch (err) {
-          wx.showToast({ title: '删除失败', icon: 'none' })
-        }
-      }
-    })
-  },
 
   /* ---------- 分类预算(账单 sheet 内分类行右侧入口)---------- */
   onCatBudgetTap(e) {
@@ -744,115 +500,6 @@ Page({
     }, 240)
   },
 
-  /* ---------- 消费日历热力图 ---------- */
-
-  openHeatmap() {
-    if (this._heatmapCloseTimer) { clearTimeout(this._heatmapCloseTimer); this._heatmapCloseTimer = null }
-    util.openSheet(this, 'showHeatmap')
-    this._loadHeatmapFull()
-  },
-
-  closeHeatmap() {
-    this._heatmapCloseTimer = util.closeSheet(this, 'showHeatmap')
-  },
-
-  switchHeatmapRange(e) {
-    const r = e.currentTarget.dataset.range
-    if (!r || r === this.data.heatmapRange) return
-    // 先重置 grid,避免切换瞬间的错位闪烁
-    this.setData({ heatmapRange: r, heatmapGrid: null, heatmapMonthLabels: [], heatmapStats: null })
-    // cellSize 保持 13 列基准不变 — 切到 26/52 列时 cell 不缩,grid 自然超 viewport → 横滚查看
-    this._loadHeatmapFull()
-  },
-
-  tapHeatmapCell(e) {
-    const { date, amount } = e.currentTarget.dataset
-    if (!date || !amount || Number(amount) <= 0) {
-      wx.showToast({ title: '这天没开销', icon: 'none', duration: 1000 })
-      return
-    }
-    const items = (this._heatmapItemsByDate && this._heatmapItemsByDate[date]) || []
-    const fmtItems = items.map((x) => ({
-      ...x,
-      amountText: util.moneyThousand(x.amount)
-    }))
-    const total = fmtItems.reduce((s, x) => s + (x.amount || 0), 0)
-    this.setData({
-      showHeatmapDay: true,
-      showHeatmapDayClosing: false,
-      heatmapDay: {
-        date,
-        items: fmtItems,
-        totalText: util.moneyThousand(total),
-        count: fmtItems.length
-      }
-    })
-  },
-
-  closeHeatmapDay() {
-    util.closeSheet(this, 'showHeatmapDay')
-  },
-
-  /**
-   * 入口卡预览：拉最近 4 个月开销(覆盖 13 周 + 余量),聚合 13 列 × 7 行 = 91 格。
-   * 失败静默(主流程 catch 已处理过,这里再兜一道,不让预览报错打断主流程)。
-   */
-  async _loadHeatmapPreview(force) {
-    const { byDay, items } = await dbApi.listExpensesForHeatmap(4, force)
-    const cells = buildHeatmapCells(byDay, 91)
-    // 压平成时间序列,截取最近 91 格给入口卡预览
-    const flat = []
-    for (const col of cells) for (const c of col) flat.push(c)
-    const preview = flat.slice(-91)
-    const stats = computeHeatmapStats(byDay)
-    this.setData({
-      heatmapPreview: preview,
-      heatmapSubText: `近 3 月共 ¥${stats.totalAmountText} · ${stats.totalDays} 天有开销`
-    })
-    // 顺便把 items 也分组缓存,主 sheet 复用
-    this._heatmapItemsByDate = groupItemsByDate(items)
-  },
-
-  /**
-   * 主 sheet 数据:按当前 heatmapRange 拉对应范围,构造完整 grid + 月份 label + 统计
-   */
-  async _loadHeatmapFull() {
-    const map = { q: [4, 91], h: [7, 182], y: [13, 365] }
-    const conf = map[this.data.heatmapRange] || map.q
-    const [monthsBack, days] = conf
-    const { byDay, items } = await dbApi.listExpensesForHeatmap(monthsBack)
-    const grid = buildHeatmapCells(byDay, days, this.data.heatCellSize)
-    const today = util.todayStr()
-    grid.forEach((col) => col.forEach((c) => { if (c.date === today) c.today = true }))
-    const monthLabels = buildHeatmapMonthLabels(grid, this.data.heatCellSize)
-    this._heatmapItemsByDate = groupItemsByDate(items)
-    this.setData({
-      heatmapGrid: grid,
-      heatmapMonthLabels: monthLabels,
-      heatmapStats: computeHeatmapStats(byDay)
-    })
-  },
-
-  /**
-   * 按 13 列撑满弹框算 cell 边长,作为基准。
-   * 切到近半年(26 列)/近一年(52 列)时 cell 不变,grid 总宽 > viewport → 横滚查看。
-   * 这样三种窗口 cell 视觉一致,信息密度通过列数表达。
-   *
-   * 公式: cell = (container - 8 - 12*4) / 13
-   * 仅设下限 32rpx(小屏也别太小,大屏 cell 自然放大,真正撑满)。
-   */
-  _computeHeatCellSize() {
-    let screenWidth = 750
-    try {
-      const info = (wx.getWindowInfo && wx.getWindowInfo()) || wx.getSystemInfoSync()
-      screenWidth = (info && info.windowWidth) || screenWidth
-    } catch (e) {}
-    const container = screenWidth - 64  // sheet 左右 padding 32*2
-    const size = Math.max(32, Math.floor((container - 8 - 12 * 4) / 13))
-    if (size !== this.data.heatCellSize) {
-      this.setData({ heatCellSize: size })
-    }
-  },
 
   /* ---------- 账本君对话问答 ---------- */
   openChat() {
@@ -879,16 +526,6 @@ Page({
   },
 
   /**
-   * 快捷问题 chip:跟首页同款,点一下填入 + 发送
-   */
-  onQuickChipTap(e) {
-    const text = e.currentTarget.dataset.text
-    if (!text || this.data.chatSending) return
-    this.setData({ chatInput: text })
-    this.sendChat()
-  },
-
-  /**
    * 输入框聚焦:键盘弹起时强制 sheet 滚到底,避免输入框被键盘遮挡。
    * input 在 scroll-view 内部,系统 adjust-position 不一定可靠,自己滚最稳。
    * 延迟 80ms 是等键盘弹起动画到位,scrollTop 值用递增触发新滚动。
@@ -899,173 +536,24 @@ Page({
     }, 80)
   },
 
-  async sendChat() {
-    const stmt = this.data.statement
-    if (!stmt) return
-    const q = (this.data.chatInput || '').trim()
-    if (!q || this.data.chatSending) return
+  /* ---------- 账本君对话钩子（发送 / 撤销 / 滚动逻辑由 chatController 提供） ---------- */
 
-    // 1. 前端 throttle：每分钟 ≤10 次(账本君记账后从 6 提到 10)
-    const now = Date.now()
-    this._chatTs = (this._chatTs || []).filter((t) => now - t < 60000)
-    if (this._chatTs.length >= 10) {
-      this.setData({ chatRateError: '一分钟最多问 10 次,稍等再问' })
-      setTimeout(() => this.setData({ chatRateError: '' }), 2000)
-      return
-    }
-    this._chatTs.push(now)
+  /** statement：本月账单 sheet 已拼好的数据（未打开账单则中止发问） */
+  _chatStmt() {
+    return this.data.statement || null
+  },
 
-    // 2. 推 user 气泡,清空输入框,置 sending
-    // (与首页共享 globalData.chatMessages;history 在 push 前取,云端拼成多轮上下文)
-    const app = getApp()
-    const history = aiChat.buildHistory(app.globalData.chatMessages)
-    const userMsg = { role: 'user', content: q, ts: now }
-    app.globalData.chatMessages = [...(app.globalData.chatMessages || []), userMsg]
+  /** 最近流水：本月流水列表（时间倒序） */
+  _chatRecentList() {
+    return this.data.list || []
+  },
+
+  /** 滚到底：chat 历史滚到哨兵 + 外层 sheet 滚到底看到输入框 */
+  _chatScrollToBottom() {
     this.setData({
-      chatSending: true,
-      chatInput: '',
-      chatMessages: app.globalData.chatMessages.slice(),
-      // 立即滚到底部:user 消息出现时立刻可见,不等 assistant 返回
       chatScrollIntoView: 'chat-bottom',
-      // 同时滚外层 sheet 到底部,看到自己刚发的气泡 + 输入框
       stmtScrollTop: this._bumpScrollTop(99999)
     })
-
-    // 3. 委托给 aiChat.send(mode='record' 启用 addExpense 工具,账本君可记账)
-    const result = await aiChat.send({
-      month: stmt.month,
-      stmt,
-      recentList: this.data.list || [],
-      question: q,
-      mode: 'record',
-      history
-    })
-
-    // 4. 拼 assistant 气泡
-    const assistant = {
-      role: 'assistant',
-      content: result.text,
-      ts: Date.now(),
-      source: result.source
-    }
-
-    // 4a. 账本君记账成功 → 加 undoable 标记 + 15s 撤销窗口(带倒计时)
-    if (result.toolResult && result.toolResult.added && result.toolResult.id) {
-      assistant.toolResult = result.toolResult
-      assistant.undoable = true
-      assistant.undoExpireAt = Date.now() + 15000  // 到期时间戳
-      assistant.undoCountdown = 15                  // 倒计时初始值(秒)
-    }
-
-    app.globalData.chatMessages = [...app.globalData.chatMessages, assistant]
-    this.setData({
-      chatSending: false,
-      chatMessages: app.globalData.chatMessages.slice(),
-      // 滚到底部哨兵(assistant 回来时也保持可见)
-      chatScrollIntoView: 'chat-bottom',
-      // 同时滚外层 sheet 到底部,看到 AI 回答 + 输入框
-      stmtScrollTop: this._bumpScrollTop(99999)
-    })
-
-    // 4b. 启动倒计时 setInterval + 写库后立即刷新账单
-    if (assistant.undoable) {
-      this._startUndoCountdown()
-      this.loadData(true)  // 立刻刷新数据(force 跳过缓存)
-    }
-
-    // 5. 截断 + 持久化(与首页同规格:globalData 恒 ≤50,撤销倒计时索引一致)
-    app.globalData.chatMessages = app.globalData.chatMessages.slice(-50)
-    chatStorage.save(app.globalData.chatMessages)
-  },
-
-  /**
-   * 撤销气泡倒计时:每秒扫描 chatMessages,更新所有 undoable 消息的 undoCountdown。
-   * - 到期(undoExpireAt 已过):自动 undoable=false,气泡消失
-   * - 所有 undoable 都处理完(撤销 or 到期):清 timer,避免空转
-   * - setData 走精确路径(chatMessages[i].undoCountdown),不重渲染整个列表
-   *
-   * 多个消息同时在 15s 窗口:timer 只起一次(去重),所有 m 一起倒计时
-   */
-  _startUndoCountdown() {
-    if (this._undoTimer) return  // 已有 timer 在跑,不重复起
-    this._undoTimer = setInterval(() => {
-      // 读写 globalData(与首页共享);page 的 chatMessages 是同一数组的副本,索引一致
-      const app = getApp()
-      const msgs = (app.globalData.chatMessages || []).slice()
-      const now = Date.now()
-      const updates = {}
-      let stillRunning = false
-      msgs.forEach((m, i) => {
-        if (!m.undoable || m.undone) return
-        if (!m.undoExpireAt) {
-          stillRunning = true
-          return
-        }
-        if (now >= m.undoExpireAt) {
-          // 到期
-          m.undoable = false
-          updates[`chatMessages[${i}].undoable`] = false
-        } else {
-          // 还在窗口内
-          const remain = Math.max(0, Math.ceil((m.undoExpireAt - now) / 1000))
-          if (m.undoCountdown !== remain) {
-            m.undoCountdown = remain
-            updates[`chatMessages[${i}].undoCountdown`] = remain
-          }
-          stillRunning = true
-        }
-      })
-      // 变更同步回 globalData,防止 sheet 关闭/重开后气泡带着过期 undo 标记
-      if (Object.keys(updates).length > 0) {
-        app.globalData.chatMessages = msgs
-        this.setData(updates)
-      }
-      // 没消息在跑 → 清 timer
-      if (!stillRunning) {
-        clearInterval(this._undoTimer)
-        this._undoTimer = null
-      }
-    }, 1000)
-  },
-
-  /**
-   * 撤销账本君刚记的那一笔(15s 撤销窗口内的气泡)
-   * 按 toolResult.type 路由:
-   * - salary → dbApi.removeSalary (写 salary collection)
-   * - expense → dbApi.removeExpense (写 expenses collection)
-   * 软删除对应记录,更新消息内容 + undone 标记,刷新当前页数据
-   */
-  async onUndoAiRecord(e) {
-    const ts = e.currentTarget.dataset.msgTs
-    const app = getApp()
-    const msgs = (app.globalData.chatMessages || []).slice()
-    const idx = msgs.findIndex((m) => m.ts === ts)
-    if (idx < 0) return
-    const msg = msgs[idx]
-    if (!msg.toolResult || !msg.toolResult.id || msg.undone) return
-    const isSalary = msg.toolResult.type === 'salary'
-    try {
-      if (isSalary) {
-        await dbApi.removeSalary(msg.toolResult.id)
-      } else {
-        await dbApi.removeExpense(msg.toolResult.id)
-      }
-      msg.undoable = false
-      msg.undone = true
-      msg.content = (msg.content || '') + ' · ✓ 已撤销'
-      app.globalData.chatMessages = msgs
-      this.setData({ chatMessages: msgs.slice() })
-      chatStorage.save(msgs)  // 同步持久化,首页重开也是"已撤销"状态
-      this.loadData(true)  // 顶部预算条 / 分类占比 / 流水重算(force 跳过缓存)
-    } catch (err) {
-      console.error('撤销失败', err)
-      wx.showToast({ title: '撤销失败', icon: 'none' })
-    }
-  },
-
-  /** 兼容旧引用,序列化已迁移到 utils/aiChat.js 的内部 */
-  _stmtForChat() {
-    return null
   },
 
   /** 把 loadData 算出的字段组装成 sheet 要渲染的对象（包含原始数字 + 展示字符串 + 分类备注） */
@@ -1073,7 +561,7 @@ Page({
     const month = this.data.viewMonth
     const monthTotal = this.data._monthTotalNum || 0
     const income = this.data._stmtIncome || 0
-    const repay = this.data._stmtRepay || 0
+    const expense = this.data._monthTotalNum || 0
     const balance = this.data._stmtBalance || 0
     const savingsRate = this.data._stmtSavingsRate || 0
     const prevMonthExpense = this.data._lastMonthTotalNum || 0
@@ -1082,6 +570,15 @@ Page({
     const recurTotal = (this.data.recurList || [])
       .filter((r) => r.active !== false)
       .reduce((s, r) => s + (r.amount || 0), 0)
+
+    // 累计口径：账单弹框顶部展示用（与首页看板一致）
+    const cumIncome = this.data._stmtCumIncome || 0
+    const cumExpense = this.data._stmtCumExpense || 0
+    const available = this.data._stmtAvailable || 0
+    const cumSavingsRate = this.data._stmtCumSavingsRate || 0
+    // 结转金额 = 可用余额 − 本月结余（自然月）
+    const monthBalance = income - expense
+    const carriedOver = available - monthBalance
 
     // 分类备注 top-3:按"出现金额"权重排序,让 LLM 看到"抚养费/补习班"而不是泛称
     const noteByCat = {}
@@ -1098,11 +595,11 @@ Page({
     const palette = ['#2B2620', '#C8A04D', '#BE4A3A', '#C98A2D', '#2F9B6B', '#A3823A']
     const paletteDark = ['#8AA4C2', '#E5C26B', '#E55858', '#E0A055', '#4FB78A', '#8AA4C2']
     const app = getApp()
-    const isDark = app && app.globalData && app.globalData.theme === 'dark'
+    const isDark = app.resolvedTheme() === 'dark'
     const colors = isDark ? paletteDark : palette
     const budgetMap = (this.data.user && this.data.user.budgets) || {}
-    // 遍历全部分类(config.CATEGORIES)而不是只显示当月已消费的——
-    // 这样用户能给本月还没消费过的分类提前设预算,避免"先消费再设预算"的鸡生蛋
+    // 账单 sheet 只展示本月有消费的分类（占比>0）——零消费分类显示一排空行没有信息量；
+    // 给任意分类设预算的正式入口已前移到「我的 → 分类预算」（不依赖当月是否消费）
     const statsMap = new Map((this.data.catStats || []).map((c) => [c.name, c]))
     const categories = (config.CATEGORIES || []).map((name, idx) => {
       const s = statsMap.get(name)
@@ -1128,7 +625,7 @@ Page({
         color: colors[idx % colors.length],
         isEmpty: amount <= 0  // 本月没消费,UI 上灰化
       }
-    })
+    }).filter((c) => c.amount > 0)  // 只展示本月有消费的分类（按金额而非四舍五入后的百分比，极小额不漏）
     const overCategories = categories.filter((c) => c.over).map((c) => c.name)
 
     // 环比 — 预格式化方向 + 百分比字符串(WXML 不能用 Math.abs)
@@ -1148,24 +645,24 @@ Page({
     return {
       month,
       monthText: `${Number(month.slice(0, 4))}年${Number(month.slice(5, 7))}月`,
-      // 原始数字 — 模板 / 云函数都靠这些,必须存在
+      // 原始数字 — 模板 / 云函数都靠这些,必须存在（自然月口径）
       income,
-      expense: monthTotal,
+      expense,
       balance,
-      repay,
       savingsRate,
       prevMonthExpense,
       prevYearExpense: hasPrevYear ? prevYearExpense : null,
       hasPrevYear,
       recurTotal,
-      // 展示用字符串 — WXML 渲染用
-      incomeText: util.moneyThousand(income),
-      expenseText: util.moneyThousand(monthTotal),
-      balanceText: util.moneyThousand(Math.abs(balance)),
-      balanceSign: balance >= 0 ? '+' : '-',
-      repayText: util.moneyThousand(repay),
-      savingsRateText: savingsRate.toFixed(0) + '%',
-      savingsLevel: savingsRate >= 20 ? 'good' : savingsRate >= 0 ? 'mid' : 'bad',
+      // 展示用字符串 — WXML 渲染用（累计口径，与首页看板一致）
+      incomeText: util.moneyThousand(cumIncome),
+      expenseText: util.moneyThousand(cumExpense),
+      balanceText: util.moneyThousand(Math.abs(available)),
+      balanceSign: available >= 0 ? '+' : '-',
+      savingsRateText: cumSavingsRate.toFixed(0) + '%',
+      savingsLevel: cumSavingsRate >= 20 ? 'good' : cumSavingsRate >= 0 ? 'mid' : 'bad',
+      // 结转小字：可用余额 ≠ 本月结余时展示
+      carriedOverText: carriedOver > 0 ? '含历史结转 ¥' + util.moneyThousand(carriedOver) : '',
       momText: util.moneyThousand(prevMonthExpense),
       momDelta: mom,
       categories,
@@ -1288,15 +785,6 @@ Page({
       // AI 解读渲染完成:滚到 sheet 底部,看到 AI 文本 + 问问入口
       stmtScrollTop: this._bumpScrollTop(99999)
     })
-  },
-
-  /**
-   * 给一个略大于 target 的 scroll-top 值,保证 setData 时跟上次不同(同值不触发滚动)。
-   * 99999 已经超过任何实际 sheet 高度,会被 scroll-view clamp 到 maxScrollTop = 滚到底。
-   */
-  _bumpScrollTop(target) {
-    this._stmtScrollBump = (this._stmtScrollBump || 0) + 1
-    return target + this._stmtScrollBump
   },
 
   /** 强制重新生成（清缓存 + 调 AI） */

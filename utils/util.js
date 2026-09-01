@@ -141,11 +141,144 @@ function thisMonthStr() {
   return `${t.getFullYear()}-${pad(t.getMonth() + 1)}`
 }
 
+/**
+ * 日均可花（含月预算约束）——首页「今日指南」卡片用。
+ *
+ * 两个约束取更紧者（min）：
+ *   余额视角：可用余额 ÷ 距下次发薪天数（钱要花到下次发薪日）
+ *   预算视角：本月剩余预算 ÷ 本月剩余天数（别超用户设的月预算）
+ *
+ * 这样历史结转的「大余额」不会撑高日均可花（预算兜底），
+ * 反过来余额紧张时也不会让用户按预算上限花（余额兜底）。
+ *
+ * 边界：
+ *   - 今天就是发薪日 → daysToPayday 按 1 计（防除零），sub 显示「今天是发薪日」
+ *   - 结果 ≤ 0 → clamp 到 0，zeroTip 区分「可用余额不足」/「本月预算已用完」
+ *   - budget ≤ 0 → 不启用预算约束，只按余额视角
+ *   - payday=0（未设置）→ paydayUnset=true，daysToPayday 按本月剩余天数（含今天）
+ *     估算，绝不按默认值推算「距发薪」（默认 15 是用户从未确认过的值，展示即歧义）
+ *
+ * @param {object} o
+ * @param {number} o.available 可用余额（含历史结转）
+ * @param {number} o.expense   本月已支出
+ * @param {number} o.budget    月预算（0/未设 = 不启用预算约束）
+ * @param {number} o.payday    每月几号发薪（0 = 未设置，走估算口径）
+ * @param {string} o.today     'YYYY-MM-DD'
+ * @returns {{ amount: number, amountText: string, sub: string, budgetMode: boolean, daysToPayday: number, paydayToday: boolean, paydayUnset: boolean, zeroTip: string }}
+ *   amount 原始值（可能为 0）；amountText 千分位两位小数；sub 副标题文案；
+ *   budgetMode 是否预算视角更紧；paydayUnset 发薪日未设置（副文案走估算说明）；zeroTip 空串表示无告警
+ */
+function calcDailyBudget(o) {
+  const today = o.today || todayStr()
+  const payday = o.payday || 0
+  const paydayUnset = !payday
+  const budget = o.budget || 0
+
+  let daysToPayday
+  let paydayToday = false
+  if (paydayUnset) {
+    // 未设发薪日：按本月剩余天数（含今天）估算，与预算模式 daysLeftInMonth 口径一致
+    const [y, m] = today.split('-').map(Number)
+    const lastDay = lastDayOfMonth(y, m - 1)
+    daysToPayday = Math.max(1, daysBetween(today, `${today.slice(0, 7)}-${lastDay}`) + 1)
+  } else {
+    const nextPay = nextPayday(payday, parseDate(today))
+    daysToPayday = daysBetween(today, fmtDate(nextPay))
+    paydayToday = daysToPayday <= 0
+    if (daysToPayday < 1) daysToPayday = 1
+  }
+
+  let daily = o.available / daysToPayday
+  let budgetMode = false
+  let budgetLeft = 0
+  if (budget > 0) {
+    budgetLeft = budget - o.expense
+    const [y, m] = today.split('-').map(Number)
+    const lastDay = lastDayOfMonth(y, m - 1)
+    const daysLeftInMonth = daysBetween(today, `${today.slice(0, 7)}-${lastDay}`) + 1
+    const dailyByBudget = budgetLeft / daysLeftInMonth
+    if (dailyByBudget < daily) {
+      daily = dailyByBudget
+      budgetMode = true
+    }
+  }
+
+  let zeroTip = ''
+  if (daily <= 0.005) {
+    if (o.available < 0) zeroTip = '可用余额不足'
+    else if (budget > 0 && budgetLeft < 0) zeroTip = '本月预算已用完'
+  }
+  daily = Math.max(0, daily)
+
+  let sub
+  if (paydayUnset) {
+    sub = `按本月剩余 ${daysToPayday} 天估算`
+    sub += budgetMode ? ` · 预算剩 ¥${moneyThousand(budgetLeft)}` : ''
+  } else if (paydayToday) sub = '今天是发薪日'
+  else if (zeroTip) sub = zeroTip
+  else {
+    sub = `距发薪 ${daysToPayday} 天`
+    sub += budgetMode ? ` · 预算剩 ¥${moneyThousand(budgetLeft)}` : ' · 按可用余额'
+  }
+
+  return {
+    amount: daily,
+    amountText: moneyThousand(daily),
+    sub,
+    budgetMode,
+    daysToPayday,
+    paydayToday,
+    paydayUnset,
+    zeroTip
+  }
+}
+
+/**
+ * 连续记账天数（首页「今日指南」卡片用，多邻国式留存钩子）。
+ * 今天还没记不打断连续（今天未结束，从昨天起算）；
+ * 今天记了则包含今天。断档日即停止。
+ *
+ * @param {string[]} dates 记账日期数组（'YYYY-MM-DD'，可含重复/空值，内部去重）
+ * @param {string} [today] 'YYYY-MM-DD'，默认今天
+ * @returns {{ count: number, todayRecorded: boolean, text: string }}
+ *   count 连续天数（今天未记时不含今天）；todayRecorded 今天是否已记；
+ *   text 展示文案（含引导）
+ */
+function calcStreak(dates, today) {
+  const t = today || todayStr()
+  const daySet = new Set((dates || []).filter(Boolean))
+  const todayRecorded = daySet.has(t)
+  let cursor = todayRecorded ? t : offsetDate(t, -1)
+  let count = 0
+  while (daySet.has(cursor)) {
+    count++
+    cursor = offsetDate(cursor, -1)
+  }
+  let text
+  if (count > 0 && todayRecorded) text = `已连续记账 ${count} 天`
+  else if (count > 0) text = `连续 ${count} 天 · 今天还没记`
+  else text = '今天记一笔，开启连续'
+  return { count, todayRecorded, text }
+}
+
 /** todayStr + N 天,返回 'YYYY-MM-DD' */
 function offsetDate(todayStr, n) {
   const d = parseDate(todayStr)
   d.setDate(d.getDate() + n)
   return fmtDate(d)
+}
+
+/**
+ * 账本君主动询问是否已过期（发出超 48h 未回应）
+ * 工资询问时效性强：发薪日前后才有意义，一直不回应就应让位给新的主动提醒
+ * （还款提醒/预算提醒的开场白在 goAskAI 里被询问占位，若无过期机制会永久堵住）
+ * @param {{ text: string, ts: number, round?: number } | null} q
+ * @param {number} [now] 时间戳，测试注入用
+ * @returns {boolean}
+ */
+function isPendingQExpired(q, now) {
+  if (!q || !q.ts) return false
+  return (now || Date.now()) - q.ts > 48 * 3600 * 1000
 }
 
 /**
@@ -377,6 +510,9 @@ module.exports = {
   moneyThousand,
   thisMonthStr,
   offsetDate,
+  calcDailyBudget,
+  calcStreak,
+  isPendingQExpired,
   calcOptimalRepayOrder,
   openSheet,
   closeSheet,

@@ -31,6 +31,20 @@ module.exports = {
   /** 开销分类（"还款"由标记信用卡已还自动写入,用户也可手动选） */
   CATEGORIES: ['餐饮', '交通', '购物', '孩子', '居住', '还款', '其他'],
 
+  /**
+   * 收入类型（工资页 = 收入页）
+   * 口径：只有「账户里真正多了一笔钱」才算收入；借款/朋友还钱/借出不算收入,不入账
+   * 旧数据无 source 字段,展示时兜底为 main(主业)
+   */
+  INCOME_SOURCES: [
+    { value: 'main', label: '主业' },
+    { value: 'side', label: '副业' },
+    { value: 'bonus', label: '年终奖/奖金' },
+    { value: 'gift', label: '红包/礼金' },
+    { value: 'invest', label: '理财收益' },
+    { value: 'other', label: '其他收入' }
+  ],
+
   /** 回收站保留天数（删除的记录多少天后自动清理） */
   RECYCLE_DAYS: 30
 }

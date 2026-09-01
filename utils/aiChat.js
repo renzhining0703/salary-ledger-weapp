@@ -7,8 +7,8 @@
  * - aiChat.send 只负责「问一次,拿到一次回答」
  *
  * 复用入口:
- * - 首页 chat sheet(pages/index/index.js sendAiChat)
- * - 记账页账单 sheet 内的 chat(pages/expenses/expenses.js sendChat)
+ * - 首页 chat sheet 与记账页账单 sheet 内的 chat,均通过 utils/chatController.js 的 sendChat
+ *   (aiChat.send 只负责「问一次,拿到一次回答」,页面交互 / 撤销 / 持久化都在 chatController)
  *
  * 行为:
  * 1. 调云函数 finChat,15s 超时
@@ -24,7 +24,7 @@ const finTemplate = require('./finTemplate')
  * @param {object} opts
  * @param {string} opts.month     'YYYY-MM'
  * @param {object} opts.stmt      statement blob(income/expense/balance/savingsRate/categories/...)
- * @param {Array}  opts.recentList 最近 30 条明细(给 LLM 看到具体买了啥)
+ * @param {Array}  opts.recentList 最近 20 条明细(给 LLM 看到具体买了啥,更早历史由云端查询工具兜底)
  * @param {string} opts.question  用户问题
  * @param {string} [opts.mode='chat']  'chat' 纯问答;'record' 启用 addExpense 工具(账本君记账)
  * @param {Array}  [opts.history] 多轮上下文(buildHistory 产物,最近 12 条 user/assistant)
@@ -131,14 +131,14 @@ async function send({ month, stmt, recentList, question, mode = 'chat', history 
 
 /**
  * 序列化 statement 给云函数,只传 LLM 需要的字段
- * + 最近 30 条明细(按金额倒序)— 解决"买烟哪天"这类问题
+ * + 最近 20 条明细(按金额倒序)— 解决"买烟哪天"这类问题;更早历史由云端查询工具兜底
  */
 function serialize(stmt, recentList) {
   if (!stmt) return null
   const list = (recentList || [])
     .slice()
     .sort((a, b) => (b.amount || 0) - (a.amount || 0))
-    .slice(0, 30)
+    .slice(0, 20)
     .map((x) => ({
       date: x.date || '',
       category: x.category || '其他',
@@ -163,6 +163,11 @@ function serialize(stmt, recentList) {
     budgetOver: stmt.budgetOver,
     budgetNear: stmt.budgetNear,
     overCategories: stmt.overCategories,
+    // 新用户引导状态:未设发薪日/未记账时 AI 优先引导完成设置或记首笔,而非只报数字;
+    // 未设发薪日时 AI 不得按默认值谈"距发薪"
+    paydaySet: stmt.paydaySet !== false,
+    payday: stmt.payday || 0,      // 发薪日(每月几号,0=未设置):AI 可直接答「发薪日是哪天」
+    hasRecorded: stmt.hasRecorded !== false,
     recentList: list
   }
 }

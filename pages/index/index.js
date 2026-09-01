@@ -1,8 +1,9 @@
 const config = require('../../utils/config')
 const util = require('../../utils/util')
 const dbApi = require('../../utils/db')
-const aiChat = require('../../utils/aiChat')
 const chatStorage = require('../../utils/chatStorage')
+const chatController = require('../../utils/chatController')
+const themeUtil = require('../../utils/theme')
 
 /**
  * 账本君首次打招呼(空聊天时自动展示一次)。
@@ -21,12 +22,26 @@ const WELCOME_MESSAGE = `你好,我是账本君,你的 AI 财务助理
 「我该如何规划下个月开销?」`
 
 Page({
+  behaviors: [chatController],
+
   data: {
     user: null,
     todoList: [],
     boardMonth: '',          // 当前查看的月份，如 2026-08
     board: null,             // 月度结余看板
+    daily: null,             // 今日指南·日均可花（仅当前月）
+    streak: null,            // 今日指南·连续记账（仅当前月）
+    boardAiSub: '',          // 「账本君说」副文案（距发薪 · 连续记账，本地拼装）
+    boardAiState: '',        // 「账本君说」空态状态机：''=隐藏(历史月) welcome=全新用户 first=已设发薪日未记账 unset=缺发薪日 normal=正常
+    aiReminders: [],         // AI 待办提醒（信用卡还款/发薪日），首页优先展示 + chat sheet 预设消息
+    aiShakeOn: false,        // 头像抖动开关：仅提醒类未读时 true，进首页抖 2 次即停（CSS 动画播完静止）
+    briefUnread: false,      // 每日 board-brief（"今天可以放心花…"）未读：角标提示，看过当天不再弹
+    paydaySet: false,        // 发薪日是否已显式设置（payday>0；账本君 AI 数据块也用）
+    hasRecorded: false,      // 是否记过账（有收支记录；账本君 AI 数据块也用）
     budgetAlert: null,       // 预算预警 { type: 'over'|'warn', text }
+    budgetOver: false,       // 预算已超(账本君 AI 数据块用)
+    budgetNear: false,       // 预算接近上限 ≥80%(账本君 AI 数据块用)
+    repayHint: null,         // 场景开场白用:还款日 ≤3 天里最紧急的一张 { days, bank, amount }
     // 账单分享卡片
     showShare: false,
     showShareClosing: false,
@@ -42,10 +57,6 @@ Page({
     showAiChatClosing: false,
     aiScrollIntoView: '',    // 滚到底用,绑定哨兵节点 #ai-chat-bottom(立即响应)
     aiScrollTop: 0,          // scroll-top 兜底:_bumpScrollTop 累加器保证每次值唯一,scroll-into-view 同值不触发时用它
-    chatMessages: [],        // 全局同步 getApp().globalData.chatMessages
-    chatInput: '',
-    chatSending: false,
-    chatRateError: '',
     chatStorage: { last: [], shown: false },  // 上次会话摘要(冷启动展示)
     recentExpenses: [],      // 给 aiChat.send 用,本月最近流水
     aiSheetTransform: 'translateY(0)',  // 保留兼容(目前已用 max-height 收缩,这个不动)
@@ -54,8 +65,7 @@ Page({
     // 账本君主动询问(云函数 salaryReminder 推送后写入,本地兜底在 chatStorage)
     pendingAiQuestion: null,           // { text, ts, round }
     aiUnread: 0,                       // 入口卡未读红点计数(单条询问 = 1)
-    showAiAskPrompt: false,            // 首次进入 sheet 引导用户订阅的提示卡
-    quickChips: ['哪个分类花最多', '还剩多少预算', '最近买了啥']  // 输入框上方常驻 chip,点一下即发
+    showAiAskPrompt: false            // 首次进入 sheet 引导用户订阅的提示卡
   },
 
   onLoad() {
@@ -65,20 +75,14 @@ Page({
 
   onShow(options) {
     util.checkLock()
+    // 外观偏好 / 系统主题刷新根节点 class + 窗口背景
+    themeUtil.applyToPage(this)
+    // 头像抖动重播：先摘掉 class，loadData 完成后重新挂上 →
+    // CSS 动画按「class 从无到有」触发，每次进入首页都能抖一次（切 tab 回来也算）
+    this.setData({ aiShakeOn: false })
     // force=true:切到首页时强制重查。云函数写库(账本君记账)不触发 dbApi 缓存失效,
     // 不 force 的话会拿到旧的 expenses / salary 缓存,首页流水 / 预算条不更新
     this.loadData(true)
-    // 监听系统主题变化：canvas 颜色不跟随 CSS 变量，需手动重绘
-    if (this._themeChangeHandler) {
-      wx.offThemeChange(this._themeChangeHandler)
-    }
-    this._themeChangeHandler = () => {
-      const app = getApp()
-      app.syncTheme()
-      app.applyNavBarColor()
-      this.drawTrend()
-    }
-    wx.onThemeChange(this._themeChangeHandler)
 
     // 账本君主动询问:不论是否从订阅消息进入,都先加载未读问题
     // (订阅消息点击场景:app.js onShow 写 globalData.pendingAiQuestionFromNotif=true,
@@ -97,9 +101,16 @@ Page({
    * 从本地 chatStorage 读取账本君未回应询问。
    * 仅展示/计数,**不清除**(用户主动 dismiss 或发送消息才清),
    * 这样关闭 sheet 后下次进入仍能看到气泡,直到他回应为止。
+   * 例外:发出超 48h 未回应的询问视为过期,自动清除——
+   * 否则会永久占位,堵住还款/预算的主动开场白(goAskAI 里 !pendingQ 才开讲)。
    */
   _loadPendingQuestion() {
     const q = chatStorage.loadPendingQuestion()
+    if (q && util.isPendingQExpired(q)) {
+      chatStorage.clearPendingQuestion()
+      this.setData({ pendingAiQuestion: null, aiUnread: 0 })
+      return
+    }
     this.setData({
       pendingAiQuestion: q,
       aiUnread: q ? 1 : 0
@@ -115,14 +126,19 @@ Page({
   },
 
   onUnload() {
-    if (this._themeChangeHandler) {
-      wx.offThemeChange(this._themeChangeHandler)
-      this._themeChangeHandler = null
-    }
     if (this._undoTimer) {
       clearInterval(this._undoTimer)
       this._undoTimer = null
     }
+  },
+
+  /**
+   * 外观偏好或系统主题变化时由 app 统一回调（app.onThemeChange / setThemeMode）：
+   * 刷根节点 class（CSS 变量子树覆盖）+ 重绘趋势图（canvas 颜色不跟随 CSS 变量）。
+   */
+  applyTheme() {
+    themeUtil.applyToPage(this)
+    this.drawTrend()
   },
 
   /**
@@ -136,25 +152,48 @@ Page({
 
   async onPullDownRefresh() {
     try {
-      await this.loadData(true)
+      // reconcile=true：云端全量重算 expAgg 并回写（对账修复快照漂移）
+      await this.loadData(true, true)
     } finally {
       wx.stopPullDownRefresh()
     }
   },
 
-  async loadData(force) {
+  /**
+   * 首页数据加载（方案B+C：单次批量读 + 月度支出快照）：
+   *
+   * 阶段1（首屏，1 次云函数调用）：batchHomeRead 在服务端并行取回
+   *   用户/卡片/工资/本月支出/近12月区间支出 + expAgg（月度支出聚合快照）
+   *   → 立即渲染看板、待还、预算预警、趋势图、日均可花。
+   *   有快照时「累计可用余额」由快照按月求和直接得出——任意历史月都精确，
+   *   原来的 36 个月区间大查询（阶段2缺口补查）彻底消灭。
+   *
+   * 阶段2（仅降级路径）：云端未部署新版 dbRead（降级为 5 个单项读）或快照缺失时，
+   *   退回方案A 行为——12 个月窗口近似 + 后台补查窗口外缺口修正余额。
+   *
+   * reconcile：下拉刷新传 true → 云端全量重算 expAgg 并回写（对账，
+   *   修复写路径增量维护失败造成的快照漂移）。onShow 不传，靠增量维护保持新鲜。
+   *
+   * 竞态：切月/下拉刷新/标记已还会并发触发 loadData，用 _loadSeq 序号，
+   *  旧一轮（尤其阶段2晚到的补查）直接丢弃，不覆盖新一轮数据。
+   */
+  async loadData(force, reconcile) {
     const app = getApp()
     await app.ready()
+    const seq = (this._loadSeq || 0) + 1
+    this._loadSeq = seq
     try {
       const month = this.data.boardMonth || util.thisMonthStr()
-      const trendStart = this.shiftMonth(month, -5)
-      const [user, cards, salaryList, expenses, trendExpenses] = await Promise.all([
-        dbApi.getMyUser(force),
-        dbApi.listCards(force),
-        dbApi.listSalary(force),
-        dbApi.listExpenses(month, force),
-        dbApi.listExpensesRange(trendStart, month, force)
-      ])
+      const trendStart = this.shiftMonth(month, -11)
+      // 方案B：5 查合并为 1 次云函数调用（服务端并行，客户端省 4 次网络往返）
+      const batch = await dbApi.batchHomeRead(month, trendStart, force, reconcile)
+      if (seq !== this._loadSeq) return // 已有更新的一轮加载，丢弃本轮
+      const user = batch.user
+      const cards = batch.cards
+      const salaryList = batch.salary
+      const expenses = batch.expenses
+      const trendExpenses = batch.trend
+      const expAgg = batch.expAgg || null
 
       const today = util.todayStr()
       const thisMonth = util.thisMonthStr()
@@ -192,50 +231,95 @@ Page({
       // 按到期天数升序:逾期 N 天 → 今天 → 明天(更靠前越紧急)
       todoList.sort((a, b) => a.days - b.days)
 
-      // 保留原始 cards，供 markPaid 组装还款历史用
-      this._cards = cards
+      // 场景开场白用:还款日 ≤3 天(含逾期)里最紧急的一张
+      // (todoList 只覆盖逾期/今天/明天,这里补齐 2-3 天的,取 days 最小者)
+      let repayHint = null
+      cards.forEach((c) => {
+        if (c.status === 'paid') return
+        const dueDate = util.calcDueDate(c.repayDay, 'pending')
+        const days = util.daysBetween(today, dueDate)
+        if (days <= 3 && (!repayHint || days < repayHint.days)) {
+          repayHint = { days, bank: c.bank, amount: c.amount }
+        }
+      })
 
       // 多卡最优还款顺序(纯函数,无副作用)。<3 张未还时给 null,入口卡不显示
       this._computeOptimal(cards, today)
 
-      // 各月还款金额（现金流口径）：
-      // 新数据用 history（每次还款一条，跨月准确）；旧数据回退 repayDate + 当前金额
-      const repayByMonth = {}
-      cards.forEach((c) => {
-        const hist = c.history || []
-        if (hist.length) {
-          hist.forEach((h) => {
-            const m = (h.date || '').slice(0, 7)
-            if (m) repayByMonth[m] = (repayByMonth[m] || 0) + (h.amount || 0)
-          })
-        } else if (c.status === 'paid' && c.repayDate) {
-          const m = c.repayDate.slice(0, 7)
-          repayByMonth[m] = (repayByMonth[m] || 0) + (c.amount || 0)
-        }
-      })
-
-      // 月度结余看板：收入/支出/还款/结余（按查看月份）
+      // 月度结余看板：收入/支出/结余（按查看月份）
+      // 还款并入支出：标记已还会写一条 category=还款 的流水，已含在 expenses 里，不再单独扣减
       const income = salaryList
         .filter((s) => (s.payDate || '').startsWith(month))
         .reduce((s, x) => s + (x.amount || 0), 0)
       const expense = expenses.reduce((s, x) => s + (x.amount || 0), 0)
-      // 还款只统计「实际已还」：待还（pending）的钱还没出账，不影响结余
-      const repay = repayByMonth[month] || 0
-      const balance = income - expense - repay
+
+      // 累计可用余额（滚动结转）：截至查看月末「全部收入 − 全部支出」
+      // 解决发薪日≠月初导致跨月结余断裂：8/15 工资的剩余会结转到 9 月看板
+      const cumIncome = salaryList
+        .filter((s) => (s.payDate || '').slice(0, 7) <= month)
+        .reduce((s, x) => s + (x.amount || 0), 0)
+      // 【方案C】月度支出快照：users.expAgg 按月求和 → 精确累计支出
+      // （含 12 个月窗口外的老账，查看任意历史月都准确）
+      const snapCum = expAgg
+        ? Object.keys(expAgg).filter((m) => m <= month).reduce((s, m) => s + expAgg[m], 0)
+        : null
+      // 【降级路径】无快照（云端旧版 dbRead / 快照回填失败）时退回方案A：
+      // 12 个月窗口内近似，窗口外缺口由阶段2后台补查修正
+      const cumExpense = snapCum != null
+        ? snapCum
+        : trendExpenses
+            .filter((x) => (x.date || '').slice(0, 7) <= month)
+            .reduce((s, x) => s + (x.amount || 0), 0)
+      // 漂移检测（仅诊断 warn，数字以快照为准）：快照窗口内合计 vs 刚实拉的 12 个月数据
+      // 对不上（差 ≥1 分）→ 写路径增量维护出过岔子，下拉刷新（reconcile 对账）即修复
+      if (snapCum != null) {
+        const winSnap = Object.keys(expAgg)
+          .filter((m) => m >= trendStart && m <= month)
+          .reduce((s, m) => s + expAgg[m], 0)
+        const winReal = trendExpenses
+          .filter((x) => (x.date || '').slice(0, 7) >= trendStart)
+          .reduce((s, x) => s + (x.amount || 0), 0)
+        if (Math.abs(Math.round(winSnap * 100) - Math.round(winReal * 100)) >= 1) {
+          console.warn(`[loadData] 支出快照疑似漂移：窗口内快照 ¥${winSnap.toFixed(2)} vs 实拉 ¥${winReal.toFixed(2)}，下拉刷新可对账修复`)
+        }
+      }
+      // 阶段2缺口补查的回溯起点（仅降级路径用；有快照时置为 trendStart → 阶段2不触发）
+      let earliestMonth = trendStart
+      if (snapCum == null) {
+        const salaryMonths = salaryList
+          .map((s) => (s.payDate || '').slice(0, 7))
+          .filter(Boolean)
+        const earliestSalaryMonth = salaryMonths.length ? [...salaryMonths].sort()[0] : ''
+        const bound36 = this.shiftMonth(month, -36)
+        // 保守回溯 36 个月，防止「先记支出、后记工资」导致前期支出被漏算
+        earliestMonth = earliestSalaryMonth && earliestSalaryMonth < bound36
+          ? earliestSalaryMonth
+          : bound36
+      }
+      const available = cumIncome - cumExpense      // 可用余额（含历史结转，阶段1近似值）
+      const monthBalance = income - expense         // 本月收支差
+      const carriedOver = available - monthBalance // 上月结转进来的金额
+
+      const balance = available  // 主数字语义改为「可用余额」
       const board = {
         month,
         monthText: `${month.slice(0, 4)}年${Number(month.slice(5, 7))}月`,
         isThisMonth: month === thisMonth,
         income: util.moneyThousand(income),
         expense: util.moneyThousand(expense),
-        repay: util.moneyThousand(repay),
-        balance: util.moneyThousand(Math.abs(balance)),
-        balancePositive: balance >= 0,
+        balance: util.moneyThousand(Math.abs(available)),
+        balancePositive: available >= 0,
+        // 结转提示（wxml 显示「含上月结转 ¥X」）
+        carriedOver,
+        carriedOverText: util.moneyThousand(Math.abs(carriedOver)),
+        carriedOverPositive: carriedOver >= 0,
+        showCarry: Math.abs(carriedOver) >= 0.005,
         // 动画用原始数值
         _incomeNum: income,
         _expenseNum: expense,
-        _repayNum: repay,
-        _balanceNum: Math.abs(balance)
+        _balanceNum: Math.abs(available),
+        _availableNum: available,
+        _monthBalanceNum: monthBalance
       }
 
       // 预算超支预警（只看当月）
@@ -256,10 +340,84 @@ Page({
           }
         }
       }
+      // 账本君 AI 数据块用(首页 _buildAiStmt 读取):预算状态标志
+      const budgetOver = !!(budgetAlert && budgetAlert.type === 'over')
+      const budgetNear = !!(budgetAlert && budgetAlert.type === 'warn')
 
-      // 近 6 个月收支趋势（随看板查看月份滚动）
+      // 今日指南：日均可花 + 连续记账（语义基于「今天」，仅当前月展示）
+      let daily = null
+      let streak = null
+      // 「账本君说」空态状态机（设计稿 v3 §2）：payday 判定看用户是否显式设置（>0），不按默认 15 兜底
+      const paydaySet = !!(user && user.payday)
+      const hasRecorded = cumIncome > 0 || cumExpense > 0
+
+      // AI 待办提醒：首页 board-ai 优先展示 + chat sheet 预设消息
+      // 覆盖信用卡还款（≤7 天）和发薪日（≤3 天），按紧急程度排序
+      const aiReminders = []
+      // 信用卡还款提醒
+      cards.forEach((c) => {
+        if (c.status === 'paid') return
+        const dueDate = util.calcDueDate(c.repayDay, 'pending')
+        const days = util.daysBetween(today, dueDate)
+        if (days <= 7) {
+          const amt = util.moneyThousand(c.amount)
+          let detail
+          if (days < 0) {
+            detail = `⚠️ 你的 ${c.bank} 卡款已逾期 ${-days} 天，¥${amt} 还没还。逾期会影响征信，今天赶紧处理吧！`
+          } else if (days === 0) {
+            detail = `⚠️ 今天有 ${c.bank} 的卡款要还，¥${amt}。记得还款，别逾期。`
+          } else {
+            detail = `📌 ${days} 天后有 ${c.bank} 的卡款要还，¥${amt}。提前把钱备好，别到时候手忙脚乱。`
+          }
+          aiReminders.push({
+            type: 'credit',
+            days,
+            title: days < 0 ? `${c.bank} 已逾期 ${-days} 天` : (days === 0 ? `今天有${c.bank}要还` : `${days}天后有${c.bank}要还`),
+            detail
+          })
+        }
+      })
+      // 发薪日提醒（≤3 天，且已设置）
+      if (paydaySet && user && user.payday > 0) {
+        const nextPay = util.nextPayday(user.payday, util.parseDate(today))
+        const daysToPay = util.daysBetween(today, util.fmtDate(nextPay))
+        if (daysToPay >= 0 && daysToPay <= 3) {
+          aiReminders.push({
+            type: 'payday',
+            days: daysToPay,
+            title: daysToPay === 0 ? '今天发薪' : `${daysToPay}天后发薪`,
+            detail: `💰 ${daysToPay === 0 ? '今天' : daysToPay + '天后'}是发薪日，记得确认工资到账。`
+          })
+        }
+      }
+      aiReminders.sort((a, b) => a.days - b.days)
+      // 今日已读：用户打开过 chat sheet 看到提醒 → 首页恢复日常文案、角标隐藏
+      if (chatStorage.isReminderRead(today)) aiReminders.length = 0
+
+      let boardAiState = ''
+      if (month === thisMonth) {
+        daily = util.calcDailyBudget({
+          available,
+          expense,
+          budget,
+          payday: (user && user.payday) || 0,
+          today
+        })
+        // 连续记账：复用 trendExpenses（近12个月，覆盖90天窗口），零额外查询
+        const cutoff = util.offsetDate(today, -89)
+        const recentDates = trendExpenses
+          .map((x) => x.date)
+          .filter((d) => d && d >= cutoff)
+        streak = util.calcStreak(recentDates, today)
+        if (!hasRecorded && !paydaySet) boardAiState = 'welcome'   // S1 全新用户
+        else if (!hasRecorded) boardAiState = 'first'              // S2 已设发薪日，待记首笔
+        else if (!paydaySet) boardAiState = 'unset'                // S3 有记录但缺发薪日（估算口径）
+        else boardAiState = 'normal'                               // S4 正常
+      }
+
+      // 近 12 个月收支趋势（随看板查看月份滚动；趋势图只画最近 6 个月，账本君数据块用全量 12 个月）
       const trendMonths = []
-      for (let i = 5; i >= 0; i--) trendMonths.push(this.shiftMonth(month, -i))
+      for (let i = 11; i >= 0; i--) trendMonths.push(this.shiftMonth(month, -i))
       const trend = trendMonths.map((m) => {
         const inc = salaryList
           .filter((s) => (s.payDate || '').startsWith(m))
@@ -267,22 +425,52 @@ Page({
         const exp = trendExpenses
           .filter((x) => (x.date || '').startsWith(m))
           .reduce((s, x) => s + (x.amount || 0), 0)
-        const rep = repayByMonth[m] || 0
-        return { month: m, label: `${Number(m.slice(5, 7))}月`, income: inc, expense: exp, balance: inc - exp - rep }
+        return { month: m, label: `${Number(m.slice(5, 7))}月`, income: inc, expense: exp, balance: inc - exp }
       })
       const trendEmpty = trend.every((t) => !t.income && !t.expense && !t.balance)
+
+      // 工资询问:云端 users.unreadQuestion(salaryReminder 云函数写入) → 同步到本地 storage
+      // (断链修复:此前 _loadPendingQuestion 只读本地 chatStorage,本地从未被写入,
+      //  导致红点与询问气泡永远不显示。loadData 拉到 user 后补上这一步同步)
+      if (user && user.unreadQuestion) {
+        const uq = user.unreadQuestion
+        if (util.isPendingQExpired(uq)) {
+          // 过期询问(48h 未回应):顺手清云端,避免下次加载又同步回来
+          dbApi.updateMyUser({ unreadQuestion: null, unreadQuestionCount: 0 }).catch(() => {})
+        } else if (!chatStorage.loadPendingQuestion()) {
+          chatStorage.savePendingQuestion({ text: uq.text, ts: uq.ts, round: uq.round || 1 })
+        }
+      }
+      const localPendingQ = chatStorage.loadPendingQuestion()
 
       this.setData({
         user,
         todoList,
+        repayHint,
         boardMonth: month,
         board,
+        daily,
+        streak,
+        boardAiSub: this._buildBoardAiSub(daily, streak, boardAiState, (user && user.payday) || 0),
+        boardAiState,
+        // 每日 brief 未读：账本君今天有话说（且非空态外的提醒优先场景），看过一次当天不再弹
+        briefUnread: !!boardAiState && !chatStorage.isBriefRead(today),
+        aiReminders,
+        // 有提醒类未读才抖头：briefUnread/aiUnread 只是静默角标（呼吸脉冲），不召唤
+        aiShakeOn: aiReminders.length > 0,
+        paydaySet,
+        hasRecorded,
         budgetAlert,
+        budgetOver,
+        budgetNear,
         trend,
         trendEmpty,
-        // 账本君 AI 用:本月分类统计 + 最近 30 条明细
+        // 工资询问气泡 + 入口红点(以本地为准;云端未同步到本地时保持现状)
+        pendingAiQuestion: localPendingQ,
+        aiUnread: localPendingQ ? 1 : 0,
+        // 账本君 AI 用:本月分类统计 + 最近 60 条明细
         catStats: this._buildCatStats(expenses, expense),
-        recentExpenses: expenses.slice(0, 60)  // 多存点,_buildAiStmt 里再截 30
+        recentExpenses: expenses.slice(0, 60)  // 列表按时间倒序(最新在前),前 60 条=最近;多存点,发送前再截 top20
       })
 
       if (!trendEmpty) {
@@ -294,9 +482,58 @@ Page({
       this._cancelAnim = [
         util.animateNumber(this, 'board.income', income, { duration: 700, decimals: 2, thousand: true, prefix: '¥' }),
         util.animateNumber(this, 'board.expense', expense, { duration: 700, decimals: 2, thousand: true, prefix: '¥' }),
-        util.animateNumber(this, 'board.repay', repay, { duration: 700, decimals: 2, thousand: true, prefix: '¥' }),
         util.animateNumber(this, 'board.balance', Math.abs(balance), { duration: 800, decimals: 2, thousand: true, prefix: '¥' })
       ]
+
+      /* ---------- 阶段2（仅降级路径）：窗口外支出补查 ----------
+       * 有快照（snapCum != null）时余额已精确求和，本段不触发（earliestMonth = trendStart）。
+       * 仅无快照时退回方案A：earliestMonth 恒 ≤ bound36 < trendStart，
+       * 只要记账起点早于 12 个月窗口就补查「缺口区间 [earliestMonth, trendStart 前一月]」，
+       * 不重复拉已取回的 12 个月数据，且完全不阻塞首屏渲染。
+       */
+      if (snapCum == null && earliestMonth < trendStart) {
+        const gapEnd = this.shiftMonth(trendStart, -1)
+        const gapExpenses = await dbApi.listExpensesRange(earliestMonth, gapEnd, force)
+        if (seq !== this._loadSeq) return // 切月/刷新已开启新一轮加载，丢弃本轮晚到的补查
+        if (gapExpenses.length >= 999) {
+          console.warn('[loadData] 缺口区间支出接近 1000 条上限，累计结余可能不准确')
+        }
+        const extra = gapExpenses
+          .filter((x) => (x.date || '').slice(0, 7) <= month)
+          .reduce((s, x) => s + (x.amount || 0), 0)
+        if (Math.abs(extra) >= 0.005) {
+          const available2 = available - extra
+          const carried2 = available2 - monthBalance
+          // 阶段1的 balance 动画可能仍在跑：先取消再重放，
+          // 否则动画帧会把 setData 进来的修正值又覆盖回旧目标值
+          this._cancelAnim && this._cancelAnim.forEach((fn) => fn())
+          this._cancelAnim = [
+            util.animateNumber(this, 'board.balance', Math.abs(available2), { duration: 400, decimals: 2, thousand: true, prefix: '¥' })
+          ]
+          this.setData({
+            board: {
+              ...this.data.board,
+              balancePositive: available2 >= 0,
+              carriedOver: carried2,
+              carriedOverText: util.moneyThousand(Math.abs(carried2)),
+              carriedOverPositive: carried2 >= 0,
+              showCarry: Math.abs(carried2) >= 0.005,
+              _balanceNum: Math.abs(available2),
+              _availableNum: available2
+            },
+            // 日均可花依赖可用余额，同步修正（仅当前月有值）
+            daily: month === thisMonth
+              ? util.calcDailyBudget({
+                  available: available2,
+                  expense,
+                  budget,
+                  payday: (user && user.payday) || 0,
+                  today
+                })
+              : this.data.daily
+          })
+        }
+      }
     } catch (e) {
       console.error('加载首页数据失败', e)
       wx.showToast({ title: util.errTip(e, '加载失败，请下拉重试'), icon: 'none' })
@@ -322,12 +559,10 @@ Page({
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
   },
 
-  /** 一键标记已还（同步累积还款历史，供趋势图按月聚合与卡片展示） */
+  /** 一键标记已还（流水 / 卡片状态 / 还款 history 都在 db.recordCardRepayment 内统一完成） */
   async markPaid(e) {
     const id = e.currentTarget.dataset.id
-    const card = (this._cards || []).find((c) => c._id === id) || {}
     try {
-      // 一并写一条分类=还款的流水,让记账 Tab 自然看到这笔还款
       const r = await dbApi.recordCardRepayment(id)
       if (r && !r.dup) {
         // 产生了新流水 → 失效当月 AI 解读缓存,避免账本君基于旧数据说话
@@ -335,11 +570,6 @@ Page({
         wx.showToast({ title: '已记账', icon: 'success' })
       } else {
         wx.showToast({ title: '已标记还款', icon: 'success' })
-      }
-      // 同步追加 history(趋势图按月聚合需要)
-      if (!(card.history || []).some((h) => h.date === util.todayStr())) {
-        const history = [...(card.history || []), { date: util.todayStr(), amount: card.amount || 0 }]
-        await dbApi.updateCard(id, { history })
       }
       this.loadData()
     } catch (err) {
@@ -354,16 +584,163 @@ Page({
   },
 
   /**
+   * 场景化开场白：打开聊天时，今天有紧急财务场景 → 账本君主动抛一句（纯模板，不走 LLM）
+   * 优先级：还款（逾期 > 今天 > 1-3 天）> 预算（已超 > ≥80%），一次只挑最紧急的一条
+   * 同一天同一场景只说一次（chatStorage 按日期去重，避免每次打开都重复唠叨）
+   * @returns {{ key: 'repay'|'budget', text: string } | null}
+   */
+  _buildActiveHint() {
+    const today = util.todayStr()
+    const hints = chatStorage.loadHints(today)
+    const repay = this.data.repayHint
+    const alert = this.data.budgetAlert
+    const daily = this.data.daily
+
+    // 还款类 —— 最紧急（逾期 / 今天 / 1-3 天）
+    if (repay && repay.days <= 3 && !hints.repay) {
+      const amt = util.moneyThousand(repay.amount)
+      let text
+      if (repay.days < 0) {
+        text = `⚠️ 你的 ${repay.bank} 卡款已逾期 ${-repay.days} 天，¥${amt} 还没还。逾期会影响征信，今天赶紧处理吧！`
+      } else if (repay.days === 0) {
+        text = `⚠️ 今天有 ${repay.bank} 的卡款要还，¥${amt}。记得还款，别逾期。`
+      } else {
+        text = `📌 ${repay.days} 天后有 ${repay.bank} 的卡款要还，¥${amt}。提前把钱备好，别到时候手忙脚乱。`
+      }
+      return { key: 'repay', text }
+    }
+
+    // 预算类（已超 > 达 80%）
+    if (alert && !hints.budget) {
+      let text
+      if (alert.type === 'over') {
+        text = `⚠️ ${alert.text}。要不要我帮你看看超在哪、怎么调整？`
+      } else {
+        const dailyTip = daily && daily.amount > 0
+          ? `按现在的节奏，今天最多还能花 ¥${daily.amountText}。`
+          : ''
+        text = `📌 ${alert.text}。${dailyTip}`
+      }
+      return { key: 'budget', text }
+    }
+
+    return null
+  },
+
+  /**
+   * 「账本君说」副文案（按空态状态机分支，设计稿 v3 §2）
+   * - welcome：引导设置发薪日（绝不显示默认 15 推算的「距发薪」）
+   * - first：确认发薪日已设置，引导记首笔
+   * - unset：估算口径说明 + 去设置（不放默认值推算数据）
+   * - normal：距发薪 X 天 · 连续记账（streak.text 自带引导话术，直接复用）
+   * @param {{ paydayToday: boolean, daysToPayday: number } | null} daily
+   * @param {{ text: string } | null} streak
+   * @param {string} aiState boardAiState
+   * @param {number} payday 用户发薪日（>0 已设置）
+   * @returns {string}
+   */
+  _buildBoardAiSub(daily, streak, aiState, payday) {
+    if (aiState === 'welcome') return '设置发薪日，开始规划每天能花多少'
+    if (aiState === 'first') return `发薪日已设为每月 ${payday} 日`
+    if (aiState === 'unset') return '按本月剩余天数估算 · 设置发薪日更准'
+    if (!daily) return ''
+    const pay = daily.paydayToday ? '今天是发薪日' : `距发薪 ${daily.daysToPayday} 天`
+    return streak ? `${pay} · ${streak.text}` : pay
+  },
+
+  /**
+   * 看板「账本君说」区块点击：由 daily/streak/状态机本地模板拼开场白后打开 chat sheet。
+   * 保证 sheet 里账本君"必有所言"，且内容和看板区块一字对应（承诺与兑现同源）。
+   * 空态（welcome/first/unset）同样有开场白——新用户点进来账本君先自我介绍/引导。
+   */
+  tapBoardAI() {
+    const daily = this.data.daily
+    const streak = this.data.streak
+    const state = this.data.boardAiState
+    const payday = (this.data.user && this.data.user.payday) || 0
+    // 日期前缀（"今天9月1号"）：让每日一句有时间锚点，跨天看消息不混淆
+    const t = util.todayStr().split('-')
+    const datePrefix = `今天${Number(t[1])}月${Number(t[2])}号，`
+    let opening = ''
+    if (state === 'welcome') {
+      opening = '你好，我是账本君，你的贴身记账管家。先设置一个发薪日，我就能帮你规划每天能花多少、盯预算、管还款。想记一笔、查个账，直接跟我说就行。'
+    } else if (state === 'first') {
+      opening = `发薪日已设为每月 ${payday} 日。记一笔工资，我就能算出你的日均可花，开始第一份收支规划。想记一笔、查个账，直接跟我说就行。`
+    } else if (daily) {
+      if (daily.zeroTip === '可用余额不足') {
+        opening = `${datePrefix}手头有点紧——可用余额不足了，先省着花。`
+      } else if (daily.zeroTip) {
+        opening = `${datePrefix}本月预算已用完，先记账再消费，别让账目断档。`
+      } else if (state === 'unset') {
+        opening = `${datePrefix}按你的余额和本月剩余天数，今天可以放心花 ¥${daily.amountText}。设置发薪日后，我能算得更准。`
+      } else {
+        opening = `${datePrefix}按你的余额和节奏，今天可以放心花 ¥${daily.amountText}。`
+      }
+      const sub = this._buildBoardAiSub(daily, streak, state, payday)
+      if (sub) opening += `${sub}。`
+      opening += '想记一笔、查个账，直接跟我说就行。'
+    }
+    this.goAskAI(opening)
+  },
+
+  /**
+   * 「账本君说」空态引导按钮（welcome/unset 的「去设置」）：
+   * 与整块点击分离（catchtap 阻断冒泡），直达工资页并自动弹发薪日设置弹层。
+   * 与 quickExpense 同模式：globalData 标志位 + 目标页 onShow 消费。
+   */
+  goSetPayday() {
+    getApp().globalData.autoOpenPayday = true
+    wx.switchTab({ url: '/pages/salary/salary' })
+  },
+
+  /**
    * 首页「问问账本君」入口：直接弹首页 chat sheet(不跳页)。
    * - 从 chatStorage 恢复上次会话摘要(热启动);本次会话已有消息则不展示摘要
    * - 首次打开(空聊天 + 无历史摘要 + 未欢迎过)→ 自动插入一条助手欢迎消息,
    *   介绍自己 + 列出能力 + 给示例问题,帮用户知道能问什么
+   * - openingLine(tapBoardAI 传入)→ 追加「账本君说」开场消息(本地模板)，
+   *   此时跳过欢迎消息(开场即数据，比自我介绍更切题)
    */
-  goAskAI() {
+  goAskAI(openingLine) {
     const stored = chatStorage.loadSummary()
     const app = getApp()
+    const today = util.todayStr()
+    const reminders = this.data.aiReminders || []
+
+    // 如果有 AI 待办提醒且今日未读，先作为预设消息写入 chatMessages（所有入口统一处理）
+    if (reminders.length > 0 && !chatStorage.isReminderRead(today)) {
+      let messages = app.globalData.chatMessages || []
+      // 幂等：移除旧的 ai-reminder 和 board-brief，避免重复堆叠和顺序错乱
+      messages = messages.filter((m) => m.source !== 'ai-reminder' && m.source !== 'board-brief')
+      reminders.forEach((r) => {
+        messages.push({
+          role: 'assistant',
+          content: r.detail,
+          ts: Date.now(),
+          source: 'ai-reminder'
+        })
+      })
+      app.globalData.chatMessages = messages.slice()
+      chatStorage.markReminderRead(today)
+      chatStorage.markHintShown(today, 'repay')
+      // 立即清空页面 data：chat sheet 是页内弹层，关闭不触发 onShow/loadData，
+      // 不主动 setData 的话角标和提醒文案要等下次刷新才消失
+      this.setData({ aiReminders: [], aiShakeOn: false })
+      // 有提醒时，日常 board-brief 让位（提醒本身就是开场白）
+      openingLine = null
+    }
+
     let messages = app.globalData.chatMessages.slice()
-    const pendingQ = this.data.pendingAiQuestion
+    // 询问过期(发出超48h未回应)自动清除,让位给还款/预算主动开场白
+    // (onShow 的 _loadPendingQuestion 已清过一次,这里兜底,防止跨页面进入时残留)
+    // 注意:setData 是异步的,this.data 不会立即更新,必须直接用局部变量置 null,
+    //   否则下方 `if (!pendingQ || repayUrgent)` 仍拿到旧值,开场白被误跳过
+    let pendingQ = this.data.pendingAiQuestion
+    if (pendingQ && util.isPendingQExpired(pendingQ)) {
+      chatStorage.clearPendingQuestion()
+      pendingQ = null
+      this.setData({ pendingAiQuestion: null, aiUnread: 0 })
+    }
 
     // 主动询问气泡去重:同一条 question 已经塞过就不再塞
     // (避免用户关闭-重开 sheet 时堆叠重复气泡)
@@ -380,9 +757,53 @@ Page({
       app.globalData.chatMessages = messages.slice()
     }
 
+    // 场景化开场白:今天有紧急财务场景(还款≤3天 / 预算超 80%)→ 账本君主动抛一句(纯模板不走 LLM)
+    // 互斥:有未回应的工资询问时通常跳过(一次只主动讲一件事,避免气泡堆叠)。
+    // 例外——还款逾期/今天(days<=0)比工资询问更紧急(征信风险),开场白照常插入,
+    //   工资询问气泡保留在下方,两件都让用户看到。
+    // 注意:开场白必须「追加到消息末尾」——打开 sheet 会自动滚到底部,
+    //   插在顶部会被历史消息埋没(用户只看到底部),而且 markHintShown 已经写入,
+    //   同天再打开被去重挡住,提醒就永远消失了。追加末尾=打开即见,符合聊天心智。
+    const repayUrgent = !!(this.data.repayHint && this.data.repayHint.days <= 0)
+    if (!pendingQ || repayUrgent) {
+      const hint = this._buildActiveHint()
+      if (hint) {
+        messages = [...messages, {
+          role: 'assistant',
+          content: hint.text,
+          ts: Date.now(),
+          source: 'active-hint'
+        }]
+        chatStorage.markHintShown(util.todayStr(), hint.key)
+        app.globalData.chatMessages = messages.slice()
+      }
+    }
+
+    // 「账本君说」开场(tapBoardAI 传入)：与看板区块文案同源，本地模板不走 LLM、零延迟。
+    // 每日一次：当天看过即不再主动弹出(高频重复会招人烦)，跨天金额变了再展示。
+    // 已读时 openingLine 整体丢弃——sheet 只展示历史消息，保持安静。
+    if (openingLine) {
+      if (!chatStorage.isBriefRead(today)) {
+        messages = messages.filter((m) => m.source !== 'board-brief')
+        messages = [...messages, {
+          role: 'assistant',
+          content: openingLine,
+          ts: Date.now(),
+          source: 'board-brief'
+        }]
+        app.globalData.chatMessages = messages.slice()
+        chatStorage.markBriefRead(today)
+        // 立即清角标：页内弹层关闭不触发 onShow/loadData，须主动 setData
+        this.setData({ briefUnread: false })
+      }
+      // 当天已读 → 不注入不标记，briefUnread 由 loadData 计算时已为 false
+    }
+
     // 首次打开 + 空聊天 + 未欢迎过 → 自动插入欢迎消息
-    // (注意:有询问气泡时不再插欢迎消息,以免两条 assistant 气泡堆叠)
+    // (注意:有询问气泡时不再插欢迎消息,以免两条 assistant 气泡堆叠;
+    //  带 openingLine 时也跳过——board-brief 已是更切题的开场)
     if (
+      !openingLine &&
       messages.length === 0 &&
       stored.length === 0 &&
       !chatStorage.isWelcomed()
@@ -456,18 +877,9 @@ Page({
     this.setData({ chatInput: v })
   },
 
-  /**
-   * 快捷问题 chip:填入输入框并立即发送。
-   * - 避免让用户从欢迎消息里手抄示例,降低首次使用门槛
-   * - chatSending 时不响应(防止重复请求 + 旧 chip 状态错乱)
-   * - 写入 globalData 与手动输入走同一路径(让 onShow 切回时恢复输入)
-   */
-  onQuickChipTap(e) {
-    const text = e.currentTarget.dataset.text
-    if (!text || this.data.chatSending) return
-    this.setData({ chatInput: text })
-    getApp().globalData.chatInput = text
-    this.sendAiChat()
+  /** 快捷 chip 同步输入到 globalData（让 onShow 切回时恢复输入）；手动输入走 onAiInput */
+  _chatSyncInput(v) {
+    getApp().globalData.chatInput = v
   },
 
   /** 输入框聚焦：滚到底,避免键盘遮挡输入框 */
@@ -523,105 +935,35 @@ Page({
     })
   },
 
-  /**
-   * 发送问题:节流 → 拼 user 气泡 → 调 aiChat.send → 拼 assistant 气泡 → 持久化
-   * 状态同步到 app.globalData,记账页打开账单 sheet 时也能看到历史
-   *
-   * mode='record':启用账本君记账工具。允许用户空白月(本月 expense=0)发问记账——
-   * 把原来的「空数据兜底」拿掉,改成走云函数(云函数对 mode='record' 不短路 NO_DATA)。
-   */
-  async sendAiChat() {
-    const app = getApp()
-    const q = (this.data.chatInput || '').trim()
-    if (!q || this.data.chatSending) return
+  /* ---------- 账本君对话钩子（发送 / 撤销 / 滚动逻辑由 chatController 提供） ---------- */
 
-    // ★ 用户回应了账本君的主动询问 → 清掉未读状态(本地 + 云端)
-    // (失败静默:不影响主要提问功能,下次 cron 来时重置即可)
+  /**
+   * 发送前副作用：
+   * - 用户回应了账本君的主动询问 → 清掉未读状态（本地 + 云端；失败静默，下次 cron 重置）
+   * - 隐藏「上次会话」摘要（本次已开始新提问）
+   */
+  _chatBeforeSend() {
     if (this.data.pendingAiQuestion) {
       chatStorage.clearPendingQuestion()
       dbApi.updateMyUser({ unreadQuestion: null, unreadQuestionCount: 0 }).catch(() => {})
       this.setData({ pendingAiQuestion: null })
     }
+    this.setData({ chatStorage: { ...this.data.chatStorage, shown: false } })
+  },
 
-    // 1. 节流:每分钟 ≤10 次(账本君记账后从 6 提到 10)
-    const now = Date.now()
-    this._chatTs = (this._chatTs || []).filter((t) => now - t < 60000)
-    if (this._chatTs.length >= 10) {
-      this.setData({ chatRateError: '一分钟最多问 10 次,稍等再问' })
-      setTimeout(() => this.setData({ chatRateError: '' }), 2000)
-      return
-    }
-    this._chatTs.push(now)
+  /** statement：用首页已有数据（空白月也允许通过，stmt.expense=0） */
+  _chatStmt() {
+    return this._buildAiStmt()
+  },
 
-    // 2. 算 statement(用首页已有数据;空白月也允许通过,stmt.expense=0)
-    const stmt = this._buildAiStmt()
-    const recentList = (this.data.recentExpenses || []).slice(0, 30)
+  /** 最近流水：时间倒序列表里取前 30 条 = 最近 */
+  _chatRecentList() {
+    return (this.data.recentExpenses || []).slice(0, 30)
+  },
 
-    // 3. push user 消息 + 立刻滚动到底
-    // (history 在 push 前取:不含本条问题,云端拼成多轮上下文,追问"那上个月呢"可被理解)
-    const history = aiChat.buildHistory(app.globalData.chatMessages)
-    const userMsg = { role: 'user', content: q, ts: now }
-    app.globalData.chatMessages = [...app.globalData.chatMessages, userMsg]
-    app.globalData.chatInput = ''
-    app.globalData.chatSending = true
-    this.setData({
-      chatMessages: app.globalData.chatMessages.slice(),
-      chatInput: '',
-      chatSending: true,
-      chatStorage: { ...this.data.chatStorage, shown: false } // 隐藏上次摘要
-    })
+  /** 滚 chat-history 到底：复用首页的 _scrollChatToBottom */
+  _chatScrollToBottom() {
     this._scrollChatToBottom()
-
-    // 4. 调核心 aiChat.send(mode='record' 启用 addExpense 工具)
-    const result = await aiChat.send({
-      month: stmt.month,
-      stmt,
-      recentList,
-      question: q,
-      mode: 'record',
-      history
-    })
-
-    // 5. push assistant 消息
-    const assistant = {
-      role: 'assistant',
-      content: result.text,
-      ts: Date.now(),
-      source: result.source
-    }
-
-    // 5a. 账本君记账成功 → 加 undoable 标记 + 15s 撤销窗口(带倒计时)
-    if (result.toolResult && result.toolResult.added && result.toolResult.id) {
-      assistant.toolResult = result.toolResult  // { added, expense, id }
-      assistant.undoable = true
-      assistant.undoExpireAt = Date.now() + 15000  // 到期时间戳
-      assistant.undoCountdown = 15                  // 倒计时初始值(秒)
-    }
-
-    // 5a2. 账本君提示"已记过,是否再记" → 挂 needsConfirm,气泡出「再记一次」快捷按钮
-    if (result.toolResult && result.toolResult.needsConfirm && result.toolResult.duplicate) {
-      assistant.needsConfirm = true
-      assistant.dupType = result.toolResult.type  // 'expense' | 'salary'
-    }
-
-    app.globalData.chatMessages = [...app.globalData.chatMessages, assistant]
-    app.globalData.chatSending = false
-    this.setData({
-      chatMessages: app.globalData.chatMessages.slice(),
-      chatSending: false
-    })
-    this._scrollChatToBottom()
-
-    // 5b. 启动倒计时 setInterval(每秒更新 m.undoCountdown)+ 写库后立即刷新首页
-    if (assistant.undoable) {
-      this._startUndoCountdown()
-      this.loadData(true)  // 立刻刷新首页数据(force 跳过缓存;云函数写库不触发 dbApi.invalidate)
-    }
-
-    // 6. 持久化前先截断 globalData(恒 ≤50 条,与 chatStorage 上限一致),
-    //    保证冷启动恢复 / 两页共享 / 撤销倒计时索引三处一致
-    app.globalData.chatMessages = app.globalData.chatMessages.slice(-50)
-    chatStorage.save(app.globalData.chatMessages)
   },
 
   /**
@@ -633,53 +975,9 @@ Page({
     if (this.data.chatSending) return
     const saved = this.data.chatInput
     this.setData({ chatInput: '再记' }, () => {
-      this.sendAiChat()
+      this.sendChat()
       this.setData({ chatInput: saved })
     })
-  },
-
-  /**
-   * 撤销账本君刚记的那一笔(15s 撤销窗口内的气泡)
-   * 按 toolResult.type 路由:
-   * - salary → dbApi.removeSalary (写 salary collection)
-   * - expense → dbApi.removeExpense (写 expenses collection)
-   * 软删除对应记录,更新消息内容 + undone 标记,刷新首页数据
-   */
-  async onUndoAiRecord(e) {
-    const ts = e.currentTarget.dataset.msgTs
-    const app = getApp()
-    const msgs = (app.globalData.chatMessages || []).slice()
-    const idx = msgs.findIndex((m) => m.ts === ts)
-    if (idx < 0) return
-    const msg = msgs[idx]
-    if (!msg.toolResult || !msg.toolResult.id || msg.undone) return
-    const isSalary = msg.toolResult.type === 'salary'
-    try {
-      if (isSalary) {
-        await dbApi.removeSalary(msg.toolResult.id)
-      } else {
-        await dbApi.removeExpense(msg.toolResult.id)
-      }
-      msg.undoable = false
-      msg.undone = true
-      msg.content = (msg.content || '') + ' · ✓ 已撤销'
-      app.globalData.chatMessages = msgs
-      this.setData({ chatMessages: msgs.slice() })
-      chatStorage.save(msgs)  // 同步持久化,记账页 / 冷启动重开也是"已撤销"状态
-      this.loadData(true)  // 顶部预算条 / 分类 chip 重新算(force 跳过缓存)
-    } catch (err) {
-      console.error('撤销失败', err)
-      wx.showToast({ title: '撤销失败', icon: 'none' })
-    }
-  },
-
-  /**
-   * 累加器:每次调用返回唯一值,避免 scroll-top 同值不触发。
-   * 记账页 _bumpScrollTop 同款实现,已验证可靠。
-   */
-  _bumpScrollTop(target) {
-    this._aiScrollBump = (this._aiScrollBump || 0) + 1
-    return target + this._aiScrollBump
   },
 
   /**
@@ -698,54 +996,6 @@ Page({
     setTimeout(() => {
       this.setData({ aiScrollTop: this._bumpScrollTop(99999) })
     }, 80)
-  },
-
-  /**
-   * 撤销气泡倒计时:每秒扫描 chatMessages,更新所有 undoable 消息的 undoCountdown。
-   * - 到期(undoExpireAt 已过):自动 undoable=false,气泡消失
-   * - 所有 undoable 都处理完(撤销 or 到期):清 timer,避免空转
-   * - setData 走精确路径(chatMessages[i].undoCountdown),不重渲染整个列表
-   *
-   * 多个消息同时在 15s 窗口:timer 只起一次(去重),所有 m 一起倒计时
-   */
-  _startUndoCountdown() {
-    if (this._undoTimer) return  // 已有 timer 在跑,不重复起
-    const app = getApp()
-    this._undoTimer = setInterval(() => {
-      const msgs = (app.globalData.chatMessages || []).slice()
-      const now = Date.now()
-      const updates = {}
-      let stillRunning = false
-      msgs.forEach((m, i) => {
-        if (!m.undoable || m.undone) return
-        if (!m.undoExpireAt) {
-          stillRunning = true
-          return
-        }
-        if (now >= m.undoExpireAt) {
-          // 到期
-          m.undoable = false
-          updates[`chatMessages[${i}].undoable`] = false
-        } else {
-          // 还在窗口内
-          const remain = Math.max(0, Math.ceil((m.undoExpireAt - now) / 1000))
-          if (m.undoCountdown !== remain) {
-            m.undoCountdown = remain
-            updates[`chatMessages[${i}].undoCountdown`] = remain
-          }
-          stillRunning = true
-        }
-      })
-      if (Object.keys(updates).length > 0) {
-        app.globalData.chatMessages = msgs
-        this.setData(updates)
-      }
-      // 没消息在跑 → 清 timer
-      if (!stillRunning) {
-        clearInterval(this._undoTimer)
-        this._undoTimer = null
-      }
-    }, 1000)
   },
 
   /**
@@ -790,17 +1040,22 @@ Page({
       const m = noteByCat[k]
       m.set(n, (m.get(n) || 0) + (x.amount || 0))
     })
+    const budgetMap = (this.data.user && this.data.user.budgets) || {}
     const categories = catStats
       .filter((c) => c.amount > 0)
       .map((c) => {
         const topNotes = noteByCat[c.name]
           ? [...noteByCat[c.name].entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n]) => n)
           : []
-        return { name: c.name, amount: c.amount, percent: c.percent, topNotes, over: c.over }
+        const b = budgetMap[c.name]
+        return {
+          name: c.name, amount: c.amount, percent: c.percent, topNotes, over: c.over,
+          budget: typeof b === 'number' && b > 0 ? b : 0  // 分类预算,让 AI 算"还剩多少能花"
+        }
       })
     const expense = board._expenseNum || 0
     const income = board._incomeNum || 0
-    const balance = (board._balanceNum || 0) * (board.balancePositive ? 1 : -1)
+    const balance = income - expense
     const savingsRate = income > 0 ? Math.max(0, Math.round((balance / income) * 100)) : 0
     const trend = (this.data.trend || []).map((t) => ({
       month: t.month,
@@ -817,8 +1072,14 @@ Page({
       income,
       expense,
       balance,
+      available: board._availableNum || 0,
+      dailyBudget: this.data.daily ? this.data.daily.amount : null,  // 日均可花(含预算约束),AI 可直接答「我今天能花多少」
+      streakDays: this.data.streak ? this.data.streak.count : 0,     // 连续记账天数,AI 可做鼓励
+      paydaySet: !!this.data.paydaySet,   // 发薪日是否已设置:未设置时 AI 不应按默认值谈「距发薪」,优先引导设置
+      payday: (this.data.user && this.data.user.payday) || 0,  // 发薪日(每月几号,0=未设置):AI 可直接答「发薪日是哪天」
+      hasRecorded: !!this.data.hasRecorded, // 是否记过账:新用户 AI 优先引导记首笔而非分析数据
       savingsRate,
-      // 近 6 个月趋势(loadData 现成算好的 trend 数组透传):
+      // 近 12 个月趋势(loadData 现成算好的 trend 数组透传):
       // 让 AI 不用工具就能答"最近几个月走势 / 上个月花了多少"类问题
       trend,
       prevMonthExpense,
@@ -958,7 +1219,7 @@ Page({
     // 结余
     ctx.fillStyle = SUB
     ctx.font = '26px sans-serif'
-    ctx.fillText('本月结余', center, 292)
+    ctx.fillText('可用余额', center, 292)
     ctx.fillStyle = b.balancePositive ? GOLD : RED
     ctx.font = 'bold 92px "DIN Alternate", sans-serif'
     ctx.fillText(`${b.balancePositive ? '+' : '−'}¥${util.moneyThousand(b._balanceNum)}`, center, 398)
@@ -971,14 +1232,13 @@ Page({
     ctx.lineTo(W - 80, 470)
     ctx.stroke()
 
-    // 收入 / 支出 / 已还 三列
+    // 收入 / 支出 两列
     const cols = [
       { label: '收入', val: b._incomeNum },
-      { label: '支出', val: b._expenseNum },
-      { label: '已还', val: b._repayNum }
+      { label: '支出', val: b._expenseNum }
     ]
     cols.forEach((c, i) => {
-      const x = 125 + i * 250
+      const x = 250 + i * 250
       ctx.fillStyle = SUB
       ctx.font = '24px sans-serif'
       ctx.fillText(c.label, x, 542)
@@ -1009,7 +1269,7 @@ Page({
     // 底部
     ctx.fillStyle = 'rgba(255,255,255,0.35)'
     ctx.font = '24px sans-serif'
-    ctx.fillText('收入 − 支出 − 已还 = 结余', center, 836)
+    ctx.fillText('结转 + 收入 − 支出 = 可用', center, 836)
     const nick = (user.nickname || '').trim()
     ctx.fillStyle = GOLD
     ctx.font = '26px sans-serif'
@@ -1105,10 +1365,10 @@ Page({
     }
   },
 
-  /* ---------- 近 6 个月收支趋势图 ---------- */
+  /* ---------- 收支趋势图（数据取 trend 最近 6 个月，柱密不挤） ---------- */
   /** canvas 2d 绘制：收入/支出双柱 + 结余折线（金色，可跌破零轴），带生长动画 */
   async drawTrend() {
-    const list = this.data.trend || []
+    const list = (this.data.trend || []).slice(-6)
     if (!list.length) return
     const query = this.createSelectorQuery()
     const res = await new Promise((resolve) => query.select('#trendCanvas').fields({ node: true, size: true }).exec(resolve))
@@ -1129,9 +1389,9 @@ Page({
     }
     this._trendCanvas = canvas
 
-    // 取主题色（深色模式用浅色系以保证对比度）
+    // 取生效主题色（深色模式用浅色系以保证对比度；手动指定主题时优先生效主题）
     const app = getApp()
-    const isDark = app && app.globalData && app.globalData.theme === 'dark'
+    const isDark = app.resolvedTheme() === 'dark'
     const NAVY = isDark ? '#8AA4C2' : '#14304F'
     const RED = isDark ? '#E55858' : '#BE4A3A'
     const GOLD = isDark ? '#E5C26B' : '#C8A04D'

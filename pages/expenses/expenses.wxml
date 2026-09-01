@@ -1,4 +1,4 @@
-<view class="page {{pageLocked ? 'page-locked' : ''}}">
+<view class="page {{pageLocked ? 'page-locked' : ''}} {{themeClass}}">
   <!-- 自定义导航栏（navigationStyle: custom），跟随系统主题 -->
   <view class="navbar" style="padding-top: {{statusBarHeight}}px;">
     <view class="navbar-inner">
@@ -61,32 +61,8 @@
       </view>
     </view>
 
-    <!-- 消费日历热力图(入口) -->
-    <view class="card heatmap-card" bindtap="openHeatmap">
-      <view class="heatmap-card-head">
-        <view class="heatmap-card-titles">
-          <view class="card-title">消费日历</view>
-          <view class="heatmap-card-sub">{{heatmapSubText}}</view>
-        </view>
-        <view class="heatmap-card-arrow">›</view>
-      </view>
-      <view class="heatmap-preview">
-        <view wx:for="{{heatmapPreview}}" wx:key="date"
-              class="heatmap-mini-cell heat-{{item.level}}"></view>
-      </view>
-      <view class="heatmap-legend">
-        <text class="legend-text">少</text>
-        <view class="legend-cell heat-0"></view>
-        <view class="legend-cell heat-1"></view>
-        <view class="legend-cell heat-2"></view>
-        <view class="legend-cell heat-3"></view>
-        <view class="legend-cell heat-4"></view>
-        <text class="legend-text">多</text>
-      </view>
-    </view>
-
-    <!-- 分类占比 -->
-    <view class="card">
+    <!-- 分类占比：本月有消费才展示（用数值 _monthTotalNum 判断——monthTotal 是动画后的带前缀字符串 '¥0.00'，字符串比较不可靠） -->
+    <view class="card" wx:if="{{_monthTotalNum > 0}}">
       <view class="card-title">分类占比</view>
       <view wx:for="{{catStats}}" wx:key="name" class="cat-row" wx:if="{{item.amount > 0}}">
         <view class="cat-name">{{item.name}}</view>
@@ -95,18 +71,8 @@
         </view>
         <view class="cat-amount">¥{{item.amountText}} ({{item.percent}}%)</view>
       </view>
-      <view wx:if="{{!monthTotal || monthTotal === '0.00'}}" class="empty">{{isThisMonth ? '本月' : '该月'}}还没有开销记录</view>
     </view>
 
-    <!-- 固定支出 -->
-    <view class="card recur-card" bindtap="openRecur">
-      <view class="card-title">每月固定支出</view>
-      <view class="recur-summary">
-        <view class="recur-total">¥{{recurTotal}}</view>
-        <view class="recur-sub">{{recurCount}} 项 · 付了才点确认</view>
-      </view>
-      <view class="recur-hint">设成模板，每月支付后点一下「记入本月」，不自动记账 ›</view>
-    </view>
 
     <!-- 流水列表 -->
     <view class="card">
@@ -173,76 +139,6 @@
     </view>
   </view>
 
-  <!-- 固定支出管理弹层 -->
-  <view wx:if="{{showRecur}}" class="mask {{showRecurClosing ? 'mask-out' : ''}}" bindtap="closeRecur"></view>
-  <view wx:if="{{showRecur}}" class="sheet {{showRecurClosing ? 'sheet-out' : ''}}">
-    <view class="sheet-title">每月固定支出</view>
-    <view class="recur-tip">模板不会自动记账，每月实际支付后点「记入本月」</view>
-
-    <block wx:if="{{recurList.length}}">
-      <view wx:for="{{recurList}}" wx:key="_id" class="recur-row">
-        <view class="recur-info">
-          <view class="recur-name">{{item.name}}</view>
-          <view class="recur-meta">{{item.category}}<text wx:if="{{item.recordedThisMonth}}" class="recur-done-text"> · 本月已记 ✓</text></view>
-          <view class="recur-auto">
-            <text class="recur-auto-label">每月自动落账</text>
-            <switch checked="{{item.autoRecord === true}}" bindchange="toggleAutoRecord" data-id="{{item._id}}" color="#C8A04D" />
-          </view>
-        </view>
-        <view class="recur-right">
-          <view class="recur-amount">¥{{item.amountText}}</view>
-          <view
-            class="recur-record {{item.recordedThisMonth ? 'done' : ''}}"
-            bindtap="recordRecurringItem"
-            data-id="{{item._id}}"
-            data-name="{{item.name}}"
-            data-amount="{{item.amountText}}"
-            data-recorded="{{item.recordedThisMonth}}"
-          >{{item.recordedThisMonth ? '已记' : '记入本月'}}</view>
-        </view>
-        <view class="recur-del" bindtap="removeRecurringItem" data-id="{{item._id}}" data-name="{{item.name}}">删除</view>
-      </view>
-    </block>
-    <view wx:else class="empty">还没有固定支出，点下方添加</view>
-
-    <view class="sheet-actions">
-      <view class="btn btn-primary" bindtap="openRecurForm">＋ 添加固定支出</view>
-    </view>
-  </view>
-
-  <!-- 固定支出发布表单 -->
-  <view wx:if="{{showRecurForm}}" class="mask {{showRecurFormClosing ? 'mask-out' : ''}}" bindtap="closeRecurForm"></view>
-  <view wx:if="{{showRecurForm}}" class="sheet {{showRecurFormClosing ? 'sheet-out' : ''}}">
-    <view class="sheet-title">添加固定支出</view>
-    <view class="recur-tip">仅保存为模板，不会自动记账，每月支付后再手动确认</view>
-
-    <view class="form-item">
-      <text class="form-label">名称</text>
-      <input class="form-input" placeholder="如：视频会员 / 物业管理费" value="{{rName}}" bindinput="onRNameInput" />
-    </view>
-
-    <view class="form-item">
-      <text class="form-label">金额（元 / 每月）</text>
-      <input class="form-input" type="digit" placeholder="0.00" value="{{rAmount}}" bindinput="onRAmountInput" />
-    </view>
-
-    <view class="form-item">
-      <text class="form-label">分类</text>
-      <view class="cat-chips">
-        <view
-          wx:for="{{categories}}"
-          wx:key="*this"
-          class="chip {{rCategory === item ? 'chip-active' : ''}}"
-          bindtap="onRCategoryTap"
-          data-cat="{{item}}"
-        >{{item}}</view>
-      </view>
-    </view>
-
-    <view class="sheet-actions">
-      <view class="btn btn-primary" bindtap="saveRecurring">{{recurSaving ? '保存中…' : '保存'}}</view>
-    </view>
-  </view>
 
   <!-- 本月账单 sheet -->
   <view wx:if="{{showStatement}}" class="mask {{showStatementClosing ? 'mask-out' : ''}}" bindtap="closeStatement"></view>
@@ -255,8 +151,9 @@
     <view class="stmt-hero">
       <view class="stmt-hero-top">
         <view class="stmt-hero-main">
-          <view class="stmt-hero-label">本月结余</view>
+          <view class="stmt-hero-label">可用余额</view>
           <view class="stmt-hero-num {{statement.balanceSign === '+' ? 'pos' : 'neg'}}">{{statement.balanceSign}}¥{{statement.balanceText}}</view>
+          <view wx:if="{{statement.carriedOverText}}" class="stmt-carry-hint">{{statement.carriedOverText}}</view>
         </view>
         <view class="stmt-hero-badge">
           <view class="shb-num">{{statement.savingsRateText}}</view>
@@ -266,15 +163,11 @@
       <view class="stmt-hero-grid">
         <view class="shg-item">
           <view class="shg-num gold">¥{{statement.incomeText}}</view>
-          <view class="shg-label">收入</view>
+          <view class="shg-label">累计收入</view>
         </view>
         <view class="shg-item">
           <view class="shg-num">¥{{statement.expenseText}}</view>
-          <view class="shg-label">支出</view>
-        </view>
-        <view class="shg-item">
-          <view class="shg-num">¥{{statement.repayText}}</view>
-          <view class="shg-label">已还</view>
+          <view class="shg-label">累计支出</view>
         </view>
       </view>
     </view>
@@ -308,7 +201,7 @@
     <!-- AI 解读卡 -->
     <view id="stmt-insight" class="stmt-insight">
       <view class="stmt-insight-head">
-        <view class="stmt-insight-avatar">账</view>
+        <view class="stmt-insight-avatar"><image class="stmt-insight-avatar-img" src="/static/avatar/avatar-c-200.png" mode="aspectFill" /></view>
         <view class="stmt-insight-title">账本君</view>
         <view class="stmt-insight-src">
           <text wx:if="{{statement.insightSource === 'loading'}}">思考中…</text>
@@ -339,21 +232,20 @@
         <scroll-view class="stmt-chat-history" scroll-y="{{true}}" scroll-into-view="{{chatScrollIntoView}}" scroll-with-animation="{{true}}">
           <block wx:for="{{chatMessages}}" wx:key="ts" wx:for-item="m">
             <view id="msg-{{m.ts}}" class="stmt-chat-msg {{m.role === 'user' ? 'mine' : 'his'}}">
-              <view wx:if="{{m.role === 'assistant'}}" class="chat-avatar">账</view>
+              <view wx:if="{{m.role === 'assistant'}}" class="chat-avatar"><image class="chat-avatar-img" src="/static/avatar/avatar-c-200.png" mode="aspectFill" /></view>
               <view class="stmt-chat-bubble-wrap">
                 <text class="stmt-chat-bubble">{{m.content}}</text>
                 <!-- 账本君记账成功 → 5s 倒计时撤销窗口(气泡显示金额/分类/剩余秒数) -->
                 <view wx:if="{{m.undoable && !m.undone}}" class="stmt-chat-undo"
                       bindtap="onUndoAiRecord" data-msg-ts="{{m.ts}}" hover-class="stmt-chat-undo-hover">
-                  <text wx:if="{{m.toolResult.type === 'salary' && m.toolResult.salary.source === 'side'}}">副业 ¥{{m.toolResult.salary.amount}} · {{m.undoCountdown}}s 内撤销</text>
-                  <text wx:elif="{{m.toolResult.type === 'salary'}}">工资 ¥{{m.toolResult.salary.amount}} · {{m.undoCountdown}}s 内撤销</text>
+                  <text wx:if="{{m.toolResult.type === 'salary'}}">{{m.toolResult.salary.label || '收入'}} ¥{{m.toolResult.salary.amount}} · {{m.undoCountdown}}s 内撤销</text>
                   <text wx:elif="{{m.toolResult.expense}}">{{m.toolResult.expense.category}} ¥{{m.toolResult.expense.amount}} · {{m.undoCountdown}}s 内撤销</text>
                 </view>
               </view>
             </view>
           </block>
           <view wx:if="{{chatSending}}" id="msg-sending" class="stmt-chat-msg his loading">
-            <view class="chat-avatar">账</view>
+            <view class="chat-avatar"><image class="chat-avatar-img" src="/static/avatar/avatar-c-200.png" mode="aspectFill" /></view>
             <view class="stmt-insight-spinner"></view>
             <text>账本君在想…</text>
           </view>
@@ -414,85 +306,5 @@
     </view>
   </view>
 
-  <!-- 消费日历 sheet -->
-  <view wx:if="{{showHeatmap}}" class="mask {{showHeatmapClosing ? 'mask-out' : ''}}" bindtap="closeHeatmap"></view>
-  <view wx:if="{{showHeatmap}}" class="sheet heatmap-sheet {{showHeatmapClosing ? 'sheet-out' : ''}}">
-    <view class="sheet-title">消费日历</view>
 
-    <view class="heatmap-tabs">
-      <view class="heatmap-tab {{heatmapRange === 'q' ? 'active' : ''}}"
-            bindtap="switchHeatmapRange" data-range="q">近 3 月</view>
-      <view class="heatmap-tab {{heatmapRange === 'h' ? 'active' : ''}}"
-            bindtap="switchHeatmapRange" data-range="h">近半年</view>
-      <view class="heatmap-tab {{heatmapRange === 'y' ? 'active' : ''}}"
-            bindtap="switchHeatmapRange" data-range="y">近一年</view>
-    </view>
-
-    <scroll-view class="heatmap-scroll" scroll-x="{{true}}">
-      <view class="heatmap-grid-wrap">
-        <view class="heatmap-months">
-          <block wx:for="{{heatmapMonthLabels}}" wx:key="weekIndex" wx:for-item="ml">
-            <view class="heatmap-month-label" style="left: {{ml.left}}rpx;">{{ml.label}}</view>
-          </block>
-        </view>
-        <view class="heatmap-grid">
-          <block wx:for="{{heatmapGrid}}" wx:for-item="week" wx:key="weekIndex">
-            <view class="heatmap-col">
-              <block wx:for="{{week}}" wx:key="date" wx:for-item="cell">
-                <view class="heatmap-cell heat-{{cell.level}} {{cell.today ? 'today' : ''}}"
-                      bindtap="tapHeatmapCell" data-date="{{cell.date}}" data-amount="{{cell.amount}}"></view>
-              </block>
-            </view>
-          </block>
-        </view>
-      </view>
-    </scroll-view>
-
-    <view wx:if="{{heatmapStats}}" class="heatmap-stats">
-      <view class="hs-item">
-        <view class="hs-num">{{heatmapStats.totalDays}}</view>
-        <view class="hs-label">有开销天数</view>
-      </view>
-      <view class="hs-item">
-        <view class="hs-num">¥{{heatmapStats.totalAmountText}}</view>
-        <view class="hs-label">总开销</view>
-      </view>
-      <view class="hs-item">
-        <view class="hs-num">¥{{heatmapStats.avgAmountText}}</view>
-        <view class="hs-label">日均</view>
-      </view>
-      <view class="hs-item">
-        <view class="hs-num">{{heatmapStats.maxDay}}</view>
-        <view class="hs-label">最高单日</view>
-      </view>
-    </view>
-
-    <view class="sheet-actions">
-      <view class="btn btn-primary" bindtap="closeHeatmap">收下</view>
-    </view>
-  </view>
-
-  <!-- 单日流水明细 sheet -->
-  <view wx:if="{{showHeatmapDay}}" class="mask {{showHeatmapDayClosing ? 'mask-out' : ''}}" bindtap="closeHeatmapDay"></view>
-  <view wx:if="{{showHeatmapDay}}" class="sheet heatmap-day-sheet {{showHeatmapDayClosing ? 'sheet-out' : ''}}">
-    <view class="sheet-title">{{heatmapDay.date}} 流水</view>
-    <view class="heatmap-day-total">共 ¥{{heatmapDay.totalText}} · {{heatmapDay.count}} 笔</view>
-    <block wx:if="{{heatmapDay.items.length}}">
-      <view wx:for="{{heatmapDay.items}}" wx:key="_id" class="row">
-        <view class="row-left">
-          <view class="row-top">
-            <view class="tag tag-navy">{{item.category}}</view>
-            <text class="row-note" wx:if="{{item.note}}">{{item.note}}</text>
-          </view>
-        </view>
-        <view class="row-right">
-          <view class="row-amount">¥{{item.amountText}}</view>
-        </view>
-      </view>
-    </block>
-    <view wx:else class="empty">这天没有开销</view>
-    <view class="sheet-actions">
-      <view class="btn btn-primary" bindtap="closeHeatmapDay">收下</view>
-    </view>
-  </view>
 </view>

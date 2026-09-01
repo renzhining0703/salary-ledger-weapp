@@ -1,6 +1,6 @@
-<view class="page">
+<view class="page {{themeClass}}">
 
-  <!-- 自定义导航栏（navigationStyle: custom），跟随系统主题 -->
+  <!-- 自定义导航栏（navigationStyle: custom），跟随生效主题 -->
   <view class="navbar" style="padding-top: {{statusBarHeight}}px;">
     <view class="navbar-inner">
       <view class="navbar-title">我的</view>
@@ -20,13 +20,16 @@
     </view>
     <view class="my-user-meta">
       <view class="my-nick-display {{formNickname ? '' : 'is-empty'}}">{{formNickname || '点此设置昵称'}}</view>
-      <view class="my-user-sub">{{user.salaryRemindSubscribed ? '账本君会在发薪日主动关心你' : '每月 ' + formPayday + ' 号发薪'}}</view>
+      <view class="my-user-motto" catchtap="openMottoEdit">
+        <text class="motto-text">{{formMotto || defaultMotto}}</text>
+        <text class="motto-edit-icon">✎</text>
+      </view>
     </view>
   </view>
 
-  <!-- 资产：信用卡从 tabBar 移入，独立页面承载 -->
+  <!-- 资产与账单：信用卡 + 每月固定支出 -->
   <view class="card my-group">
-    <view class="my-group-title">资产</view>
+    <view class="my-group-title">资产与账单</view>
     <view class="my-row" bindtap="goCards">
       <view class="my-row-main">
         <view class="my-row-label">信用卡管理</view>
@@ -34,11 +37,30 @@
       </view>
       <view class="my-row-arrow">›</view>
     </view>
+    <view class="my-row" bindtap="openRecur">
+      <view class="my-row-main">
+        <view class="my-row-label">每月固定支出</view>
+        <view class="my-row-desc">{{recurCount > 0 ? recurCount + ' 项 · 每月 ¥' + recurTotal : '设成模板，付了才点确认'}}</view>
+      </view>
+      <view class="my-row-arrow">›</view>
+    </view>
   </view>
 
-  <!-- 提醒 -->
+  <!-- 数据概览：消费日历（一行入口，完整月历/热力/单日明细在 pages/calendar） -->
   <view class="card my-group">
-    <view class="my-group-title">提醒</view>
+    <view class="my-group-title">数据概览</view>
+    <view class="my-row" bindtap="goCalendar">
+      <view class="my-row-main">
+        <view class="my-row-label">消费日历</view>
+        <view class="my-row-desc">{{heatmapSubText}}</view>
+      </view>
+      <view class="my-row-arrow">›</view>
+    </view>
+  </view>
+
+  <!-- 提醒与规则：推送开关 + 发薪日/预算等记账规则 -->
+  <view class="card my-group">
+    <view class="my-group-title">提醒与规则</view>
     <view class="my-row" bindtap="subscribeRemind">
       <view class="my-row-main">
         <view class="my-row-label">还款提醒</view>
@@ -53,11 +75,6 @@
       </view>
       <switch class="my-switch" checked="{{user.salaryRemindSubscribed === true}}" bindchange="onSalaryRemindToggle" color="#C8A04D" />
     </view>
-  </view>
-
-  <!-- 偏好设置 -->
-  <view class="card my-group">
-    <view class="my-group-title">偏好设置</view>
     <picker mode="selector" range="{{paydayRange}}" value="{{formPayday - 1}}" bindchange="onPaydayChange">
       <view class="my-row">
         <view class="my-row-main">
@@ -67,12 +84,36 @@
         <view class="my-row-arrow">›</view>
       </view>
     </picker>
-    <view class="my-row">
+    <view class="my-row" bindtap="openBudgetEdit">
       <view class="my-row-main">
-        <view class="my-row-label">每月开销预算（元）</view>
+        <view class="my-row-label">每月开销预算</view>
       </view>
-      <input class="my-row-input" type="number" placeholder="如 4000" value="{{formBudget}}" bindinput="onBudgetInput" />
+      <view class="my-row-val">{{formBudget ? '¥' + formBudget : '未设置'}}</view>
+      <view class="my-row-arrow">›</view>
     </view>
+    <view class="my-row" bindtap="openCatBudgets">
+      <view class="my-row-main">
+        <view class="my-row-label">分类预算</view>
+        <view class="my-row-desc">给餐饮、购物等分类单独设月度上限</view>
+      </view>
+      <view class="my-row-val">{{catBudgetSetCount > 0 ? '已设 ' + catBudgetSetCount + ' 项' : '去设置'}}</view>
+      <view class="my-row-arrow">›</view>
+    </view>
+  </view>
+
+  <!-- 偏好设置 -->
+  <view class="card my-group">
+    <view class="my-group-title">偏好设置</view>
+    <picker range="{{themeOptions}}" value="{{themeIndex}}" bindchange="onThemeModeChange">
+      <view class="my-row">
+        <view class="my-row-main">
+          <view class="my-row-label">外观主题</view>
+          <view class="my-row-desc">深色护眼，浅色清爽</view>
+        </view>
+        <view class="my-row-val">{{themeOptions[themeIndex]}}</view>
+        <view class="my-row-arrow">›</view>
+      </view>
+    </picker>
     <picker range="{{privacyOptions}}" value="{{privacyIndex}}" bindchange="onPrivacyChange">
       <view class="my-row">
         <view class="my-row-main">
@@ -83,7 +124,6 @@
         <view class="my-row-arrow">›</view>
       </view>
     </picker>
-    <view class="btn btn-primary my-save-btn" bindtap="saveProfile">{{saving ? '保存中…' : '保存资料与偏好'}}</view>
   </view>
 
   <!-- 数据 -->
@@ -132,6 +172,138 @@
     <view class="sheet-actions">
       <view class="btn btn-primary edit-save-btn" bindtap="saveEditProfile">{{editSaving ? '保存中…' : '保存'}}</view>
       <view class="edit-cancel" bindtap="closeEditProfile">取消</view>
+    </view>
+  </view>
+
+  <!-- 总预算编辑 sheet -->
+  <view wx:if="{{showBudgetEdit}}" class="mask {{showBudgetEditClosing ? 'mask-out' : ''}}" bindtap="closeBudgetEdit"></view>
+  <view wx:if="{{showBudgetEdit}}" class="sheet cat-budget-sheet {{showBudgetEditClosing ? 'sheet-out' : ''}}">
+    <view class="sheet-title">每月开销预算</view>
+    <view class="form-item">
+      <text class="form-label">预算金额（元）</text>
+      <input class="form-input my-amount-input" type="digit" placeholder="如 4000" value="{{budgetEditInput}}" bindinput="onBudgetEditInput" focus="{{budgetEditFocus}}" adjust-position="{{true}}" cursor-spacing="20" hold-keyboard="{{true}}" />
+    </view>
+    <view class="sheet-actions">
+      <view class="btn btn-primary" bindtap="saveBudgetEdit">保存</view>
+    </view>
+  </view>
+
+  <!-- 签名编辑 sheet -->
+  <view wx:if="{{showMottoEdit}}" class="mask {{showMottoEditClosing ? 'mask-out' : ''}}" bindtap="closeMottoEdit"></view>
+  <view wx:if="{{showMottoEdit}}" class="sheet motto-edit-sheet {{showMottoEditClosing ? 'sheet-out' : ''}}">
+    <view class="sheet-title">修改签名</view>
+    <view class="form-item">
+      <text class="form-label">个性签名</text>
+      <input class="form-input motto-input" placeholder="写一句属于你的话" value="{{mottoEditInput}}" bindinput="onMottoEditInput" focus="{{mottoEditFocus}}" maxlength="30" adjust-position="{{true}}" cursor-spacing="20" hold-keyboard="{{true}}" />
+    </view>
+    <view class="sheet-actions">
+      <view class="btn btn-primary" bindtap="saveMottoEdit">保存</view>
+    </view>
+  </view>
+
+  <!-- 分类预算列表 sheet（提醒与规则 → 分类预算）：全分类可设，不依赖当月有没有消费 -->
+  <view wx:if="{{showCatBudgets}}" class="mask {{showCatBudgetsClosing ? 'mask-out' : ''}}" bindtap="closeCatBudgets"></view>
+  <view wx:if="{{showCatBudgets}}" class="sheet cat-budgets-sheet {{showCatBudgetsClosing ? 'sheet-out' : ''}}">
+    <view class="sheet-title">分类预算</view>
+    <view class="cat-budgets-hint">点击分类设置月度预算，超支时首页会提醒你</view>
+    <view wx:for="{{catBudgetRows}}" wx:key="name" class="cat-budget-row" bindtap="onCatRowTap" data-cat="{{item.name}}" hover-class="cat-budget-row-hover">
+      <view class="cat-budget-row-main">
+        <view class="cat-budget-row-name">{{item.name}}</view>
+        <view class="cat-budget-row-spent">本月已花 ¥{{item.spentText}}</view>
+      </view>
+      <view class="cat-budget-chip {{item.budget > 0 ? 'set' : 'unset'}} {{item.over ? 'over' : ''}}">
+        <text wx:if="{{item.budget > 0}}">¥{{item.budgetText}}{{item.over ? ' · 超' : ''}}</text>
+        <text wx:else>+ 预算</text>
+      </view>
+      <view class="my-row-arrow">›</view>
+    </view>
+  </view>
+
+  <!-- 单个分类预算编辑 sheet（列表 sheet 内点某分类弹出） -->
+  <view wx:if="{{showCatBudget}}" class="mask {{showCatBudgetClosing ? 'mask-out' : ''}}" bindtap="closeCatBudget"></view>
+  <view wx:if="{{showCatBudget}}" class="sheet cat-budget-sheet {{showCatBudgetClosing ? 'sheet-out' : ''}}">
+    <view class="sheet-title">「{{catBudgetEditing.name}}」月度预算</view>
+    <view class="cat-budget-hint">
+      本月已花 ¥{{catBudgetEditing.spentText}}<text wx:if="{{catBudgetEditing.budget > 0}}"> · 剩 ¥{{catBudgetEditing.remainingText}}</text>
+    </view>
+    <view class="form-item">
+      <text class="form-label">预算金额（元）</text>
+      <input class="form-input my-amount-input" type="digit" placeholder="如 1500" value="{{catBudgetInput}}" bindinput="onCatBudgetInput" focus="{{catBudgetFocus}}" adjust-position="{{true}}" cursor-spacing="20" hold-keyboard="{{true}}" />
+    </view>
+    <view class="sheet-actions">
+      <view wx:if="{{catBudgetEditing.budget > 0}}" class="btn btn-secondary cat-budget-clear-btn" bindtap="clearCatBudget">清除预算</view>
+      <view class="btn btn-primary" bindtap="saveCatBudget">保存</view>
+    </view>
+  </view>
+
+  <!-- 固定支出管理弹层 -->
+  <view wx:if="{{showRecur}}" class="mask {{showRecurClosing ? 'mask-out' : ''}}" bindtap="closeRecur"></view>
+  <view wx:if="{{showRecur}}" class="sheet {{showRecurClosing ? 'sheet-out' : ''}}">
+    <view class="sheet-title">每月固定支出</view>
+    <view class="recur-tip">模板不会自动记账，每月实际支付后点「记入本月」</view>
+
+    <block wx:if="{{recurList.length}}">
+      <view wx:for="{{recurList}}" wx:key="_id" class="recur-row">
+        <view class="recur-info">
+          <view class="recur-name">{{item.name}}</view>
+          <view class="recur-meta">{{item.category}}<text wx:if="{{item.recordedThisMonth}}" class="recur-done-text"> · 本月已记 ✓</text></view>
+          <view class="recur-auto">
+            <text class="recur-auto-label">每月自动落账</text>
+            <switch checked="{{item.autoRecord === true}}" bindchange="toggleAutoRecord" data-id="{{item._id}}" color="#C8A04D" />
+          </view>
+        </view>
+        <view class="recur-right">
+          <view class="recur-amount">¥{{item.amountText}}</view>
+          <view
+            class="recur-record {{item.recordedThisMonth ? 'done' : ''}}"
+            bindtap="recordRecurringItem"
+            data-id="{{item._id}}"
+            data-name="{{item.name}}"
+            data-amount="{{item.amountText}}"
+            data-recorded="{{item.recordedThisMonth}}"
+          >{{item.recordedThisMonth ? '已记' : '记入本月'}}</view>
+        </view>
+        <view class="recur-del" bindtap="removeRecurringItem" data-id="{{item._id}}" data-name="{{item.name}}">删除</view>
+      </view>
+    </block>
+    <view wx:else class="empty">还没有固定支出，点下方添加</view>
+
+    <view class="sheet-actions">
+      <view class="btn btn-primary" bindtap="openRecurForm">＋ 添加固定支出</view>
+    </view>
+  </view>
+
+  <!-- 固定支出发布表单 -->
+  <view wx:if="{{showRecurForm}}" class="mask {{showRecurFormClosing ? 'mask-out' : ''}}" bindtap="closeRecurForm"></view>
+  <view wx:if="{{showRecurForm}}" class="sheet {{showRecurFormClosing ? 'sheet-out' : ''}}">
+    <view class="sheet-title">添加固定支出</view>
+    <view class="recur-tip">仅保存为模板，不会自动记账，每月支付后再手动确认</view>
+
+    <view class="form-item">
+      <text class="form-label">名称</text>
+      <input class="form-input" placeholder="如：视频会员 / 物业管理费" value="{{rName}}" bindinput="onRNameInput" />
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">金额（元 / 每月）</text>
+      <input class="form-input" type="digit" placeholder="0.00" value="{{rAmount}}" bindinput="onRAmountInput" />
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">分类</text>
+      <view class="cat-chips">
+        <view
+          wx:for="{{categories}}"
+          wx:key="*this"
+          class="chip {{rCategory === item ? 'chip-active' : ''}}"
+          bindtap="onRCategoryTap"
+          data-cat="{{item}}"
+        >{{item}}</view>
+      </view>
+    </view>
+
+    <view class="sheet-actions">
+      <view class="btn btn-primary" bindtap="saveRecurring">{{recurSaving ? '保存中…' : '保存'}}</view>
     </view>
   </view>
 </view>

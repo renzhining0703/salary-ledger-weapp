@@ -5,6 +5,7 @@
  */
 const config = require('./utils/config')
 const chatStorage = require('./utils/chatStorage')
+const themeUtil = require('./utils/theme')
 
 App({
   globalData: {
@@ -14,6 +15,7 @@ App({
     loginReady: false,
     lastUnlockTs: 0, // 最近一次成功解锁/设置的时间戳,守卫用
     theme: 'light', // 系统主题 'light' | 'dark'
+    themeMode: 'system', // 外观偏好 'system' | 'light' | 'dark'（我的页可改）
     // 账本君对话状态(首页 chat sheet + 记账页账单 sheet 内 chat 共用)
     // 冷启动从 storage 恢复最近 50 条,会话跨启动延续(撤销临时字段已在 save 时剥离)
     chatMessages: chatStorage.load(),
@@ -40,9 +42,17 @@ App({
     })
     // 主题检测（必须早于首屏渲染前完成）
     this.syncTheme()
+    // 外观偏好冷启动从 storage 恢复（不等云端 user，保证首帧就用上手动指定主题）
+    try {
+      this.globalData.themeMode = themeUtil.normalize(wx.getStorageSync('themeMode'))
+    } catch (e) { /* storage 异常时维持默认 system */ }
     wx.onThemeChange(({ theme }) => {
       this.globalData.theme = theme || 'light'
+      // 仅「跟随系统」模式需要联动刷新；手动指定时生效主题不变
+      if ((this.globalData.themeMode || 'system') !== 'system') return
       this.applyNavBarColor()
+      this.applyTabBar()
+      this.notifyPagesThemeChange()
     })
     this.loginPromise = this.silentLogin().catch((e) => {
       console.error('静默登录异常', e)
@@ -64,6 +74,7 @@ App({
     // 每次回到前台再同步一次主题(系统设置可能在后台被改)
     this.syncTheme()
     this.applyNavBarColor()
+    this.applyTabBar()
     this.checkPrivacyLock()
     // 自动落账扫描：当月已扫过则跳过,避免每次切 tab 都查库
     this.maybeSweepAutoRecord()
@@ -107,17 +118,61 @@ App({
     }
   },
 
+  /** 最终生效主题：手动指定优先，否则跟随系统（canvas / chrome 统一取这个） */
+  resolvedTheme() {
+    const mode = this.globalData.themeMode || 'system'
+    if (mode === 'dark' || mode === 'light') return mode
+    return this.globalData.theme === 'dark' ? 'dark' : 'light'
+  },
+
   /**
-   * 同步导航栏颜色到当前主题（普通页：信用卡/回收站/锁）
+   * 同步导航栏颜色到生效主题（普通页：信用卡/回收站/锁）
    * 浅色模式:背景 #FFFFFF 文字黑色;深色模式:背景 #283A52(与自定义导航栏 --navy-800 同色)文字白色
    * 4 个 tab 页已改 navigationStyle: custom，本调用仅对普通页生效。
    */
   applyNavBarColor() {
-    const dark = this.globalData.theme === 'dark'
+    const dark = this.resolvedTheme() === 'dark'
     wx.setNavigationBarColor({
       frontColor: dark ? '#ffffff' : '#000000',
       backgroundColor: dark ? '#283A52' : '#FFFFFF',
-      animation: { duration: 0, timingFunc: 'linear' }
+      animation: { duration: 0, timingFunc: 'linear' },
+      fail: () => { /* 自定义导航页无系统导航栏，忽略 */ }
+    })
+  },
+
+  /**
+   * 同步 tabBar 颜色到生效主题。
+   * app.json 的 theme.json @变量只跟随系统，手动指定深/浅时需 JS 覆盖；
+   * 颜色与 theme.json 保持一致。非 tabBar 页调用会 fail，静默忽略。
+   */
+  applyTabBar() {
+    const dark = this.resolvedTheme() === 'dark'
+    wx.setTabBarStyle({
+      color: dark ? '#6E7B8E' : '#ADA294',
+      selectedColor: dark ? '#E5C26B' : '#2B2620',
+      backgroundColor: dark ? '#1A2532' : '#FBF7F0',
+      borderStyle: dark ? 'black' : 'white',
+      fail: () => { /* 非 tabBar 页忽略 */ }
+    })
+  },
+
+  /**
+   * 切换外观偏好（我的页 picker 调用）：
+   * storage + globalData 立即生效，并同步 chrome（导航栏/tabBar）
+   * 与当前页面栈（页面各自 applyTheme 刷根节点 class / 重绘 canvas）。
+   * 云端持久化由调用方负责（updateMyUser({ themeMode })）。
+   */
+  setThemeMode(mode) {
+    this.globalData.themeMode = themeUtil.setMode(mode)
+    this.applyNavBarColor()
+    this.applyTabBar()
+    this.notifyPagesThemeChange()
+  },
+
+  /** 通知页面栈内所有页面刷新主题呈现（页面实现 applyTheme 即可） */
+  notifyPagesThemeChange() {
+    getCurrentPages().forEach((p) => {
+      if (p && typeof p.applyTheme === 'function') p.applyTheme()
     })
   },
 
@@ -163,6 +218,12 @@ App({
         await this.initUser(openid)
       } else {
         this.globalData.user = userRes.data[0]
+        // 跨设备同步外观偏好：本地仍是默认「跟随系统」时采纳云端配置
+        // （本地已手动指定则信本地——本机的修改一定也写过云端，只是可能有写入失败/延迟）
+        if ((this.globalData.themeMode || 'system') === 'system') {
+          const cloudMode = themeUtil.normalize(userRes.data[0].themeMode)
+          if (cloudMode !== 'system') this.setThemeMode(cloudMode)
+        }
       }
       this.globalData.loginReady = true
     } catch (e) {
@@ -192,12 +253,13 @@ App({
     const M1 = monthStr(-1)  // 上月
     const M2 = monthStr(-2)  // 上上月
 
-    // 用户配置：默认每月 15 号发薪、月预算 4000
+    // 用户配置：发薪日 0=未设置（新用户从空态引导开始）；示例数据用户视作已设置（完整体验）
+    // 存量老用户 payday 保持原值不动，仅新用户从 0 开始（设计稿 v3 数据链路整改）
     const userDoc = {
       openid,
       nickname: '',
       avatarUrl: '',
-      payday: 15,
+      payday: config.DEMO_DATA ? 15 : 0,
       budget: 4000,
       createdAt: db.serverDate(),
       updatedAt: db.serverDate()

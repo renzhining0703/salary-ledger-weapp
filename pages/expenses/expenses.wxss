@@ -246,145 +246,6 @@
   background: transparent;
 }
 
-/* 固定支出入口卡片 */
-.recur-card:active {
-  background: var(--press-bg);
-}
-
-.recur-summary {
-  display: flex;
-  align-items: baseline;
-  gap: 16rpx;
-  margin: 4rpx 0 8rpx;
-}
-
-.recur-total {
-  font-size: 44rpx;
-  font-weight: 800;
-  color: var(--navy-700);
-  font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
-}
-
-.recur-sub {
-  font-size: 24rpx;
-  color: var(--text-sub);
-}
-
-.recur-hint {
-  font-size: 24rpx;
-  color: var(--text-sub);
-}
-
-/* 固定支出管理弹层 */
-.recur-row {
-  display: flex;
-  align-items: center;
-  padding: 20rpx 0;
-  border-bottom: 1rpx solid var(--border-light);
-  gap: 16rpx;
-}
-
-.recur-row.inactive .recur-name,
-.recur-row.inactive .recur-meta,
-.recur-row.inactive .recur-amount {
-  color: var(--text-mute);
-}
-
-.recur-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.recur-name {
-  font-size: 30rpx;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.recur-meta {
-  font-size: 24rpx;
-  color: var(--text-sub);
-  margin-top: 4rpx;
-}
-
-.recur-right {
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-}
-
-.recur-amount {
-  font-size: 32rpx;
-  font-weight: 700;
-  color: var(--navy-700);
-  font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
-}
-
-.recur-del {
-  font-size: 24rpx;
-  color: var(--danger);
-  padding: 8rpx 4rpx;
-}
-
-.switch-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-/* form-tip 见 app.wxss 全局定义 */
-/* 手动确认记账按钮 */
-.recur-tip {
-  font-size: 24rpx;
-  color: var(--text-sub);
-  margin: -8rpx 0 16rpx;
-}
-
-.recur-record {
-  padding: 10rpx 24rpx;
-  font-size: 24rpx;
-  font-weight: 600;
-  color: var(--gold);
-  border: 2rpx solid var(--gold);
-  border-radius: 999rpx;
-  background: var(--tint-gold-06);
-  white-space: nowrap;
-}
-
-.recur-record:active {
-  background: var(--tint-gold-18);
-}
-
-.recur-record.done {
-  color: var(--text-mute);
-  border-color: var(--border);
-  background: var(--chip-bg);
-}
-
-.recur-done-text {
-  color: var(--gold);
-}
-
-/* 固定支出「每月自动落账」开关行 */
-.recur-auto {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 8rpx;
-  /* 避免按钮按下态被外层 .recur-row:active 干扰 */
-  pointer-events: auto;
-}
-
-.recur-auto-label {
-  font-size: 22rpx;
-  color: var(--text-sub);
-}
-
-/* switch 缩放:原生的 64rpx 偏大,缩到 56rpx 配合小字 label */
-.recur-auto switch {
-  transform: scale(0.85);
-  transform-origin: right center;
-}
 
 /* ---------- 月度总览卡「查看本月账单」入口 ---------- */
 .statement-link {
@@ -484,6 +345,13 @@
 }
 .stmt-hero-num.pos { color: var(--gold); }
 .stmt-hero-num.neg { color: var(--danger); }
+
+/* 结转小字：可用余额下方提示 */
+.stmt-carry-hint {
+  font-size: 22rpx;
+  color: var(--text-mute);
+  margin-top: 10rpx;
+}
 
 /* 储蓄率徽章:金底深字 */
 .stmt-hero-badge {
@@ -692,15 +560,13 @@
   width: 56rpx;
   height: 56rpx;
   border-radius: 50%;
-  background: var(--gold);
-  color: var(--navy-900);
-  font-size: 26rpx;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  overflow: hidden;
   flex-shrink: 0;
   margin-right: 16rpx;
+}
+.stmt-insight-avatar-img {
+  width: 100%;
+  height: 100%;
 }
 
 .stmt-insight-title {
@@ -727,19 +593,13 @@
   border: 1rpx solid var(--border);
 }
 
-/* 账本君小头像:纯 CSS 装饰,无需改 WXML */
+/* 账本君小头像:管家先生图片 */
 .stmt-ask-bar::before {
-  content: '账';
+  content: '';
   width: 40rpx;
   height: 40rpx;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--gold), #E8B85E);
-  color: var(--navy-900);
-  font-size: 20rpx;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  background: url('/static/avatar/avatar-c-200.png') center/cover no-repeat;
   margin-right: 14rpx;
   flex-shrink: 0;
 }
@@ -815,19 +675,13 @@
   color: var(--text);
 }
 
-/* 面板标题前的账本君小头像:纯 CSS 装饰 */
+/* 面板标题前的账本君小头像:管家先生图片 */
 .stmt-chat-head::before {
-  content: '账';
+  content: '';
   width: 36rpx;
   height: 36rpx;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--gold), #E8B85E);
-  color: var(--navy-900);
-  font-size: 18rpx;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  background: url('/static/avatar/avatar-c-200.png') center/cover no-repeat;
   margin-right: 10rpx;
   flex-shrink: 0;
 }
@@ -881,18 +735,16 @@
   width: 44rpx;
   height: 44rpx;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--gold), #E8B85E);
-  color: var(--navy-900);
-  font-size: 22rpx;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  overflow: hidden;
   flex-shrink: 0;
   margin-right: 12rpx;
   box-shadow:
     0 0 0 2rpx rgba(200, 160, 77, 0.22),
     0 4rpx 10rpx var(--tint-gold-18);
+}
+.chat-avatar-img {
+  width: 100%;
+  height: 100%;
 }
 
 .stmt-chat-bubble-wrap {
@@ -1002,190 +854,6 @@
   text-align: center;
 }
 
-/* ---------- 消费日历热力图 ---------- */
-.heatmap-card {
-  /* 复用 .card 样式 */
-}
-
-.heatmap-card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12rpx;
-}
-
-.heatmap-card-titles {
-  flex: 1;
-  min-width: 0;
-}
-
-.heatmap-card-sub {
-  font-size: 22rpx;
-  color: var(--text-sub);
-  margin-top: 4rpx;
-}
-
-.heatmap-card-arrow {
-  font-size: 40rpx;
-  color: var(--text-mute);
-  line-height: 1;
-  padding-left: 16rpx;
-}
-
-.heatmap-preview {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4rpx;
-  margin: 12rpx 0 14rpx;
-}
-
-.heatmap-mini-cell {
-  width: 28rpx;
-  height: 28rpx;
-  border-radius: 5rpx;
-  background: var(--heat-0);
-}
-
-.heatmap-legend {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6rpx;
-}
-
-.legend-text {
-  font-size: 20rpx;
-  color: var(--text-mute);
-}
-
-.legend-cell {
-  width: 14rpx;
-  height: 14rpx;
-  border-radius: 3rpx;
-  background: var(--heat-0);
-}
-
-/* 完整 sheet */
-.heatmap-tabs {
-  display: flex;
-  gap: 12rpx;
-  margin-bottom: 20rpx;
-  justify-content: center;
-}
-
-.heatmap-tab {
-  padding: 10rpx 24rpx;
-  font-size: 24rpx;
-  color: var(--text-sub);
-  background: var(--chip-bg);
-  border-radius: 999rpx;
-}
-
-.heatmap-tab.active {
-  background: linear-gradient(135deg, var(--navy-700), var(--navy-900));
-  color: #fff;
-  font-weight: 600;
-}
-
-.heatmap-scroll {
-  /* 横滚以支持 52 周 */
-  white-space: nowrap;
-  padding-bottom: 12rpx;
-}
-
-.heatmap-grid-wrap {
-  display: inline-block;
-  padding-left: 8rpx;
-}
-
-.heatmap-months {
-  position: relative;
-  height: 28rpx;
-  font-size: 18rpx;
-  color: var(--text-mute);
-  margin-bottom: 6rpx;
-}
-
-.heatmap-month-label {
-  position: absolute;
-  top: 0;
-}
-
-.heatmap-grid {
-  display: flex;
-  gap: 4rpx;
-  /* 不设 width:100% — 内容自然撑出,scroll-view 决定是否横滚 */
-}
-
-.heatmap-col {
-  display: flex;
-  flex-direction: column;
-  gap: 4rpx;
-  /* flex:1 让 13 列时平分 grid 宽度 → 自然撑满弹框;min-width 48rpx 兜底
-     26/52 列时不被压太扁,触发横滚 */
-  flex: 1 1 0;
-  min-width: 48rpx;
-}
-
-.heatmap-cell {
-  /* width 跟 col 平分,height 固定 48rpx 保持色块大小一致(矩形也可,不强求正方形) */
-  width: 100%;
-  height: 48rpx;
-  border-radius: 8rpx;
-  background: var(--heat-0);
-}
-
-.heatmap-cell.heat-1 { background: var(--heat-1); }
-.heatmap-cell.heat-2 { background: var(--heat-2); }
-.heatmap-cell.heat-3 { background: var(--heat-3); }
-.heatmap-cell.heat-4 { background: var(--heat-4); }
-
-.heatmap-cell.today {
-  outline: 2rpx solid var(--gold);
-  outline-offset: -2rpx;
-}
-
-.heatmap-cell:active {
-  transform: scale(0.92);
-}
-
-.heatmap-stats {
-  display: flex;
-  background: var(--input-bg);
-  border-radius: 16rpx;
-  padding: 20rpx 0;
-  margin: 16rpx 0;
-}
-
-.hs-item {
-  flex: 1;
-  text-align: center;
-}
-
-.hs-num {
-  font-size: 30rpx;
-  font-weight: 800;
-  font-family: "DIN Alternate", sans-serif;
-  color: var(--text);
-}
-
-.hs-label {
-  font-size: 20rpx;
-  color: var(--text-sub);
-  margin-top: 4rpx;
-}
-
-/* 单日 sheet */
-.heatmap-day-sheet {
-  max-height: 70vh;
-}
-
-.heatmap-day-total {
-  text-align: center;
-  font-size: 24rpx;
-  color: var(--text-sub);
-  margin-bottom: 16rpx;
-}
 
 /* 账单 sheet 内 mini-chat 输入区上方的快捷问题 chip,点一下即发(面板内紧凑版) */
 .stmt-quick-chip-row {

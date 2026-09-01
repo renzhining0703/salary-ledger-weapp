@@ -1,4 +1,4 @@
-<view class="page lock-page">
+<view class="page lock-page {{themeClass}}">
   <!-- 手势锁 -->
   <block wx:if="{{lockType === 'gesture'}}">
     <view class="lock-title">{{mode === 'set' ? setStepTitle : '绘制解锁图案'}}</view>
@@ -9,9 +9,9 @@
         type="2d"
         id="gestureCanvas"
         class="gesture-canvas"
-        bindtouchstart="onTouchStart"
-        bindtouchmove="onTouchMove"
-        bindtouchend="onTouchEnd"
+        catchtouchstart="onTouchStart"
+        catchtouchmove="onTouchMove"
+        catchtouchend="onTouchEnd"
       ></canvas>
     </view>
 
