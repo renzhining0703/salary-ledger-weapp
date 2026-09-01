@@ -25,10 +25,13 @@ const API_KEY = process.env.LLM_API_KEY
 const BASE_URL = process.env.LLM_BASE_URL || 'https://api.deepseek.com'
 const MODEL = process.env.LLM_MODEL || 'deepseek-chat'
 
+// 缓存版本：prompt / 数据块结构变更时 +1,旧版本缓存自动视为未命中（免手动清 finReports 集合）
+const CACHE_VER = 2
+
 const SYSTEM_PROMPT = `你是「账本君」,用户的私人财务助手,负责给每月账单写一段解读。语气像懂行的朋友:平和、克制、可以偶尔自嘲一句(比如"算账算到我头秃"),但绝不评判消费、不说教。
 
 # 输入
-用户消息是一段数据块,包含:本月收支(收入/支出/结余/储蓄率)、对比(环比/同比)、分类明细(金额/占比/预算状态)、固定支出占比、预算状态。这是唯一事实来源,数据块之外的信息你一概不知。
+用户消息是一段数据块,包含:本月收支(收入/支出/结余/储蓄率)、累计口径(可用余额/历史结转)、当天日期(月初语境)、对比(环比/同比)、分类明细(金额/占比/预算状态)、固定支出、预算状态。这是唯一事实来源,数据块之外的信息你一概不知。
 
 # 写法
 1. 先想清楚信息量最大的 2-3 个点,按此优先级挑选:
@@ -38,8 +41,15 @@ const SYSTEM_PROMPT = `你是「账本君」,用户的私人财务助手,负责�
 3. 长度 80-130 字,2-4 句,每句一行,自然口语段落
 4. 用「你」称呼用户、用「我」自称
 
+# 月初场景(数据块标注"月初"时适用)
+- 月初(前 7 天)收入为 0 属正常:工资多在月中后到账,不要把"收入为 0"当风险点,更不要算当月储蓄率说事
+- 此时优先以「累计可用余额」评价余粮,如"账上还有 ¥X 可用,含上月结转 ¥Y,月初这笔开销不算意外"
+- 月初支出远小于上月同期属正常,环比大跌不必惊讶
+- 固定支出是全月应付口径(还没全发生),当月已支出很少时占比无意义,数据块会自动省略占比,你不要自行补算
+
 # 硬约束(最高优先级,违反即废稿)
 - 正文出现的每一个数字必须来自数据块,或由数据块数字精确算出(如差额、占比换算)
+- 占比只能引用数据块给出的,禁止对不同口径的数字(如固定支出÷当月已支出)自行计算占比
 - 11000 可以写成"1.1 万",但不许出现数据块之外的任何数
 - 不许估算、不许"大概 / 约 / 估计"
 - 禁止没有信息量的短语:「合理规划」「开源节流」「理性消费」「继续加油」
@@ -57,7 +67,7 @@ exports.main = async (event) => {
     return { code: 'BAD_ARG', msg: '缺少 data' }
   }
 
-  // 1. 缓存命中
+  // 1. 缓存命中（版本不匹配视为未命中,自动走重生成）
   if (!force) {
     const cached = await safeFind(OPENID, month)
     if (cached) {
@@ -93,6 +103,7 @@ exports.main = async (event) => {
         // 且前端 invalidateFinCache 在「仅创建者可读写」权限下也删不掉这个无主文档。
         _openid: OPENID,
         month,
+        ver: CACHE_VER,
         text,
         model: MODEL,
         createdAt: db.serverDate()
@@ -110,7 +121,11 @@ exports.main = async (event) => {
 async function safeFind(openid, month) {
   try {
     const r = await db.collection('finReports').where({ _openid: openid, month }).limit(1).get()
-    return r.data[0] || null
+    const doc = r.data[0]
+    if (!doc) return null
+    // 旧版本缓存（prompt/数据块结构已变）视为未命中
+    if (doc.ver !== CACHE_VER) return null
+    return doc
   } catch (e) {
     // 集合未创建时视作无缓存
     if (e && (e.errCode === -502005 || /not exist/i.test(e.errMsg || ''))) return null
@@ -156,6 +171,14 @@ function formatDataForLLM(d) {
   const lines = []
   lines.push(`本月：${d.monthText || d.month}`)
 
+  // 月初语境：仅当前月才带今天日期,历史月不传
+  let earlyMonth = false
+  if (typeof d.today === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d.today)) {
+    const day = Number(d.today.slice(8, 10))
+    earlyMonth = day > 0 && day <= 7
+    lines.push(`今天：${d.today}（本月第 ${day} 天${earlyMonth ? '，月初，当月数据还不完整' : ''}）`)
+  }
+
   const fin = []
   if (typeof d.income === 'number') fin.push(`收入 ¥${d.income.toFixed(0)}`)
   if (typeof d.expense === 'number') fin.push(`支出 ¥${d.expense.toFixed(0)}`)
@@ -163,8 +186,18 @@ function formatDataForLLM(d) {
     const sign = d.balance >= 0 ? '+' : '-'
     fin.push(`结余 ${sign}¥${Math.abs(d.balance).toFixed(0)}`)
   }
-  if (typeof d.savingsRate === 'number') fin.push(`储蓄率 ${d.savingsRate.toFixed(0)}%`)
+  // 收入为 0 时储蓄率无意义(月初工资未发属正常),不输出
+  if (typeof d.savingsRate === 'number' && d.income > 0) fin.push(`储蓄率 ${d.savingsRate.toFixed(0)}%`)
   if (fin.length) lines.push(`收支：${fin.join('，')}`)
+
+  // 累计口径 — 月初"收入为0"时 AI 靠这个判断余粮
+  if (typeof d.available === 'number') {
+    const cum = [`可用余额 ¥${d.available.toFixed(0)}`]
+    if (typeof d.carriedOver === 'number' && d.carriedOver > 0) {
+      cum.push(`含历史结转 ¥${d.carriedOver.toFixed(0)}`)
+    }
+    lines.push(`累计（截至本月）：${cum.join('，')}`)
+  }
 
   // 同比/环比
   const cmp = []
@@ -172,7 +205,7 @@ function formatDataForLLM(d) {
     const diff = d.expense - d.prevMonthExpense
     const pct = d.prevMonthExpense > 0 ? (diff / d.prevMonthExpense) * 100 : 0
     const arrow = diff > 0 ? '↑' : diff < 0 ? '↓' : '·'
-    cmp.push(`上月支出 ¥${d.prevMonthExpense.toFixed(0)}（环比 ${arrow}${Math.abs(pct).toFixed(1)}%）`)
+    cmp.push(`上月支出 ¥${d.prevMonthExpense.toFixed(0)}（环比 ${arrow}${Math.abs(pct).toFixed(1)}%${earlyMonth ? '，月初环比参考价值低' : ''}）`)
   }
   if (typeof d.prevYearExpense === 'number' && d.expense && d.hasPrevYear) {
     const diff = d.expense - d.prevYearExpense
@@ -203,10 +236,16 @@ function formatDataForLLM(d) {
     if (items.length) lines.push(`分类（降序）：${items.join('，')}`)
   }
 
-  // 固定支出
+  // 固定支出：全月应付口径,与当月"已发生支出"不同口径。
+  // 已支出太小(< ¥500)或占比失真(>200%)时不算占比,只报绝对值,
+  // 否则会出现"支出 ¥179、固定支出 ¥4100 → 占 2289%"这种无意义比率。
   if (typeof d.recurTotal === 'number' && d.recurTotal > 0 && d.expense) {
     const pct = Math.round((d.recurTotal / d.expense) * 100)
-    lines.push(`固定支出 ¥${d.recurTotal.toFixed(0)}（占 ${pct}%）`)
+    if (d.expense >= 500 && pct <= 200) {
+      lines.push(`固定支出 ¥${d.recurTotal.toFixed(0)}（占已支出 ${pct}%）`)
+    } else {
+      lines.push(`固定支出 ¥${d.recurTotal.toFixed(0)}（全月应付口径，尚未全部发生，不算占比）`)
+    }
   }
 
   // 状态标签

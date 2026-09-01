@@ -75,9 +75,16 @@ Page({
     // 头像抖动重播：先摘掉 class，loadData 完成后重新挂上 →
     // CSS 动画按「class 从无到有」触发，每次进入首页都能抖一次（切 tab 回来也算）
     this.setData({ aiShakeOn: false })
-    // force=true:切到首页时强制重查。云函数写库(账本君记账)不触发 dbApi 缓存失效,
-    // 不 force 的话会拿到旧的 expenses / salary 缓存,首页流水 / 预算条不更新
-    this.loadData(true)
+    // 写操作置脏标记策略(评审项:启动性能):
+    // dbApi 所有写操作(invalidate 统一入口)会置 globalData.dataDirty,
+    // onShow 仅脏时 force 重查;不脏则吃 60s TTL 缓存(batchHomeRead 命中时 0 云调用),
+    // 切 tab 回首页不再每次全量重查。脏标记先复位再加载——若本次加载失败,
+    // 缓存同样没写进去(invalidate 时已清),下次 onShow 缓存 miss 自然重查,不会卡旧数据。
+    // 例外:账本君云函数写库不经过 dbApi → chat 的 refresh 事件显式 force(见 onAiChatRefresh)
+    const app = getApp()
+    const dirty = !!(app.globalData && app.globalData.dataDirty)
+    if (dirty) app.globalData.dataDirty = false
+    this.loadData(dirty)
 
     // 账本君主动询问:不论是否从订阅消息进入,都先加载未读问题
     // (订阅消息点击场景:app.js onShow 写 globalData.pendingAiQuestionFromNotif=true,

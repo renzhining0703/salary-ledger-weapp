@@ -82,6 +82,13 @@ function byDeletedAtDesc(a, b) {
 
 /** 失效全部缓存（写操作后调用，保证下次读为最新） */
 function invalidate() {
+  // 写操作统一入口 → 同步置首页脏标记:onShow 仅脏时 force 重查,
+  // 平时切 tab 吃 60s TTL 缓存,省云调用(评审项:启动性能)。
+  // 账本君云函数写库不经过这里,由 chat refresh 事件显式 force 兜底
+  try {
+    const app = typeof getApp === 'function' && getApp()
+    if (app && app.globalData) app.globalData.dataDirty = true
+  } catch (_) { /* 非 Page 环境(云函数侧单测)无 getApp,忽略 */ }
   cache.user = null
   cache.salary = null
   cache.cards = null
@@ -215,10 +222,11 @@ async function removeCard(id) {
 
 /**
  * 方案C：写操作后增量维护 users.expAgg（月度支出聚合快照）。
+ * - 子文档路径 + _.inc 原子自增:与云函数 finChat 的 bumpExpAgg 同一写法,
+ *   消除「本地读改写整表覆盖 → 把云端 AI 记账的增量抹掉」的竞态(评审 P0-1)
  * - 快照尚未回填（对账从未跑过）时跳过——下次 batchHomeRead 全量对账天然包含本次变动
- * - 读-改-写整张聚合表：单用户顺序写无并发，风险可控；失败静默（warn），
- *   快照漂移不丢任何源数据，下拉刷新（reconcile=true）即全量修复
- * - 只动 expAgg 字段、不动缓存：调用方随后的 invalidate() 统一失效读缓存
+ * - 失败静默（warn），快照漂移不丢任何源数据，下拉刷新（reconcile=true）即全量修复
+ * - 只动 expAgg 字段、不动读缓存：调用方随后的 invalidate() 统一失效读缓存
  */
 async function bumpExpAgg(month, amount) {
   if (!month || !/^\d{4}-\d{2}$/.test(month) || !amount) return
@@ -229,12 +237,15 @@ async function bumpExpAgg(month, amount) {
       rememberUserSnap(u)
     }
     if (!_userSnapRef.expAgg) return // 快照未回填，交给下次对账
-    const agg = { ..._userSnapRef.expAgg }
-    agg[month] = Math.round(((agg[month] || 0) + amount) * 100) / 100
+    const delta = Math.round(amount * 100) / 100
     await db.collection('users').doc(_userSnapRef._id).update({
-      data: { expAgg: agg, updatedAt: db.serverDate() }
+      data: {
+        ['expAgg.' + month]: _.inc(delta),
+        updatedAt: db.serverDate()
+      }
     })
-    _userSnapRef.expAgg = agg // 原地更新，连续多笔写不丢累积
+    // 本地快照引用原地同步(连续多笔写时不需重读库)
+    _userSnapRef.expAgg[month] = Math.round(((_userSnapRef.expAgg[month] || 0) + delta) * 100) / 100
   } catch (e) {
     console.warn('expAgg 增量更新失败（下次对账自动修正）', e)
   }

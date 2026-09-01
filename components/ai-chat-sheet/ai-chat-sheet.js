@@ -137,6 +137,8 @@ Component({
       app.globalData.chatMessages = []
       app.globalData.chatInput = ''
       chatStorage.clear()
+      // 云端会话摘要(chatLogs)一并清空:换设备/清缓存后 AI 也不该再"记得"已删的对话
+      aiChat.clearCloudSession()
       // 主动询问气泡独立存储,一并清掉避免下次打开 sheet 又冒出来
       chatStorage.clearPendingQuestion()
       this.setData({

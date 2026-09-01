@@ -88,8 +88,9 @@ async function send({ month, stmt, recentList, question, mode = 'chat', history,
   if (code === 'NO_DATA') {
     return { text: result.msg || '本月还没有任何数据,先记几笔吧', source: 'local' }
   }
-  if (code === 'NO_KEY' || timedOut) {
+  if (code === 'COST_LIMIT' || code === 'NO_KEY' || timedOut) {
     // 本地模板兜底
+    // COST_LIMIT:云端日 token 预算用尽(成本熔断),降级纯模板回复,次日自动恢复
     const tpl = finTemplate.build({
       monthText: stmt.monthText,
       income: stmt.income,
@@ -105,7 +106,11 @@ async function send({ month, stmt, recentList, question, mode = 'chat', history,
       budgetNear: stmt.budgetNear,
       overCategories: stmt.overCategories
     })
-    const prefix = timedOut ? '账本君想了太久,先回你本地版:' : '账本君还没拿到口粮,先用本地话答你:'
+    const prefix = timedOut
+      ? '账本君想了太久,先回你本地版:'
+      : code === 'COST_LIMIT'
+        ? '账本君今天的额度用完了,先用本地话答你:'
+        : '账本君还没拿到口粮,先用本地话答你:'
     return { text: `${prefix}\n${tpl}`, source: 'local' }
   }
   // 其他失败(LLM_FAIL / LLM_EMPTY / result 为空 / 未知 code 等):
@@ -206,4 +211,24 @@ function buildHistory(messages) {
     .map((m) => ({ role: m.role, content: m.content.slice(0, 400) }))
 }
 
-module.exports = { send, buildHistory }
+module.exports = { send, buildHistory, clearCloudSession }
+
+/**
+ * 清空云端会话摘要(chatLogs 集合)。
+ * 组件「清空会话」时同步调用:本地 chatStorage 清了,云端摘要也一并清,
+ * 否则换设备后 AI 仍"记得"用户已删掉的对话。fire-and-forget,失败静默(只 warn)。
+ * @returns {Promise<boolean>} 是否成功(失败不影响本地清空)
+ */
+function clearCloudSession() {
+  return new Promise((resolve) => {
+    wx.cloud.callFunction({
+      name: 'finChat',
+      data: { action: 'clearChatLogs' },
+      success: () => resolve(true),
+      fail: (e) => {
+        console.warn('清空云端会话摘要失败', e)
+        resolve(false)
+      }
+    })
+  })
+}

@@ -486,8 +486,15 @@ page {
 }
 
 /* 自定义导航栏（tab 页 navigationStyle: custom 共用）
-   浅色模式:白底深字; 深色模式:深蓝底白字 —— 跟随主题,不再硬写死 navy-700 */
+   浅色模式:白底深字; 深色模式:深蓝底白字 —— 跟随主题,不再硬写死 navy-700
+   position: sticky —— 页面上滑时标题钉在顶部不跟内容滚走(webview 渲染器对页面级
+   滚动的 sticky 支持良好;不用 fixed 是因为 fixed 需按 statusBarHeight(JS 动态值)
+   给每个页面加占位,sticky 零占位一处全局生效)。sticky 生效前提:父级 .page 无
+   overflow/transform,当前全部页面满足 */
 .navbar {
+  position: sticky;
+  top: 0;
+  z-index: 80; /* 高于普通卡片流,低于弹层遮罩 .mask(90)/面板 .sheet(100),避免 sheet 打开时 navbar 浮在遮罩上 */
   background: var(--card);
   padding-top: 44px; /* JS 注入 statusBarHeight 覆盖此默认值 */
   border-bottom: 1rpx solid var(--border-light);

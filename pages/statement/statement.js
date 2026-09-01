@@ -240,6 +240,9 @@ Page({
       prevYearExpense: hasPrevYear ? prevYearTotal : null,
       hasPrevYear,
       recurTotal,
+      // 累计口径原始数字 — 供 AI 数据块使用（与首页看板同源）
+      available,
+      carriedOver,
       // 展示用字符串 — WXML 渲染用（累计口径，与首页看板一致）
       incomeText: util.moneyThousand(cumIncome),
       expenseText: util.moneyThousand(cumExpense),
@@ -308,6 +311,12 @@ Page({
 
   /** 调云函数带超时 */
   _callFinReport(stmt, force) {
+    // 月初语境：仅在查看「当前月」账单时传今天日期，历史月不传（避免误导 AI）
+    const now = new Date()
+    const nowMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const today = stmt.month === nowMonth
+      ? `${nowMonth}-${String(now.getDate()).padStart(2, '0')}`
+      : undefined
     return new Promise((resolve, reject) => {
       let settled = false
       const timer = setTimeout(() => {
@@ -330,6 +339,10 @@ Page({
             prevYearExpense: stmt.hasPrevYear ? stmt.prevYearExpense : undefined,
             hasPrevYear: stmt.hasPrevYear,
             recurTotal: stmt.recurTotal,
+            // 累计口径 — 让 AI 知道"有历史结余可花"，月初收入未记时不误判
+            available: stmt.available,
+            carriedOver: stmt.carriedOver,
+            today,
             categories: stmt.categories.map((c) => ({
               name: c.name,
               amount: c.amount,
