@@ -57,6 +57,106 @@ function dayInMonth(y, m, day) {
 }
 
 /**
+ * 从当前 nextCharge 滚动到下一周期的 nextCharge（T1.1 / 4.1 节口径）。
+ * - 仅在订阅到期后滚动下一期时用（remind 触发器扣减后 / 用户主动「标记已续费」按钮）
+ * - 用户首次录入不走这条路径（nextCharge 是用户照抄进的主字段,不是推算的）
+ * - 语义:从 currentNextCharge 出发按 cycle 推进 1 周期;月末 dayInMonth clamp
+ *
+ * @param {'monthly'|'quarterly'|'yearly'|'weekly'|'custom'} cycle
+ * @param {string} currentNextCharge 'YYYY-MM-DD' 当前 nextCharge（数据库已有值）
+ * @param {Date} [now]
+ * @param {number} [customMonths] 仅 cycle=custom 有效:每个周期月数 1-36（如半年包=6、季包=3、两年包=24）
+ * @returns {string} 'YYYY-MM-DD';参数非法返回 ''
+ */
+function nextChargeOf(cycle, currentNextCharge, now, customMonths) {
+  const t = now || new Date()
+  const raw = String(currentNextCharge || '').trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return ''
+  const parts = raw.split('-').map(Number)
+  const cy = parts[0]
+  const cm0 = parts[1] - 1
+  const cd = parts[2]
+  if (!Number.isFinite(cy) || !Number.isFinite(cm0) || !Number.isFinite(cd)) return ''
+  if (cycle === 'yearly') {
+    return fmtDate(new Date(cy + 1, cm0, dayInMonth(cy + 1, cm0, cd)))
+  }
+  if (cycle === 'weekly') {
+    // 周订阅:固定 +7 天
+    const base = new Date(cy, cm0, cd)
+    return fmtDate(new Date(base.getTime() + 7 * 86400000))
+  }
+  if (cycle === 'custom') {
+    const cm = Number(customMonths)
+    if (!Number.isInteger(cm) || cm < 1 || cm > 36) return ''
+    const totalM = cy * 12 + cm0 + cm
+    const ny = Math.floor(totalM / 12)
+    const nm = totalM % 12
+    return fmtDate(new Date(ny, nm, dayInMonth(ny, nm, cd)))
+  }
+  const step = cycle === 'monthly' ? 1 : cycle === 'quarterly' ? 3 : 0
+  if (!step) return ''
+  const totalM = cy * 12 + cm0 + step
+  const ny = Math.floor(totalM / 12)
+  const nm = totalM % 12
+  return fmtDate(new Date(ny, nm, dayInMonth(ny, nm, cd)))
+}
+
+/**
+ * 从 nextCharge 反推 cycleDay（写入文档时自动补齐用,4.1 节）。
+ * - monthly/quarterly/weekly → 数字 1-31
+ * - yearly → 'MM-DD' 字符串
+ * - custom → null（期限包无 cycleDay 概念）
+ * - 参数非法返回 null
+ */
+function deriveCycleDay(cycle, nextCharge) {
+  const raw = String(nextCharge || '').trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null
+  const parts = raw.split('-')
+  const dd = Number(parts[2])
+  if (!Number.isFinite(dd) || dd < 1 || dd > 31) return null
+  if (cycle === 'yearly') return `${parts[1]}-${parts[2]}`
+  if (cycle === 'custom') return null
+  return dd
+}
+
+/**
+ * 从 nextCharge 估算 firstChargeDate = nextCharge - 1 周期(年度报告算「已订阅几个月」用)
+ * - 用户首次录入不传 firstChargeDate 时,系统自动用这条估算(不传也不报错)
+ * - custom 周期按 customMonths 整月减
+ * - 入参非法返回 ''
+ */
+function deriveFirstChargeDate(cycle, nextCharge, customMonths) {
+  const raw = String(nextCharge || '').trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return ''
+  const parts = raw.split('-').map(Number)
+  const y = parts[0]
+  const m = parts[1] - 1
+  const d = parts[2]
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return ''
+  if (cycle === 'yearly') {
+    return fmtDate(new Date(y - 1, m, dayInMonth(y - 1, m, d)))
+  }
+  if (cycle === 'weekly') {
+    const base = new Date(y, m, d)
+    return fmtDate(new Date(base.getTime() - 7 * 86400000))
+  }
+  if (cycle === 'custom') {
+    const cm = Number(customMonths)
+    if (!Number.isInteger(cm) || cm < 1 || cm > 36) return ''
+    const totalM = y * 12 + m - cm
+    const ny = Math.floor(totalM / 12)
+    const nm = totalM % 12
+    return fmtDate(new Date(ny, nm, dayInMonth(ny, nm, d)))
+  }
+  const step = cycle === 'monthly' ? 1 : cycle === 'quarterly' ? 3 : 0
+  if (!step) return ''
+  const totalM = y * 12 + m - step
+  const ny = Math.floor(totalM / 12)
+  const nm = totalM % 12
+  return fmtDate(new Date(ny, nm, dayInMonth(ny, nm, d)))
+}
+
+/**
  * 计算一张卡当前指向的还款日
  * @param {number} repayDay 每月几号还款 (1-31)
  * @param {string} status    'pending' | 'paid'
@@ -502,6 +602,9 @@ module.exports = {
   getWeekday,
   lastDayOfMonth,
   dayInMonth,
+  nextChargeOf,
+  deriveCycleDay,
+  deriveFirstChargeDate,
   calcDueDate,
   interestFreeDays,
   nextPayday,

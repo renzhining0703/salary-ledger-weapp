@@ -16,14 +16,17 @@
 const db = wx.cloud.database()
 const _ = db.command
 const config = require('./config')
+const util = require('./util')
 
 const CACHE_TTL = 60 * 1000
 const cache = {
-  user: null,     // { t: timestamp, d: data }
+  user: null,         // { t: timestamp, d: data }
   salary: null,
   cards: null,
   recurring: null,
-  expenses: {}    // { [monthStr]: { t, d } }
+  subscriptions: null,
+  expenses: {},       // { [monthStr]: { t, d } }
+  subReports: {}      // { [year]: { t, d } }  年度订阅浪费报告缓存
 }
 
 function fresh(entry) {
@@ -80,6 +83,16 @@ function byDeletedAtDesc(a, b) {
   return tsOf(b.deletedAt) - tsOf(a.deletedAt)
 }
 
+/** 按下次扣费日升序：最近要扣的在前；nextCharge 缺失时回退到 createdAt 降序 */
+function byNextChargeAsc(a, b) {
+  const na = (a && a.nextCharge) || ''
+  const nb = (b && b.nextCharge) || ''
+  if (na && !nb) return -1
+  if (!na && nb) return 1
+  if (na && nb && na !== nb) return na.localeCompare(nb)
+  return byCreatedDesc(a, b)
+}
+
 /** 失效全部缓存（写操作后调用，保证下次读为最新） */
 function invalidate() {
   // 写操作统一入口 → 同步置首页脏标记:onShow 仅脏时 force 重查,
@@ -93,7 +106,9 @@ function invalidate() {
   cache.salary = null
   cache.cards = null
   cache.recurring = null
+  cache.subscriptions = null
   cache.expenses = {}
+  cache.subReports = {}
   invalidateAiProfile()
 }
 
@@ -344,20 +359,22 @@ async function batchHomeRead(month, startMonth, force, reconcile) {
     // 云端还是旧版（无 batchHomeRead action）→ 降级为原有 5 个单项读，行为与方案A一致
     if (!/batchHomeRead|BAD_ACTION|未知 action/i.test(String((e && e.message) || ''))) throw e
     console.warn('[db] 云端暂无 batchHomeRead，降级为单项读（请重新部署 cloudfunctions/dbRead）')
-    const [user, cards, salary, expenses, trend] = await Promise.all([
+    const [user, cards, salary, expenses, trend, subscriptions] = await Promise.all([
       getMyUser(force),
       listCards(force),
       listSalary(force),
       listExpenses(month, force),
-      listExpensesRange(startMonth, month, force)
+      listExpensesRange(startMonth, month, force),
+      listSubscriptions(force)
     ])
-    return { user, salary, cards, expenses, trend, expAgg: (user && user.expAgg) || null, reconciled: false, degraded: true }
+    return { user, salary, cards, expenses, trend, subscriptions, expAgg: (user && user.expAgg) || null, reconciled: false, degraded: true }
   }
   // 客户端排序与单项读完全一致（回填缓存后其他页面行为不变）
   d.salary = (d.salary || []).sort(byPayDateDesc)
   d.cards = (d.cards || []).sort(byCreatedAsc)
   d.expenses = (d.expenses || []).sort(byCreatedDesc)
   d.trend = (d.trend || []).sort(byDateAsc)
+  d.subscriptions = (d.subscriptions || []).sort(byNextChargeAsc)
   // 回填各单项缓存：一次批量调用喂饱全部读缓存，后续页面零额外云调用
   const now = Date.now()
   cache.user = { t: now, d: d.user }
@@ -365,6 +382,7 @@ async function batchHomeRead(month, startMonth, force, reconcile) {
   cache.cards = { t: now, d: d.cards }
   cache.expenses[month] = { t: now, d: d.expenses }
   cache.expenses[`range_${startMonth}_${month}`] = { t: now, d: d.trend }
+  cache.subscriptions = { t: now, d: d.subscriptions }
   cache.expenses[key] = { t: now, d }
   rememberUserSnap(d.user)
   return d
@@ -536,7 +554,176 @@ async function sweepAutoRecord() {
 /* ---------------- 回收站（软删除，保留 RECYCLE_DAYS 天） ---------------- */
 
 const RECYCLE_DAYS = config.RECYCLE_DAYS
-const RECYCLE_COLS = ['salary', 'cards', 'expenses', 'recurring']
+const RECYCLE_COLS = ['salary', 'cards', 'expenses', 'recurring', 'subscriptions']
+
+/* ---------------- subscriptions 自动续费 ----------------
+ * T1.1 数据层：5 个方法 + 1 个纯计算 nextChargeOf（实现见 utils/util.js，此处 re-export）
+ * 字段约定（见 4.1 / 4.3 节）：
+ *   nextCharge: 'YYYY-MM-DD' 主录入字段 + 唯一到期判断依据（用户照抄平台显示的「下次续费日」）
+ *   cycleDay: 由 nextCharge 自动反推（monthly/quarterly/weekly 存「日」1-31；yearly 存「MM-DD」如 '09-15';custom 无）
+ *   firstChargeDate: 'YYYY-MM-DD' 可选,系统用 nextCharge - 1 周期估算,仅年度报告算「已订阅几个月」用
+ *   cycle / amount / platform / usage / status / note 等同约定
+ *   status: 'active' | 'paused' | 'cancelled'（默认 active）
+ *   deleted / deletedAt 软删除
+ */
+
+/** 新增订阅；errCode -502005 给出集合未创建的明确提示
+ * 入库前自动归一：传 nextCharge 时自动 deriveCycleDay + deriveFirstChargeDate 反推字段
+ */
+async function addSubscription(data) {
+  // 字段归一（4.3 节口径：nextCharge 是主录入字段,cycleDay/firstChargeDate 由系统反推）
+  const payload = normalizeSubscriptionFields(data || {})
+  try {
+    const r = await db.collection('subscriptions').add({
+      data: {
+        ...payload,
+        status: payload.status || 'active',
+        deleted: false,
+        createdAt: db.serverDate(),
+        updatedAt: db.serverDate()
+      }
+    })
+    invalidate()
+    invalidateSubReport(currentYearStr())
+    return r
+  } catch (e) {
+    if (e && (e.errCode === -502005 || /collection.*not exist/i.test(e.errMsg || ''))) {
+      const err = new Error('请先创建 subscriptions 集合：云开发控制台 → 数据库 → 添加集合 → 输入 subscriptions → 权限设为「仅创建者可读写」')
+      err.isCollectionMissing = true
+      throw err
+    }
+    throw e
+  }
+}
+
+/** 订阅字段归一：
+ *  - 传 firstChargeDate + cycle → cycleDay 自动推导 + nextCharge 自动计算
+ *  - 只传 cycleDay（降级路径，老用户「只记得每月几号」）→ firstChargeDate 用「本月该日」反填：
+ *      本月该日已过则下月，未过则本月（避免 nextCharge 推算漂到下下个月）
+ *  - 不传任何时间字段 → 兜底用今天作为 firstChargeDate
+ *
+ *  cycle=custom 时无 cycleDay（4.1 节），仅由 customMonths + firstChargeDate 推算 nextCharge。
+ *  custom 不支持「不记得了」降级：必须传 firstChargeDate，否则 nextCharge 算不出来。
+ */
+function normalizeSubscriptionFields(d) {
+  const out = { ...d }
+  const cycle = out.cycle
+  let nc = (out.nextCharge || '').toString().trim()
+  let cycleDay = out.cycleDay
+  const customMonths = out.customMonths
+  if (nc && /^\d{4}-\d{2}-\d{2}$/.test(nc)) {
+    // 传了 nextCharge(主录入字段)→ 反推 cycleDay + 估算 firstChargeDate
+    if (cycle === 'custom') {
+      // custom 无 cycleDay:清掉脏值避免误展示
+      cycleDay = ''
+      out.cycleDay = ''
+    } else {
+      const derived = deriveCycleDay(cycle, nc)
+      if (derived != null) {
+        cycleDay = derived
+        out.cycleDay = derived
+      }
+    }
+    const fcd = deriveFirstChargeDate(cycle, nc, customMonths)
+    if (fcd) out.firstChargeDate = fcd
+  } else if (cycle !== 'custom' && cycleDay != null && cycleDay !== '') {
+    // 降级路径:只传 cycleDay → nextCharge 用「本月该日」反填
+    // custom 不参与降级(没 cycleDay 概念)
+    nc = fallbackNextCharge(cycle, cycleDay)
+    if (nc) {
+      out.nextCharge = nc
+      const fcd = deriveFirstChargeDate(cycle, nc, customMonths)
+      if (fcd) out.firstChargeDate = fcd
+    }
+  } else {
+    // 兜底:没传任何时间字段,用今天作为 nextCharge
+    const today = todayStr_()
+    out.nextCharge = today
+    if (cycle === 'custom') {
+      cycleDay = ''
+      out.cycleDay = ''
+    } else {
+      const derived = deriveCycleDay(cycle, today)
+      if (derived != null) {
+        cycleDay = derived
+        out.cycleDay = derived
+      }
+    }
+    const fcd = deriveFirstChargeDate(cycle, today, customMonths)
+    if (fcd) out.firstChargeDate = fcd
+  }
+  return out
+}
+
+/** 取今天 'YYYY-MM-DD'（本地时区，封装避免循环依赖） */
+function todayStr_() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** 降级路径：cycleDay → nextCharge（本月该日 / 下月该日） */
+function fallbackNextCharge(cycle, cycleDay) {
+  const today = new Date()
+  const y = today.getFullYear()
+  const m = today.getMonth()
+  const todayDate = today.getDate()
+  if (cycle === 'yearly') {
+    // yearly 的 cycleDay 形如 'MM-DD'
+    const raw = String(cycleDay)
+    const parts = raw.split('-')
+    if (parts.length !== 2) return todayStr_()
+    const tm = Number(parts[0]) - 1
+    const td = Number(parts[1])
+    if (!Number.isFinite(tm) || !Number.isFinite(td)) return todayStr_()
+    if (m > tm || (m === tm && todayDate >= td)) {
+      return `${y + 1}-${String(tm + 1).padStart(2, '0')}-${String(td).padStart(2, '0')}`
+    }
+    return `${y}-${String(tm + 1).padStart(2, '0')}-${String(td).padStart(2, '0')}`
+  }
+  // monthly/quarterly/weekly：1-31 整数
+  const day = Number(cycleDay)
+  if (!Number.isFinite(day) || day < 1 || day > 31) return todayStr_()
+  if (todayDate < day) {
+    return `${y}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  }
+  const nm = m + 1
+  return `${new Date(y, nm, 1).getFullYear()}-${String((nm % 12) + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+/** 读取订阅列表：60s TTL；按下次扣费日升序（最近要扣的在前），nextCharge 缺失回退 createdAt 降序 */
+async function listSubscriptions(force) {
+  if (!force && fresh(cache.subscriptions)) return cache.subscriptions.d
+  // 集合未创建时 dbRead 云端兜底为空（与 listRecurring 行为一致）
+  const d = await cloudRead('listSubscriptions')
+  d.sort(byNextChargeAsc)
+  cache.subscriptions = { t: Date.now(), d }
+  return d
+}
+
+/** 更新订阅并失效缓存 */
+async function updateSubscription(id, data) {
+  const r = await db.collection('subscriptions').doc(id).update({
+    data: { ...data, updatedAt: db.serverDate() }
+  })
+  invalidate()
+  invalidateSubReport(currentYearStr())
+  return r
+}
+
+/** 软删除：进回收站，保留 30 天 */
+async function removeSubscription(id) {
+  const r = await db.collection('subscriptions').doc(id).update({
+    data: { deleted: true, deletedAt: db.serverDate() }
+  })
+  invalidate()
+  invalidateSubReport(currentYearStr())
+  return r
+}
+
+/** 重新暴露纯计算 nextChargeOf / deriveCycleDay / deriveFirstChargeDate,便于订阅写入前的预计算 + 列表展示 */
+const nextChargeOf = util.nextChargeOf
+const deriveCycleDay = util.deriveCycleDay
+const deriveFirstChargeDate = util.deriveFirstChargeDate
 
 /** 回收站列表：四类集合里 deleted=true 的文档合并，按删除时间倒序（dbRead 云端合并，客户端排序） */
 async function listRecycle() {
@@ -628,6 +815,178 @@ async function invalidateFinCache(month) {
   }
 }
 
+/* ---------------- subReport 年度订阅浪费报告 ----------------
+ * 缓存：客户端 60s TTL(免重复调云函数);云端按 _openid+year 永久缓存(LLM 报告本身按年生成),
+ * 订阅增删改时主动调 invalidateSubReport(year) 让云端缓存失效,下次拉取走重生成。
+ */
+
+function currentYearStr() {
+  return String(new Date().getFullYear())
+}
+
+/**
+ * 取订阅年度浪费报告
+ * - 客户端缓存 60s(切 tab 反复进入页面不重复调云函数)
+ * - 云端缓存见 cloudfunctions/subReport/index.js
+ * @param {number|string} [year] 不传默认当前年
+ * @param {object} [opts] { force: boolean }
+ * @returns {Promise<{ text: string, source: 'llm'|'cache'|'local', code?: string, msg?: string }>}
+ */
+async function getSubReport(year, opts) {
+  const yearStr = String(year || currentYearStr())
+  if (!/^\d{4}$/.test(yearStr)) {
+    return { text: '', source: 'local', code: 'BAD_ARG', msg: 'year 必须是 4 位年份' }
+  }
+  const force = !!(opts && opts.force)
+
+  // 客户端 60s TTL 缓存(避免页面反复进入重复调云函数)
+  const ck = `subReport_${yearStr}`
+  if (!force && cache.subReports && cache.subReports[ck] && fresh(cache.subReports[ck])) {
+    return cache.subReports[ck].d
+  }
+
+  // 拉订阅数据(走 listSubscriptions 自身 60s 缓存)
+  const subs = await listSubscriptions(false)
+
+  // 客户端过滤 deleted,cancelled 仍参与计算(用户可能想看历史年花了多少)
+  const filtered = (subs || []).filter((s) => !s.deleted)
+
+  // 服务端聚合(LLM 数据块生成逻辑下沉到云函数,前端只透传清洗后的原始数据)
+  // 但这里我们要先在客户端算 yearTotal/yearWaste,确保即便云函数 NO_KEY 也有兜底
+  const CYCLE_UNIT = { monthly: 12, quarterly: 4, yearly: 1, weekly: 52 }
+  const WASTE_FACTOR = { never: 1.0, rare: 0.5, occasional: 0, frequent: 0 }
+  const items = []
+  let yearTotal = 0
+  let yearActive = 0
+  let yearWaste = 0
+  for (const s of filtered) {
+    const amount = Number(s.amount) || 0
+    const cycle = s.cycle || 'monthly'
+    // custom 周期按 amount × 12 / customMonths(与 subReport 云函数 / 订阅页同款,半年包 88 → 176/年)
+    let yearly
+    if (cycle === 'custom') {
+      const cm = Number(s.customMonths)
+      if (Number.isInteger(cm) && cm >= 1 && cm <= 36) yearly = Math.round(amount * 12 / cm * 100) / 100
+      else yearly = Math.round(amount * 12 * 100) / 100
+    } else {
+      yearly = Math.round(amount * (CYCLE_UNIT[cycle] || 12) * 100) / 100
+    }
+    const usage = s.usage || 'rare'
+    const wasteFactor = (usage in WASTE_FACTOR) ? WASTE_FACTOR[usage] : WASTE_FACTOR.rare
+    const waste = Math.round(yearly * wasteFactor * 100) / 100
+    if (s.status !== 'cancelled') yearTotal += yearly
+    if (s.status === 'active') yearActive += yearly
+    yearWaste += waste
+    items.push({
+      name: s.name || '',
+      platform: s.platform || '',
+      payChannel: s.payChannel || 'unknown',
+      amount,
+      cycle,
+      customMonths: Number(s.customMonths) || 0,
+      yearly,
+      usage,
+      waste
+    })
+  }
+  yearTotal = Math.round(yearTotal * 100) / 100
+  yearActive = Math.round(yearActive * 100) / 100
+  yearWaste = Math.round(yearWaste * 100) / 100
+  const optimizedTotal = Math.round((yearTotal - yearWaste) * 100) / 100
+
+  const dataBlock = {
+    year: yearStr,
+    yearTotal,
+    yearActive,
+    yearWaste,
+    optimizedTotal,
+    items
+  }
+
+  // 无订阅数据：直接返回本地兜底文案,不浪费 LLM 调用
+  if (!items.length) {
+    const localResult = { text: '还没有订阅数据,先去订阅页录几笔再来算', source: 'local' }
+    if (!cache.subReports) cache.subReports = {}
+    cache.subReports[ck] = { t: Date.now(), d: localResult }
+    return localResult
+  }
+
+  // 调云函数
+  const cloudResult = await new Promise((resolve) => {
+    let settled = false
+    const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
+      resolve({ code: 'TIMEOUT', msg: '云函数超时' })
+    }, 8000)
+    wx.cloud.callFunction({
+      name: 'subReport',
+      data: { year: yearStr, data: dataBlock },
+      success: (r) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        const result = (r && r.result) || null
+        if (!result) return resolve({ code: 'EMPTY', msg: '云函数返回空' })
+        if (result.code) return resolve({ code: result.code, msg: result.msg || result.code })
+        resolve({ text: result.text || '', source: result.source || 'llm' })
+      },
+      fail: (e) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        resolve({ code: 'TRANSPORT', msg: String((e && (e.errMsg || e.message)) || e) })
+      }
+    })
+  })
+
+  let out
+  if (cloudResult.text) {
+    out = { text: cloudResult.text, source: cloudResult.source }
+  } else if (cloudResult.code === 'NO_KEY') {
+    out = { text: buildSubReportFallback(dataBlock), source: 'local' }
+  } else {
+    out = { text: buildSubReportFallback(dataBlock), source: 'local' }
+  }
+
+  if (!cache.subReports) cache.subReports = {}
+  cache.subReports[ck] = { t: Date.now(), d: out }
+  return out
+}
+
+/**
+ * 本地兜底报告(LLM 不可用时)
+ * - 列年总支出 + 浪费金额 + 优化后可省金额
+ * - 不调 LLM,不依赖云函数
+ */
+function buildSubReportFallback(d) {
+  if (!d.items.length) return '还没有订阅数据,先去订阅页录几笔再来算'
+  const sorted = d.items.slice().sort((a, b) => (b.waste || 0) - (a.waste || 0))
+  const top = sorted.find((s) => (s.waste || 0) > 0)
+  const saveTxt = d.yearWaste > 0 ? `若断舍离这些,一年能省 ¥${d.yearWaste.toFixed(0)}` : '没有需要断舍离的订阅'
+  const topTxt = top ? `重点关注:${top.name},使用 ${usageLabel(top.usage)} 但年化 ¥${(top.yearly || 0).toFixed(0)}` : ''
+  return `${d.year} 年订阅花了 ¥${d.yearTotal.toFixed(0)},其中疑似浪费 ¥${d.yearWaste.toFixed(0)}。${topTxt};${saveTxt}`
+}
+
+function usageLabel(u) {
+  return ({ frequent: '常用', occasional: '偶尔', rare: '很少', never: '从不' })[u] || '很少'
+}
+
+/**
+ * 失效 subReports 某年缓存(订阅增删改后调,下次 getSubReport 重新生成)
+ * 失败静默:缓存失效不该阻塞用户操作
+ */
+async function invalidateSubReport(year) {
+  const yearStr = String(year || currentYearStr())
+  if (!/^\d{4}$/.test(yearStr)) return
+  try {
+    await db.collection('subReports').where({ year: yearStr }).remove()
+  } catch (e) {
+    if (e && (e.errCode === -502005 || /not exist/i.test(e.errMsg || ''))) return
+    console.warn('失效 subReport 缓存失败', yearStr, e)
+  }
+}
+
 /** 重置当前用户全部数据（二次确认后调用）。连同 users 一起清，重新打开小程序会重建用户配置并预置示例数据 */
 async function clearAllData() {
   const clear = async (col) => {
@@ -651,11 +1010,18 @@ async function clearAllData() {
     clear('cards'),
     clear('expenses'),
     clear('recurring'),
+    clear('subscriptions'),
+    clear('subReports'),
     clear('finReports'),
     clear('finChatRate')
   ])
   _userSnapRef = null // 用户文档已删，快照引用一并作废（下次登录重建）
   invalidate()
+}
+
+/** 暴露给 subReport 客户端缓存清理:测试 / 重置场景调用 */
+function _resetSubReportCache() {
+  cache.subReports = {}
 }
 
 module.exports = {
@@ -687,5 +1053,14 @@ module.exports = {
   clearRecycle,
   purgeExpired,
   clearAllData,
-  invalidateFinCache
+  invalidateFinCache,
+  addSubscription,
+  listSubscriptions,
+  updateSubscription,
+  removeSubscription,
+  nextChargeOf,
+  deriveCycleDay,
+  deriveFirstChargeDate,
+  getSubReport,
+  invalidateSubReport
 }
