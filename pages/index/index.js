@@ -56,6 +56,7 @@ Page({
     recentExpenses: [],      // 给 aiChat.send 用,本月最近流水
     lastRecordGap: null,     // 距上次记账天数(0=今天记过;仅当前月,账本君断记提醒用)
     aiCards: [],             // 未还卡实时摘要(账本君逐卡明细用;画像里的信用卡是 24h 汇总)
+    aiSubscriptions: [],     // T2.4 订阅摘要(账本君数据块自带;_buildAiStmt 派生 active+top10+年化)
     recurringList: [],       // 固定支出模板(账本君「本月待记」用,fire-and-forget 拉取)
     // 账本君主动询问(云函数 salaryReminder 推送后写入,本地兜底在 chatStorage)
     pendingAiQuestion: null,           // { text, ts, round }
@@ -197,7 +198,7 @@ Page({
       const today = util.todayStr()
       const thisMonth = util.thisMonthStr()
 
-      // 今天要处理：逾期/今天/明天 的待还卡
+      // 今天要处理：逾期/今天/明天 的待还卡 + 同期订阅续费(T1.5 合并成「待办账务」)
       const todoList = []
       cards.forEach((c) => {
         if (c.status === 'paid') return
@@ -219,6 +220,7 @@ Page({
         }
         todoList.push({
           id: c._id,
+          type: 'card',
           bank: c.bank,
           amount: util.moneyThousand(c.amount),
           days,
@@ -227,7 +229,47 @@ Page({
           canPay: true
         })
       })
-      // 按到期天数升序:逾期 N 天 → 今天 → 明天(更靠前越紧急)
+      // 订阅续费待办(T1.5):active 且 nextCharge 落在「已过扣费日 / 今天 / 明天」—— 「已扣费·未取消」是断舍离钩子
+      // 仅取最近 2 条进首页区块,避免与还款项混排刷屏;其余进订阅页查看
+      // 期限包(custom 周期)+ 非 wechat/alipay/apple 渠道:不走自动扣费,文案用「到期/已过期·未续费」
+      const AUTO_CHANNEL = ['wechat', 'alipay', 'apple']
+      const subs = (batch.subscriptions || []).filter((s) => s.status === 'active' && s.nextCharge)
+      const subTodos = []
+      subs.forEach((s) => {
+        const days = util.daysBetween(today, s.nextCharge)
+        const isTermPack = s.cycle === 'custom' && !AUTO_CHANNEL.includes(s.payChannel || '')
+        let level = ''
+        let dueText = ''
+        if (days < 0) {
+          level = 'overdue'
+          dueText = isTermPack ? '已过期·未续费' : '已扣费·未取消'
+        } else if (days === 0) {
+          level = 'today'
+          dueText = isTermPack ? '今天到期' : '今天扣费'
+        } else if (days === 1) {
+          level = 'tomorrow'
+          dueText = isTermPack ? '明天到期' : '明天扣费'
+        } else {
+          return
+        }
+        subTodos.push({
+          id: s._id,
+          type: 'sub',
+          name: s.name,
+          platform: s.platform || '',
+          amount: util.moneyThousand(s.amount || 0),
+          nextCharge: s.nextCharge,
+          days,
+          dueText,
+          level,
+          canPay: false
+        })
+      })
+      // 订阅只取最近 2 条(days 最小者,断舍离钩子优先),按 days 升序
+      subTodos.sort((a, b) => a.days - b.days)
+      const subTop = subTodos.slice(0, 2)
+      todoList.push(...subTop)
+      // 按到期天数升序统一混排:逾期 N 天 → 今天 → 明天(更靠前越紧急);订阅也用 days 字段参与
       todoList.sort((a, b) => a.days - b.days)
 
       // 场景开场白用:还款日 ≤3 天(含逾期)里最紧急的一张
@@ -249,6 +291,22 @@ Page({
           bank: c.bank || '',
           amount: c.amount || 0,
           days: util.daysBetween(today, util.calcDueDate(c.repayDay, 'pending'))  // 负=逾期天数
+        }))
+
+      // T2.4 订阅摘要(账本君数据块自带):active + nextCharge 按时间升序 + top10 + 老数据 payChannel 兜底
+      const aiSubscriptions = (batch.subscriptions || [])
+        .filter((s) => s.status === 'active' && s.nextCharge)
+        .slice()
+        .sort((a, b) => (a.nextCharge || '').localeCompare(b.nextCharge || ''))
+        .slice(0, 10)
+        .map((s) => ({
+          name: s.name || '',
+          platform: s.platform || '',
+          payChannel: s.payChannel || 'unknown',  // 老数据无此字段兜底
+          amount: Number(s.amount) || 0,
+          cycle: s.cycle || 'monthly',
+          usage: s.usage || '',
+          nextCharge: s.nextCharge || ''
         }))
 
       // 多卡最优还款顺序(纯函数,无副作用)。<3 张未还时给 null,入口卡不显示
@@ -470,6 +528,7 @@ Page({
         streak,
         lastRecordGap,
         aiCards,
+        aiSubscriptions,
         boardAiSub: this._buildBoardAiSub(daily, streak, boardAiState, (user && user.payday) || 0),
         boardAiState,
         // 每日 brief 未读：账本君今天有话说（且非空态外的提醒优先场景），看过一次当天不再弹
@@ -601,6 +660,30 @@ Page({
     } catch (err) {
       wx.showToast({ title: '操作失败', icon: 'none' })
     }
+  },
+
+  /**
+   * 待办账务行点击(T1.5)
+   * - type='card':标记已还(同 markPaid 逻辑,但 bindtap 走这里避免与外层点击事件冲突)
+   * - type='sub':整条跳订阅页(无内联按钮,用户感受是「看一眼就跳走」)
+   */
+  onTodoTap(e) {
+    const item = e.currentTarget.dataset.item
+    if (!item) return
+    if (item.type === 'sub') {
+      wx.navigateTo({ url: '/pages/subscriptions/subscriptions' })
+    } else {
+      // type=card:走标记已还(原有 markPaid 行为)
+      this.markPaid({ currentTarget: { dataset: { id: item.id } } })
+    }
+  },
+
+  /**
+   * 「待办账务」区块头的二级入口：跳订阅续费管理页(T1.5)。
+   * wxml 用 catchtap 调起,与整块点击分离(虽然此处区块没有外层 bindtap,但 catchtap 写法保持统一)
+   */
+  goSubscriptions() {
+    wx.navigateTo({ url: '/pages/subscriptions/subscriptions' })
   },
 
   /* ---------- 记一笔快捷入口 ---------- */
@@ -1031,7 +1114,22 @@ Page({
       budget: (this.data.user && this.data.user.budget) || 0,  // 总预算,让 AI 能算出"剩多少能花"
       budgetOver: this.data.budgetOver || false,
       budgetNear: this.data.budgetNear || false,
-      overCategories: categories.filter((c) => c.over).map((c) => c.name)
+      overCategories: categories.filter((c) => c.over).map((c) => c.name),
+      // T2.4 订阅摘要(数据块自带):
+      // - subscriptions 已由 loadData 派生(active + nextCharge + top10 + 老数据兜底)存在 this.data.aiSubscriptions
+      // - subYearlyTotal 在此再算一遍(月×12/年×1/季×4/周×52),保证与数据块 100% 一致
+      subscriptions: Array.isArray(this.data.aiSubscriptions) ? this.data.aiSubscriptions : [],
+      subYearlyTotal: (() => {
+        let total = 0
+        for (const s of (this.data.aiSubscriptions || [])) {
+          const a = Number(s.amount) || 0
+          if (s.cycle === 'monthly') total += a * 12
+          else if (s.cycle === 'yearly') total += a
+          else if (s.cycle === 'quarterly') total += a * 4
+          else if (s.cycle === 'weekly') total += a * 52
+        }
+        return Math.round(total * 100) / 100
+      })()
     }
   },
 

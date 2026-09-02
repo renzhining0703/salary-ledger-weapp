@@ -52,6 +52,8 @@ Page({
     editAvatar: '',
     editNickname: '',
     editSaving: false,
+    // 昵称 input(type=nickname)自动聚焦标志：弹层打开后延迟聚焦，触发微信「选择微信昵称」快捷面板
+    editNickFocus: false,
     // 总预算编辑弹框
     showBudgetEdit: false,
     showBudgetEditClosing: false,
@@ -80,6 +82,9 @@ Page({
     recurCount: 0,
     showRecur: false,
     showRecurClosing: false,
+    // 订阅续费（次入口卡片用，仅展示汇总数字）
+    subCount: 0,
+    subYearlyText: '0.00',
     // 固定支出列表 scroll-view 动态高度：默认 56vh（与全局 .sheet-scroll 一致，保留滚动）；
     // openRecur 弹框入场后由 _fitRecurScrollHeight 测量并按需收敛成内容真实像素高度，
     // 避免只有 2-3 项时 sheet 被撑到 ~70% 屏高、底部留大片空白。
@@ -101,6 +106,7 @@ Page({
     this.setData({ themeIndex: this.themeIndexOf(themeUtil.getMode()) })
     this.loadUser()
     this.loadRecurring()
+    this.loadSubscriptions()
     this._loadHeatmapPreview()
   },
 
@@ -145,6 +151,39 @@ Page({
   /* ---------- 信用卡管理（从 tabBar 移入本页的入口） ---------- */
   goCards() {
     wx.navigateTo({ url: '/pages/cards/cards' })
+  },
+
+  /**
+   * 订阅续费管理入口（次入口，与「信用卡管理」并列）。
+   * 跳到独立页 pages/subscriptions/subscriptions，统一管理订阅/自动续费
+   */
+  goSubscriptions() {
+    wx.navigateTo({ url: '/pages/subscriptions/subscriptions' })
+  },
+
+  /**
+   * 加载订阅摘要（次入口卡片用，仅算 active 项 + 年化总额）
+   * 失败/集合未创建 → 默认 0 / '0.00'，不打扰
+   */
+  async loadSubscriptions() {
+    try {
+      const list = await dbApi.listSubscriptions()
+      const active = (list || []).filter((s) => s.status === 'active')
+      let yearly = 0
+      for (const s of active) {
+        const a = Number(s.amount) || 0
+        if (s.cycle === 'monthly') yearly += a * 12
+        else if (s.cycle === 'yearly') yearly += a
+        else if (s.cycle === 'quarterly') yearly += a * 4
+        else if (s.cycle === 'weekly') yearly += a * 52
+      }
+      this.setData({
+        subCount: active.length,
+        subYearlyText: util.moneyThousand(yearly)
+      })
+    } catch (err) {
+      console.warn('加载订阅摘要失败', err)
+    }
   },
 
   /** 拉取最新用户配置（force=true：手势锁在 lock 页保存后回来要立刻生效） */
@@ -409,30 +448,54 @@ Page({
    * 注意：选头像（onChooseEditAvatar）只更新 editAvatar 预览，不立即上传；
    * 点保存按钮（saveEditProfile）时才统一上传头像 + 一次性 updateMyUser。
    *
-   * 隐私授权前置检查：chooseAvatar / type=nickname 均为隐私接口，
-   * 用户未同意隐私协议时 iOS 真机上静默失效（点击无反应、无昵称快捷栏、无报错），
-   * 这里在打开弹层前主动唤起授权弹窗，拒绝时明确提示而非静默失败。
+   * 隐私授权前置检查：chooseAvatar / type=nickname 均为隐私接口。
+   *
+   * 修复记录（用户报「点不动头像/昵称区域」的根因排查）：
+   *  - v1 原版 wx.getPrivacySetting → 在 success 异步回调里调 wx.requirePrivacyAuthorize。
+   *    WeChat 文档明确要求 requirePrivacyAuthorize 必须在「用户点击上下文」同步调用，
+   *    异步回调里调用会被判为非点击上下文直接 fail（errMsg：privateAuthorize:fail ...）。
+   *  - v2 修复：把 requirePrivacyAuthorize 直接放在用户点击上下文调用，fail 也兜底打开。
+   *    但部分设备/WeChat 版本上**即便正确调用也 success/fail 都不回调**（静默挂起），
+   *    体感仍是「点不动」。
+   *  - v3 修复（本版）：在 v2 基础上加 1000ms 超时兜底 —— 不管 requirePrivacyAuthorize
+   *    走哪条路径（成功 / 失败 / 静默挂起 / API 不存在），sheet 都保证在 1 秒内开起来。
+   *    真要拦截交给 chooseAvatar / type=nickname 自身 —— 未授权它们会静默失效，
+   *    但用户能手动选本地图片 / 手动输入昵称，不至于功能完全锁死。
    */
   openEditProfile() {
-    if (wx.getPrivacySetting) {
-      wx.getPrivacySetting({
-        success: (res) => {
-          if (res.needAuthorization) {
-            wx.requirePrivacyAuthorize({
-              success: () => this._doOpenEditProfile(),
-              fail: () => {
-                wx.showToast({ title: '需同意隐私协议后才能设置头像昵称', icon: 'none', duration: 2500 })
-              }
-            })
-          } else {
-            this._doOpenEditProfile()
-          }
+    // 调试日志：用户可在 vConsole 看到是否走到这里
+    // - 没看到 → 点击事件没到 handler，WXML/CSS 问题
+    // - 看到但 sheet 没开 → setData/渲染问题
+    console.log('[my] openEditProfile tap')
+
+    let settled = false
+    const openSheet = () => {
+      if (settled) return
+      settled = true
+      this._doOpenEditProfile()
+    }
+    // 超时兜底：requirePrivacyAuthorize 静默挂起时，1 秒后强制打开
+    const timer = setTimeout(() => {
+      console.warn('[my] requirePrivacyAuthorize 超时未回调，兜底打开编辑资料')
+      openSheet()
+    }, 1000)
+    if (wx.requirePrivacyAuthorize) {
+      wx.requirePrivacyAuthorize({
+        success: () => {
+          clearTimeout(timer)
+          openSheet()
         },
-        fail: () => this._doOpenEditProfile()
+        fail: (err) => {
+          clearTimeout(timer)
+          // 已同意后再次调用 / 非点击上下文 / 设备状态不一致均会走到这里
+          console.warn('[my] requirePrivacyAuthorize fail, 兜底打开编辑资料', err)
+          openSheet()
+        }
       })
     } else {
-      // 低版本基础库无隐私接口，直接打开（由后台隐私指引兜底）
-      this._doOpenEditProfile()
+      // 低版本基础库无隐私接口，直接打开
+      clearTimeout(timer)
+      openSheet()
     }
   },
 
@@ -442,9 +505,24 @@ Page({
       editNickname: this.data.formNickname || '',
       editSaving: false
     })
+    // 昵称 input(type=nickname)聚焦时，微信会弹出「选择微信昵称」快捷面板。
+    // 仅在用户尚未设置昵称时延迟聚焦 —— 已设昵称的用户进来是为了修改，
+    // 不应被强制打断；280ms 等 sheet 入场动画（240ms）结束后再聚焦，
+    // 避免动画过程抢焦点导致聚焦不生效。
+    if (!this.data.formNickname) {
+      if (this._editFocusTimer) { clearTimeout(this._editFocusTimer); this._editFocusTimer = null }
+      this._editFocusTimer = setTimeout(() => {
+        this._editFocusTimer = null
+        this.setData({ editNickFocus: true })
+      }, 280)
+    }
   },
 
   closeEditProfile() {
+    // 关闭时清掉待执行的聚焦定时器（避免下次开弹层时旧的 setData 还在跑），
+    // 并复位聚焦标志，下次再开可重新触发聚焦
+    if (this._editFocusTimer) { clearTimeout(this._editFocusTimer); this._editFocusTimer = null }
+    this.setData({ editNickFocus: false })
     if (this._editCloseTimer) { clearTimeout(this._editCloseTimer); this._editCloseTimer = null }
     this._editCloseTimer = util.closeSheet(this, 'showEditProfile')
   },

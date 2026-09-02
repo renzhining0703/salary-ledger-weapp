@@ -291,6 +291,26 @@
   z-index: 1;
 }
 
+/* 待办账务（T1.5：标题+二级入口） */
+.todo-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8rpx;
+}
+.todo-head .card-title {
+  margin-bottom: 0;
+}
+.todo-sub-link {
+  font-size: 24rpx;
+  color: var(--gold-700, #A98436);
+  font-weight: 500;
+  padding: 4rpx 8rpx;
+}
+.todo-sub-link:active {
+  opacity: 0.6;
+}
+
 /* 今天要处理 */
 .todo-item {
   display: flex;
@@ -299,11 +319,11 @@
   background: var(--input-bg);
   border-radius: 16rpx;
   padding: 22rpx;
-  margin-bottom: 16rpx;
+  margin-top: 16rpx;
   border-left: 8rpx solid transparent;
 }
-.todo-item:last-child {
-  margin-bottom: 0;
+.todo-item:first-of-type {
+  margin-top: 0;
 }
 
 .todo-item.overdue {
@@ -327,6 +347,8 @@
 .todo-top {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 4rpx;
 }
 
 .todo-bank {
@@ -334,6 +356,12 @@
   font-weight: 700;
   margin-right: 12rpx;
   color: var(--text);
+}
+
+.todo-platform {
+  font-size: 22rpx;
+  color: var(--text-mute);
+  margin-right: 8rpx;
 }
 
 .todo-amount {
@@ -358,6 +386,14 @@
 .pay-btn {
   flex-shrink: 0;
   margin-left: 16rpx;
+}
+
+.todo-arrow {
+  flex-shrink: 0;
+  margin-left: 12rpx;
+  font-size: 36rpx;
+  color: var(--text-mute);
+  line-height: 1;
 }
 
 /* 最优还款顺序（多卡用户专属入口） */

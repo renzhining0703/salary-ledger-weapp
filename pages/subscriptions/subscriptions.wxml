@@ -1,0 +1,270 @@
+<view class="page {{themeClass}}">
+  <!-- 顶部汇总卡 -->
+  <view class="card sum-card">
+    <view class="sum-head">
+      <view class="sum-title">订阅总览</view>
+      <view class="sum-count">{{activeCount}} 项使用中 / 共 {{totalCount}} 项</view>
+    </view>
+    <view class="sum-grid">
+      <view class="sum-item">
+        <view class="sum-num">¥{{summary.monthlyText}}</view>
+        <view class="sum-label">月均支出</view>
+      </view>
+      <view class="sum-item">
+        <view class="sum-num">¥{{summary.yearlyText}}</view>
+        <view class="sum-label">年化支出</view>
+      </view>
+    </view>
+    <view wx:if="{{nextUpText}}" class="sum-next">最近扣费：{{nextUpText}}</view>
+  </view>
+
+  <!-- 年度浪费报告入口(T2.2):有订阅时显示,无订阅时隐藏在空态引导里 -->
+  <view wx:if="{{totalCount}}" class="card report-entry-card" bindtap="openSubReport">
+    <view class="report-entry-left">
+      <view class="report-entry-title">📊 年度订阅浪费报告</view>
+      <view class="report-entry-sub">{{reportYear}} 年 · 看看哪些订阅在偷偷烧钱</view>
+    </view>
+    <view class="report-entry-arrow">›</view>
+  </view>
+
+  <!-- 列表 -->
+  <view wx:if="{{subscriptions.length}}" class="card sub-list-card">
+    <view class="card-title">订阅列表</view>
+    <view wx:for="{{subscriptions}}" wx:key="_id" class="sub-row {{item.inactive ? 'inactive' : ''}}">
+      <view class="sub-info" bindtap="openForm" data-id="{{item._id}}">
+        <view class="sub-top">
+          <text class="sub-name">{{item.name}}</text>
+          <view class="tag {{item.usageTagClass}}">{{item.usageText}}</view>
+          <view wx:if="{{item.status === 'paused'}}" class="tag tag-gray">已暂停</view>
+          <view wx:elif="{{item.status === 'cancelled'}}" class="tag tag-gray">已取消</view>
+        </view>
+        <view class="sub-meta">
+          <text class="sub-platform">{{item.platform}}</text>
+          <text class="sub-dot"> · </text>
+          <text class="sub-cycle">{{item.cycleText}}</text>
+        </view>
+        <view class="sub-next">
+          <text class="sub-next-label">下次扣费</text>
+          <text class="sub-next-date">{{item.nextChargeText}}</text>
+          <text class="sub-next-gap">· 距今 {{item.daysText}}</text>
+        </view>
+      </view>
+      <view class="sub-right">
+        <view class="sub-amount">¥{{item.amountText}}</view>
+        <view class="sub-amount-sub">¥{{item.yearlyText}}/年</view>
+        <view class="sub-actions">
+          <view class="sub-act" catchtap="openForm" data-id="{{item._id}}">编辑</view>
+          <view class="sub-act sub-act-del" catchtap="confirmRemove" data-id="{{item._id}}" data-name="{{item.name}}">删除</view>
+        </view>
+      </view>
+      <!-- T2.3 取消指引:每条订阅可展开看关闭路径(渠道/平台/双兜底) -->
+      <view wx:if="{{item.cancelGuide}}" class="sub-cancel" catchtap="toggleCancelGuide" data-id="{{item._id}}">
+        <view class="sub-cancel-head">
+          <text class="sub-cancel-label">{{item.cancelGuideLabel}}</text>
+          <text class="sub-cancel-arrow {{item.cancelGuideOpen ? 'sub-cancel-arrow-open' : ''}}">›</text>
+        </view>
+        <view wx:if="{{item.cancelGuideOpen}}" class="sub-cancel-body">
+          <block wx:if="{{item.cancelGuideSource === 'fallback'}}">
+            <view wx:for="{{item.cancelGuideList}}" wx:key="*this" wx:for-item="gline" class="sub-cancel-fallback">
+              <text class="sub-cancel-fallback-tag">路径 {{index + 1}}</text>
+              <text>{{gline}}</text>
+            </view>
+          </block>
+          <view wx:else class="sub-cancel-single">{{item.cancelGuide}}</view>
+        </view>
+      </view>
+    </view>
+  </view>
+  <view wx:else class="card empty-card">
+    <view class="empty">还没有订阅，点下方添加</view>
+    <view class="empty-tip">记录后，到期前会自动提醒你；阶段 2 还会做 AI 断舍离评估</view>
+    <view class="empty-guide">不知道自己开通了哪些自动续费？打开 <text class="guide-key">微信：我 → 服务 → 钱包 → 支付设置 → 自动续费</text>，或 <text class="guide-key">支付宝：我的 → 设置 → 支付设置 → 免密支付/自动扣款</text>，把你已开通的项目照着抄进来</view>
+  </view>
+
+  <view class="add-btn-wrap">
+    <view class="btn btn-primary" bindtap="openForm">＋ 添加订阅</view>
+  </view>
+
+  <view class="page-footer">删除的订阅会进入回收站，30 天内可恢复</view>
+
+  <!-- 表单 sheet -->
+  <view wx:if="{{showForm}}" class="mask {{showFormClosing ? 'mask-out' : ''}}" bindtap="closeForm" catchtouchmove="preventTouchmove"></view>
+  <view wx:if="{{showForm}}" class="sheet {{showFormClosing ? 'sheet-out' : ''}}" catchtouchmove="preventTouchmove">
+    <view class="sheet-title">{{editingId ? '编辑订阅' : '添加订阅'}}</view>
+    <scroll-view class="sheet-scroll" style="height: {{formScrollHeight}};" scroll-y="{{true}}" enhanced="{{true}}" bounces="{{false}}">
+      <view class="form-item">
+        <text class="form-label">订阅名称</text>
+        <input class="form-input" placeholder="如：爱奇艺会员" value="{{formName}}" bindinput="onFormNameInput" maxlength="20" />
+      </view>
+
+      <view class="form-item">
+        <text class="form-label">平台（用于取消指引匹配）</text>
+        <input class="form-input" placeholder="如：爱奇艺" value="{{formPlatform}}" bindinput="onFormPlatformInput" maxlength="20" />
+      </view>
+
+      <view class="form-item">
+        <text class="form-label">扣费渠道</text>
+        <picker mode="selector" range="{{payChannelOptions}}" value="{{payChannelIndex}}" bindchange="onPayChannelChange">
+          <view class="form-input picker-val">{{payChannelOptions[payChannelIndex]}}</view>
+        </picker>
+      </view>
+
+      <view class="form-item">
+        <text class="form-label">单期金额（元）</text>
+        <input class="form-input" type="digit" placeholder="0.00" value="{{formAmount}}" bindinput="onFormAmountInput" />
+      </view>
+
+      <view class="form-item">
+        <text class="form-label">扣费周期</text>
+        <picker mode="selector" range="{{cycleOptions}}" value="{{cycleIndex}}" bindchange="onCycleChange">
+          <view class="form-input picker-val">{{cycleOptions[cycleIndex]}}</view>
+        </picker>
+      </view>
+
+      <!-- 自定义周期：选「自定义」时展开,输入每个周期含多少个月(半年包=6、季包=3、两年包=24 等) -->
+      <view wx:if="{{cycleIndex === 4}}" class="form-item">
+        <text class="form-label">每个周期含几个月</text>
+        <input
+          class="form-input"
+          type="number"
+          placeholder="如 6 = 半年包,3 = 季包"
+          value="{{customMonths}}"
+          bindinput="onCustomMonthsInput"
+          maxlength="2"
+        />
+      </view>
+
+      <!-- 4.3 节 v2:nextCharge 是主录入字段 + 唯一到期判断依据,用户对着 App 会员中心「会员有效期至」照抄,零计算
+           系统自动反推 cycleDay(standard) + firstChargeDate(年度报告用)。删除「不记得了」降级。 -->
+      <view class="form-item">
+        <text class="form-label">{{cycleIndex === 4 ? '首次到期日期' : '下次扣费日期'}}</text>
+        <picker mode="date" value="{{formNextCharge}}" start="2020-01-01" end="{{formDateEnd}}" bindchange="onFormNextChargeChange">
+          <view class="form-input picker-val">{{formNextCharge || '选择日期'}}</view>
+        </picker>
+      </view>
+
+      <view class="form-guide">
+        不知道怎么填？打开「腾讯视频/爱奇艺」App → 我 → 会员中心 → 会员有效期,把「有效期至」照着抄进来
+      </view>
+
+      <view class="form-quick-row">
+        <view class="form-quick-btn" bindtap="setNextChargeAsNewToday">今天新开</view>
+      </view>
+
+      <!-- 只读推导展示:每月扣费日 + 下次扣费(由 nextCharge + cycle 推算)
+           custom 周期不展示 cycleDay(无月内某日),文案改「下次到期」 -->
+      <view wx:if="{{formPreview.derived}}" class="form-derived">
+        <view wx:if="{{cycleIndex !== 4}}" class="form-derived-row">
+          <text class="form-derived-label">每月扣费日</text>
+          <text class="form-derived-val">{{formPreview.cycleDayText}}</text>
+        </view>
+        <view class="form-derived-row">
+          <text class="form-derived-label">{{cycleIndex === 4 ? '下次到期' : '下次扣费'}}</text>
+          <text class="form-derived-val">{{formPreview.nextCharge}}</text>
+        </view>
+      </view>
+
+      <view class="form-item">
+        <text class="form-label">使用频率（自评）</text>
+        <picker mode="selector" range="{{usageOptions}}" value="{{usageIndex}}" bindchange="onUsageChange">
+          <view class="form-input picker-val">{{usageOptions[usageIndex]}}</view>
+        </picker>
+      </view>
+
+      <view class="form-item">
+        <text class="form-label">状态</text>
+        <picker mode="selector" range="{{statusOptions}}" value="{{statusIndex}}" bindchange="onStatusChange">
+          <view class="form-input picker-val">{{statusOptions[statusIndex]}}</view>
+        </picker>
+      </view>
+
+      <view class="form-item">
+        <text class="form-label">备注（可选）</text>
+        <input class="form-input" placeholder="如：和 XX 拼的" value="{{formNote}}" bindinput="onFormNoteInput" maxlength="50" />
+      </view>
+
+      <view wx:if="{{formPreview.nextCharge}}" class="form-preview">
+        <view class="form-preview-row"><text class="form-preview-label">{{cycleIndex === 4 ? '下次到期' : '下次扣费'}}</text><text class="form-preview-val">{{formPreview.nextCharge}}</text></view>
+        <view class="form-preview-row"><text class="form-preview-label">年化金额</text><text class="form-preview-val">¥{{formPreview.yearlyText}}</text></view>
+      </view>
+    </scroll-view>
+
+    <view class="sheet-actions">
+      <view class="btn btn-primary" bindtap="saveSubscription">{{formSaving ? '保存中…' : '保存'}}</view>
+    </view>
+  </view>
+
+  <!-- 删除确认 -->
+  <view wx:if="{{showRemoveConfirm}}" class="mask {{showRemoveConfirmClosing ? 'mask-out' : ''}}" catchtouchmove="preventTouchmove"></view>
+  <view wx:if="{{showRemoveConfirm}}" class="mini-sheet {{showRemoveConfirmClosing ? 'mini-sheet-out' : ''}}" catchtouchmove="preventTouchmove">
+    <view class="mini-title">删除「{{removeTargetName}}」？</view>
+    <view class="mini-desc">会进入回收站，30 天内可在「我的 → 回收站」恢复</view>
+    <view class="mini-actions">
+      <view class="btn btn-secondary" bindtap="closeRemoveConfirm">取消</view>
+      <view class="btn btn-danger" bindtap="doRemove">删除</view>
+    </view>
+  </view>
+
+  <!-- 年度浪费报告 sheet(T2.2) -->
+  <view wx:if="{{showReport}}" class="mask {{showReportClosing ? 'mask-out' : ''}}" bindtap="closeSubReport" catchtouchmove="preventTouchmove"></view>
+  <view wx:if="{{showReport}}" class="sheet {{showReportClosing ? 'sheet-out' : ''}}" catchtouchmove="preventTouchmove">
+    <view class="sheet-title">{{reportYear}} 年度订阅报告</view>
+    <scroll-view class="sheet-scroll" style="height: {{formScrollHeight}};" scroll-y="{{true}}" enhanced="{{true}}" bounces="{{false}}">
+      <view wx:if="{{reportLoading}}" class="report-loading">
+        <view class="report-loading-text">账本君正在算账...</view>
+      </view>
+      <view wx:elif="{{reportError}}" class="report-error">
+        <view class="report-error-text">{{reportError}}</view>
+        <view class="btn btn-secondary report-retry-btn" bindtap="openSubReport">重试</view>
+      </view>
+      <view wx:elif="{{reportData}}" class="report-body">
+        <!-- 数字概览 -->
+        <view class="report-overview">
+          <view class="report-overview-row">
+            <text class="report-overview-label">年订阅总支出</text>
+            <text class="report-overview-val">¥{{reportData.yearTotalText}}</text>
+          </view>
+          <view class="report-overview-row report-overview-row-emphasis">
+            <text class="report-overview-label">其中疑似浪费</text>
+            <text class="report-overview-val report-overview-val-danger">¥{{reportData.yearWasteText}}</text>
+          </view>
+          <view wx:if="{{reportData.yearWaste > 0}}" class="report-overview-row report-overview-row-tip">
+            <text class="report-overview-tip">断舍离后,一年能省 ¥{{reportData.optimizedText}}</text>
+          </view>
+        </view>
+        <!-- AI 解读 -->
+        <view class="report-ai">
+          <view class="report-ai-title">📒 账本君说</view>
+          <view class="report-ai-body">{{reportData.text}}</view>
+          <view class="report-ai-source">
+            <text wx:if="{{reportData.source === 'llm'}}" class="report-ai-tag">AI 生成</text>
+            <text wx:elif="{{reportData.source === 'cache'}}" class="report-ai-tag report-ai-tag-cache">缓存</text>
+            <text wx:else class="report-ai-tag report-ai-tag-local">本地兜底</text>
+            <text class="report-ai-time" wx:if="{{reportData.createdAtText}}">· {{reportData.createdAtText}}</text>
+          </view>
+        </view>
+        <!-- 订阅明细 -->
+        <view wx:if="{{reportData.items && reportData.items.length}}" class="report-items">
+          <view class="report-items-title">订阅明细（按浪费金额降序）</view>
+          <view wx:for="{{reportData.items}}" wx:key="name" class="report-item">
+            <view class="report-item-top">
+              <text class="report-item-name">{{item.name}}</text>
+              <text wx:if="{{item.waste > 0}}" class="report-item-waste">浪费 ¥{{item.wasteText}}</text>
+              <text wx:else class="report-item-ok">✓ 不计入浪费</text>
+            </view>
+            <view class="report-item-meta">
+              <text>{{item.platform}}</text>
+              <text class="report-item-dot"> · </text>
+              <text>{{item.usageText}}</text>
+              <text class="report-item-dot"> · </text>
+              <text>年化 ¥{{item.yearlyText}}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+    <view class="sheet-actions">
+      <view class="btn btn-secondary" bindtap="closeSubReport">关闭</view>
+    </view>
+  </view>
+</view>

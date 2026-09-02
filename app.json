@@ -6,6 +6,7 @@
     "pages/expenses/expenses",
     "pages/statement/statement",
     "pages/calendar/calendar",
+    "pages/subscriptions/subscriptions",
     "pages/my/my",
     "pages/recycle/recycle",
     "pages/lock/lock"

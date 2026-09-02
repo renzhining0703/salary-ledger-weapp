@@ -1,0 +1,556 @@
+/* 订阅续费管理页 —— 与 my 页 recur 弹框视觉一致（卡片流 + 弹层） */
+
+.page {
+  padding-bottom: calc(48rpx + env(safe-area-inset-bottom));
+}
+
+/* ---------- 汇总卡 ---------- */
+.sum-card {
+  margin-bottom: 24rpx;
+}
+.sum-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16rpx;
+}
+.sum-title {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: var(--text);
+}
+.sum-count {
+  font-size: 22rpx;
+  color: var(--text-sub);
+}
+.sum-grid {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 8rpx;
+}
+.sum-item {
+  flex: 1;
+  text-align: center;
+  background: var(--input-bg);
+  border-radius: 16rpx;
+  padding: 22rpx 0 18rpx;
+}
+.sum-num {
+  font-size: 32rpx;
+  font-weight: 800;
+  color: var(--gold);
+  font-family: "DIN Alternate", sans-serif;
+}
+.sum-label {
+  font-size: 22rpx;
+  color: var(--text-sub);
+  margin-top: 4rpx;
+}
+.sum-next {
+  margin-top: 18rpx;
+  font-size: 23rpx;
+  color: var(--text-sub);
+  text-align: center;
+}
+
+/* ---------- 列表卡片 ---------- */
+.sub-list-card {
+  padding-bottom: 8rpx;
+}
+.card-title {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--text-sub);
+  margin-bottom: 16rpx;
+}
+.sub-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 22rpx 0;
+  border-bottom: 1rpx solid var(--border-light);
+}
+.sub-row:last-child {
+  border-bottom: none;
+}
+.sub-row.inactive .sub-name,
+.sub-row.inactive .sub-amount,
+.sub-row.inactive .sub-platform,
+.sub-row.inactive .sub-cycle,
+.sub-row.inactive .sub-next-date {
+  color: var(--text-mute);
+}
+
+.sub-info {
+  flex: 1;
+  min-width: 0;
+}
+.sub-top {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  flex-wrap: wrap;
+}
+.sub-name {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: var(--text);
+  max-width: 320rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sub-meta {
+  margin-top: 4rpx;
+  font-size: 23rpx;
+  color: var(--text-sub);
+}
+.sub-platform {
+  color: var(--text-sub);
+}
+.sub-cycle {
+  color: var(--text-sub);
+}
+.sub-next {
+  margin-top: 6rpx;
+  font-size: 22rpx;
+}
+.sub-next-label {
+  color: var(--text-mute);
+  margin-right: 4rpx;
+}
+.sub-next-date {
+  color: var(--gold-700, #A98436);
+  font-weight: 600;
+}
+.sub-next-gap {
+  color: var(--text-sub);
+  margin-left: 4rpx;
+}
+
+.sub-right {
+  flex-shrink: 0;
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8rpx;
+}
+.sub-amount {
+  font-size: 32rpx;
+  font-weight: 800;
+  color: var(--navy-700);
+  font-family: "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+}
+.sub-amount-sub {
+  font-size: 20rpx;
+  color: var(--text-mute);
+  font-family: "DIN Alternate", sans-serif;
+}
+.sub-actions {
+  display: flex;
+  gap: 12rpx;
+  margin-top: 4rpx;
+}
+.sub-act {
+  font-size: 22rpx;
+  color: var(--gold-700, #A98436);
+  padding: 4rpx 8rpx;
+}
+.sub-act:active {
+  opacity: 0.6;
+}
+.sub-act-del {
+  color: var(--danger);
+}
+
+/* ---------- 底部添加 ---------- */
+.add-btn-wrap {
+  padding: 24rpx 24rpx 0;
+}
+.add-btn-wrap .btn {
+  width: 100%;
+}
+.page-footer {
+  text-align: center;
+  font-size: 22rpx;
+  color: var(--text-mute);
+  padding: 24rpx 0 8rpx;
+}
+
+/* ---------- 下次扣费日期 + 录入引导 + 推导块（4.3 节 v2） ---------- */
+.form-guide {
+  padding: 8rpx 4rpx 16rpx;
+  font-size: 22rpx;
+  color: var(--text-sub);
+  line-height: 1.6;
+}
+.form-quick-row {
+  display: flex;
+  gap: 16rpx;
+  padding: 0 0 16rpx;
+}
+.form-quick-btn {
+  flex: 1;
+  text-align: center;
+  padding: 12rpx 0;
+  background: var(--bg-secondary, #f4f4f6);
+  border-radius: 12rpx;
+  font-size: 26rpx;
+  color: var(--text-main);
+}
+.form-quick-btn:active { opacity: 0.6; }
+.form-derived {
+  background: var(--bg-secondary, #f4f4f6);
+  border-radius: 12rpx;
+  padding: 16rpx 20rpx;
+  margin: 4rpx 0 16rpx;
+}
+.form-derived-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 26rpx;
+  line-height: 1.6;
+}
+.form-derived-label { color: var(--text-sub); }
+.form-derived-val { color: var(--text-main); font-weight: 500; }
+
+/* ---------- 空态 ---------- */
+.empty-card .empty {
+  text-align: center;
+  color: var(--text-sub);
+  font-size: 26rpx;
+  padding: 20rpx 0 8rpx;
+}
+.empty-card .empty-tip {
+  text-align: center;
+  color: var(--text-mute);
+  font-size: 22rpx;
+  margin-top: 8rpx;
+  line-height: 1.5;
+}
+.empty-card .empty-guide {
+  margin-top: 16rpx;
+  padding: 16rpx 24rpx;
+  background: var(--bg-secondary, #f4f4f6);
+  border-radius: 12rpx;
+  font-size: 22rpx;
+  color: var(--text-sub);
+  line-height: 1.7;
+}
+.empty-card .empty-guide .guide-key {
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+/* ---------- 表单预览（保存前展示年化金额） ---------- */
+.form-preview {
+  margin-top: 4rpx;
+  padding: 16rpx 20rpx;
+  background: var(--tint-gold-06);
+  border: 1rpx solid var(--tint-gold-12);
+  border-radius: 14rpx;
+}
+.form-preview-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 24rpx;
+  padding: 4rpx 0;
+}
+.form-preview-label {
+  color: var(--text-sub);
+}
+.form-preview-val {
+  color: var(--gold-700, #A98436);
+  font-weight: 600;
+  font-family: "DIN Alternate", sans-serif;
+}
+
+/* ---------- 删除确认迷你弹层 ---------- */
+.mini-sheet {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 110;
+  width: 560rpx;
+  background: var(--card);
+  border-radius: 24rpx;
+  padding: 36rpx 32rpx 28rpx;
+  animation: miniSheetIn 0.22s cubic-bezier(0.32, 0.72, 0.34, 1);
+  box-shadow: 0 16rpx 48rpx var(--shadow-strong);
+}
+.mini-sheet-out {
+  animation: miniSheetOut 0.2s ease forwards;
+}
+@keyframes miniSheetIn {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+@keyframes miniSheetOut {
+  from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  to { opacity: 0; transform: translate(-50%, -50%) scale(0.92); }
+}
+.mini-title {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: var(--text);
+  text-align: center;
+  margin-bottom: 12rpx;
+}
+.mini-desc {
+  font-size: 24rpx;
+  color: var(--text-sub);
+  text-align: center;
+  line-height: 1.55;
+  margin-bottom: 28rpx;
+}
+.mini-actions {
+  display: flex;
+  gap: 16rpx;
+}
+.mini-actions .btn {
+  flex: 1;
+}
+.btn-secondary {
+  background: var(--input-bg);
+  color: var(--text);
+}
+.btn-secondary:active {
+  background: var(--press-bg);
+}
+
+/* ---------- 年度浪费报告入口(T2.2) ---------- */
+.report-entry-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28rpx 32rpx;
+  margin-bottom: 24rpx;
+  background: linear-gradient(135deg, var(--brand, #5b8def) 0%, #7aa3f0 100%);
+  color: #fff;
+  border-radius: 16rpx;
+}
+.report-entry-card:active {
+  opacity: 0.92;
+}
+.report-entry-left {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.report-entry-title {
+  font-size: 28rpx;
+  font-weight: 700;
+  margin-bottom: 6rpx;
+}
+.report-entry-sub {
+  font-size: 22rpx;
+  opacity: 0.85;
+}
+.report-entry-arrow {
+  font-size: 40rpx;
+  font-weight: 300;
+  margin-left: 16rpx;
+}
+
+/* ---------- 报告 sheet 内部 ---------- */
+.report-loading,
+.report-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80rpx 32rpx;
+}
+.report-loading-text,
+.report-error-text {
+  font-size: 26rpx;
+  color: var(--text-sub);
+}
+.report-error-text {
+  color: var(--text);
+  margin-bottom: 24rpx;
+  text-align: center;
+}
+.report-retry-btn {
+  margin-top: 16rpx;
+  min-width: 200rpx;
+}
+
+.report-overview {
+  padding: 24rpx;
+  background: var(--bg-secondary, #f4f4f6);
+  border-radius: 16rpx;
+  margin-bottom: 24rpx;
+}
+.report-overview-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 10rpx 0;
+}
+.report-overview-row-emphasis {
+  border-top: 1rpx dashed var(--border, #e5e5e5);
+  margin-top: 8rpx;
+  padding-top: 18rpx;
+}
+.report-overview-row-tip {
+  justify-content: flex-end;
+}
+.report-overview-label {
+  font-size: 24rpx;
+  color: var(--text-sub);
+}
+.report-overview-val {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: var(--text);
+}
+.report-overview-val-danger {
+  color: #e64545;
+}
+.report-overview-tip {
+  font-size: 22rpx;
+  color: var(--text-sub);
+  margin-top: 4rpx;
+}
+
+.report-ai {
+  margin-bottom: 24rpx;
+}
+.report-ai-title {
+  font-size: 26rpx;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 12rpx;
+}
+.report-ai-body {
+  font-size: 28rpx;
+  color: var(--text);
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.report-ai-source {
+  margin-top: 12rpx;
+  display: flex;
+  align-items: center;
+  font-size: 20rpx;
+  color: var(--text-sub);
+}
+.report-ai-tag {
+  background: var(--tag-green-bg, #e6f6ec);
+  color: var(--tag-green-text, #2f8a4f);
+  padding: 2rpx 12rpx;
+  border-radius: 8rpx;
+  margin-right: 8rpx;
+}
+.report-ai-tag-cache {
+  background: #fff7e6;
+  color: #b8860b;
+}
+.report-ai-tag-local {
+  background: #f0f0f0;
+  color: #888;
+}
+.report-ai-time {
+  margin-left: 4rpx;
+}
+
+.report-items-title {
+  font-size: 24rpx;
+  font-weight: 700;
+  color: var(--text-sub);
+  margin-bottom: 12rpx;
+}
+.report-item {
+  padding: 16rpx 20rpx;
+  background: var(--bg-secondary, #f4f4f6);
+  border-radius: 12rpx;
+  margin-bottom: 12rpx;
+}
+.report-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6rpx;
+}
+.report-item-name {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--text);
+}
+.report-item-waste {
+  font-size: 22rpx;
+  font-weight: 700;
+  color: #e64545;
+}
+.report-item-ok {
+  font-size: 22rpx;
+  color: var(--text-sub);
+}
+.report-item-meta {
+  font-size: 22rpx;
+  color: var(--text-sub);
+}
+.report-item-dot {
+  margin: 0 4rpx;
+}
+
+/* ---------- T2.3 取消指引 ---------- */
+.sub-cancel {
+  margin-top: 16rpx;
+  padding-top: 16rpx;
+  border-top: 1rpx dashed var(--border, #e5e5e5);
+  width: 100%;
+}
+.sub-cancel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 22rpx;
+  color: var(--text-sub);
+}
+.sub-cancel-label {
+  flex: 1;
+}
+.sub-cancel-arrow {
+  font-size: 28rpx;
+  font-weight: 300;
+  transition: transform 0.2s ease;
+  margin-left: 8rpx;
+}
+.sub-cancel-arrow-open {
+  transform: rotate(90deg);
+}
+.sub-cancel-body {
+  margin-top: 12rpx;
+  padding: 12rpx 16rpx;
+  background: var(--bg-secondary, #f4f4f6);
+  border-radius: 12rpx;
+  font-size: 24rpx;
+  color: var(--text);
+  line-height: 1.6;
+}
+.sub-cancel-single {
+  word-break: break-word;
+}
+.sub-cancel-fallback {
+  margin-bottom: 8rpx;
+  display: flex;
+  align-items: flex-start;
+  gap: 8rpx;
+}
+.sub-cancel-fallback:last-child {
+  margin-bottom: 0;
+}
+.sub-cancel-fallback-tag {
+  flex-shrink: 0;
+  font-size: 20rpx;
+  padding: 2rpx 8rpx;
+  background: var(--brand, #5b8def);
+  color: #fff;
+  border-radius: 6rpx;
+  line-height: 1.4;
+}

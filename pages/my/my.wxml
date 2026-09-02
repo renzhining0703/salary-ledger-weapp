@@ -44,6 +44,13 @@
       </view>
       <view class="my-row-arrow">›</view>
     </view>
+    <view class="my-row" bindtap="goSubscriptions">
+      <view class="my-row-main">
+        <view class="my-row-label">订阅续费管理</view>
+        <view class="my-row-desc">{{subCount > 0 ? subCount + ' 项 · 年化 ¥' + subYearlyText : '记录订阅，到期前自动提醒'}}</view>
+      </view>
+      <view class="my-row-arrow">›</view>
+    </view>
   </view>
 
   <!-- 数据概览：消费日历（一行入口，完整月历/热力/单日明细在 pages/calendar） -->
@@ -163,10 +170,10 @@
       <view class="edit-avatar-tip">点击更换头像</view>
     </view>
 
-    <!-- 昵称 input：复用全局 .form-item / .form-input -->
+    <!-- 昵称 input：复用全局 .form-item / .form-input；focus 由 _doOpenEditProfile 延迟置 true 触发微信快捷面板 -->
     <view class="form-item edit-nick-item">
       <text class="form-label">昵称</text>
-      <input class="form-input edit-nick-input" type="nickname" placeholder="设置昵称" value="{{editNickname}}" bindinput="onEditNickInput" />
+      <input class="form-input edit-nick-input" type="nickname" placeholder="设置昵称" value="{{editNickname}}" bindinput="onEditNickInput" focus="{{editNickFocus}}" />
     </view>
 
     <view class="sheet-actions">

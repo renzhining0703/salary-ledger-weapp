@@ -78,21 +78,42 @@
     <view class="share-btn" bindtap="openShare">生成账单卡片</view>
   </view>
 
-  <!-- 今天要处理（置顶；无事项时整张卡隐藏，避免噪音） -->
+  <!-- 待办账务区块（T1.5：合并还款 + 订阅续费两类待办；无事项时整张卡隐藏） -->
   <view wx:if="{{todoList.length}}" class="card">
-    <view class="card-title">今天要处理</view>
-    <view wx:for="{{todoList}}" wx:key="id" class="todo-item {{item.level}}">
-      <view class="todo-main">
-        <view class="todo-top">
-          <text class="todo-bank">{{item.bank}}</text>
-          <view class="tag tag-red" wx:if="{{item.level === 'overdue'}}">逾期</view>
-          <view class="tag tag-red" wx:elif="{{item.level === 'today'}}">今天</view>
-          <view class="tag tag-yellow" wx:else>明天</view>
+    <view class="todo-head">
+      <view class="card-title">待办账务</view>
+      <view class="todo-sub-link" catchtap="goSubscriptions">订阅管理 ›</view>
+    </view>
+    <view wx:for="{{todoList}}" wx:key="id" class="todo-item {{item.level}}" bindtap="onTodoTap" data-item="{{item}}">
+      <!-- 信用卡待还 -->
+      <block wx:if="{{item.type === 'card'}}">
+        <view class="todo-main">
+          <view class="todo-top">
+            <text class="todo-bank">{{item.bank}}</text>
+            <view class="tag tag-red" wx:if="{{item.level === 'overdue'}}">逾期</view>
+            <view class="tag tag-red" wx:elif="{{item.level === 'today'}}">今天</view>
+            <view class="tag tag-yellow" wx:else>明天</view>
+          </view>
+          <view class="todo-amount">¥{{item.amount}}</view>
+          <view class="todo-due">{{item.dueText}}</view>
         </view>
-        <view class="todo-amount">¥{{item.amount}}</view>
-        <view class="todo-due">{{item.dueText}}</view>
-      </view>
-      <view class="btn btn-sm btn-primary pay-btn" bindtap="markPaid" data-id="{{item.id}}" wx:if="{{item.canPay}}">标记已还</view>
+        <view class="btn btn-sm btn-primary pay-btn" catchtap="markPaid" data-id="{{item.id}}" wx:if="{{item.canPay}}">标记已还</view>
+      </block>
+      <!-- 订阅续费待办（无按钮，整条 bindtap 跳订阅页） -->
+      <block wx:else>
+        <view class="todo-main">
+          <view class="todo-top">
+            <text class="todo-bank">{{item.name}}</text>
+            <text wx:if="{{item.platform}}" class="todo-platform">· {{item.platform}}</text>
+            <view class="tag tag-red" wx:if="{{item.level === 'overdue'}}">已扣</view>
+            <view class="tag tag-red" wx:elif="{{item.level === 'today'}}">今天</view>
+            <view class="tag tag-yellow" wx:else>明天</view>
+          </view>
+          <view class="todo-amount">¥{{item.amount}}</view>
+          <view class="todo-due">{{item.dueText}}<text wx:if="{{item.nextCharge}}"> · {{item.nextCharge}}</text></view>
+        </view>
+        <view class="todo-arrow">›</view>
+      </block>
     </view>
   </view>
 
