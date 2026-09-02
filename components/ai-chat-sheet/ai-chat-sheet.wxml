@@ -25,6 +25,7 @@
           <view wx:if="{{m.undoable && !m.undone}}" class="ai-chat-undo"
                 bindtap="onUndoAiRecord" data-msg-ts="{{m.ts}}" hover-class="ai-chat-undo-hover">
             <text wx:if="{{m.toolResult.type === 'salary'}}">{{m.toolResult.salary.label || '收入'}} ¥{{m.toolResult.salary.amount}} · {{m.undoCountdown}}s 内撤销</text>
+            <text wx:elif="{{m.toolResult.subscription}}">{{m.toolResult.subscription.name}} ¥{{m.toolResult.subscription.amount}}/{{m.toolResult.subscription.cycle === 'monthly' ? '月' : m.toolResult.subscription.cycle === 'yearly' ? '年' : m.toolResult.subscription.cycle === 'quarterly' ? '季' : '周'}} · {{m.undoCountdown}}s 内撤销</text>
             <text wx:elif="{{m.toolResult.expense}}">{{m.toolResult.expense.category}} ¥{{m.toolResult.expense.amount}} · {{m.undoCountdown}}s 内撤销</text>
           </view>
           <!-- 账本君提示"已记过,是否再记" → 一键确认再记(点击即以"再记"回复,云函数 force=true 写入) -->

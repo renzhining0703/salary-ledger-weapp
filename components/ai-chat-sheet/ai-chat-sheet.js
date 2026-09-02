@@ -324,7 +324,7 @@ Component({
 
     /**
      * 撤销账本君刚记的那一笔(15s 撤销窗口内的气泡)。
-     * 按 toolResult.type 路由:salary → removeSalary;expense → removeExpense。
+     * 按 toolResult.type 路由:salary → removeSalary;subscription → removeSubscription;expense → removeExpense。
      * 软删除后更新消息内容 + undone 标记,并通知宿主刷新数据。
      */
     async onUndoAiRecord(e) {
@@ -335,10 +335,12 @@ Component({
       if (idx < 0) return
       const msg = msgs[idx]
       if (!msg.toolResult || !msg.toolResult.id || msg.undone) return
-      const isSalary = msg.toolResult.type === 'salary'
+      const t = msg.toolResult.type
       try {
-        if (isSalary) {
+        if (t === 'salary') {
           await dbApi.removeSalary(msg.toolResult.id)
+        } else if (t === 'subscription') {
+          await dbApi.removeSubscription(msg.toolResult.id)
         } else {
           await dbApi.removeExpense(msg.toolResult.id)
         }

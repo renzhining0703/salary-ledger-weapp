@@ -157,6 +157,7 @@ module.exports = Behavior({
      * 撤销账本君刚记的那一笔（15s 撤销窗口内的气泡）
      * 按 toolResult.type 路由：
      * - salary → dbApi.removeSalary（写 salary collection）
+     * - subscription → dbApi.removeSubscription（写 subscriptions collection）
      * - expense → dbApi.removeExpense（写 expenses collection）
      * 软删除对应记录，更新消息内容 + undone 标记，刷新当前页数据
      */
@@ -168,10 +169,12 @@ module.exports = Behavior({
       if (idx < 0) return
       const msg = msgs[idx]
       if (!msg.toolResult || !msg.toolResult.id || msg.undone) return
-      const isSalary = msg.toolResult.type === 'salary'
+      const t = msg.toolResult.type
       try {
-        if (isSalary) {
+        if (t === 'salary') {
           await dbApi.removeSalary(msg.toolResult.id)
+        } else if (t === 'subscription') {
+          await dbApi.removeSubscription(msg.toolResult.id)
         } else {
           await dbApi.removeExpense(msg.toolResult.id)
         }

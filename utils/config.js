@@ -22,6 +22,15 @@ module.exports = {
   SALARY_REMIND_TEMPLATE_ID: '_7wp6rvHVPYC9QUj3SobEOUtXvW5l9076SUDh_4zrzg',
 
   /**
+   * 订阅消息模板 ID - 订阅到期/续费提醒（T1.3 自动续费管家）
+   * 申请方式：同 SUBSCRIBE_TEMPLATE_ID，在订阅消息后台选用「到期提醒 / 续费提醒」类一次性订阅模板
+   * 模板字段建议：thing1=订阅名称(≤20字)、date2=扣费日期、amount3=金额、thing4=提醒语
+   * 同步位置：cloudfunctions/remind/index.js SUB_TEMPLATE_ID
+   * 注：上线前必须把占位符换成真实模板 ID，否则不会推送
+   */
+  SUBSCRIPTION_REMIND_TEMPLATE_ID: '请填入订阅到期提醒模板ID',
+
+  /**
    * 示例数据开关（上线前改为 false）
    * true：首次进入自动写入近 3 个月演示数据（开发联调用）
    * false：新用户进入为空数据，从零开始记账

@@ -190,7 +190,13 @@ function serialize(stmt, recentList) {
     paydaySet: stmt.paydaySet !== false,
     payday: stmt.payday || 0,      // 发薪日(每月几号,0=未设置):AI 可直接答「发薪日是哪天」
     hasRecorded: stmt.hasRecorded !== false,
-    recentList: list
+    recentList: list,
+    // T2.4 订阅摘要(数据块自带):账本君免工具即可答「我一年订阅花多少」「有哪些订阅」类问题
+    // 字段由调用方(首页 _buildAiStmt 等)拼好,这里只透传 + 兜底
+    // - subscriptions: 订阅数组(name/platform/payChannel/amount/cycle/usage/nextCharge),最多 10 条 active
+    // - subYearlyTotal: 年化订阅总支出(¥)
+    subscriptions: Array.isArray(stmt.subscriptions) ? stmt.subscriptions : [],
+    subYearlyTotal: typeof stmt.subYearlyTotal === 'number' ? stmt.subYearlyTotal : 0
   }
 }
 

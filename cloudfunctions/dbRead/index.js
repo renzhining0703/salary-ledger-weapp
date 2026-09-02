@@ -22,7 +22,7 @@ const db = cloud.database()
 const _ = db.command
 
 const MAX = 1000 // 云端单次 get 上限
-const RECYCLE_COLS = ['salary', 'cards', 'expenses', 'recurring']
+const RECYCLE_COLS = ['salary', 'cards', 'expenses', 'recurring', 'subscriptions']
 
 /** createdAt 统一转毫秒时间戳（兼容 Date 对象 / ISO 字符串 / {$date} 包装对象） */
 const tsOf = (v) => {
@@ -80,6 +80,15 @@ async function listRecurring(openid) {
     .where({ _openid: openid, deleted: _.neq(true) })
     .limit(MAX).get()
   r.data.sort(cmpAsc) // createdAt asc
+  return r.data
+}
+
+async function listSubscriptions(openid) {
+  // 集合未创建时 dbRead 云端兜底为空（与 listRecurring 行为一致），由调用方 catch 后返回 []
+  const r = await db.collection('subscriptions')
+    .where({ _openid: openid, deleted: _.neq(true) })
+    .limit(MAX).get()
+  r.data.sort(cmpAsc) // createdAt asc；客户端 db.js 再按 nextCharge asc 排
   return r.data
 }
 
@@ -155,12 +164,13 @@ async function aggregateAllExpenses(openid) {
 async function batchHomeRead(openid, event) {
   assertMonth(event.month, 'month')
   assertMonth(event.startMonth, 'startMonth')
-  let [user, salary, cards, expenses, trend] = await Promise.all([
+  let [user, salary, cards, expenses, trend, subscriptions] = await Promise.all([
     getUser(openid),
     listSalary(openid),
     listCards(openid),
     listExpenses(openid, event.month),
-    listExpensesRange(openid, event.startMonth, event.month)
+    listExpensesRange(openid, event.startMonth, event.month),
+    listSubscriptions(openid).catch(missingAsEmpty)
   ])
   let expAgg = (user && user.expAgg) || null
   let reconciled = false
@@ -178,7 +188,7 @@ async function batchHomeRead(openid, event) {
     }
   }
   if (user) user = { ...user, expAgg }
-  return { user, salary, cards, expenses, trend, expAgg, reconciled }
+  return { user, salary, cards, expenses, trend, subscriptions, expAgg, reconciled }
 }
 
 async function listRecycle(openid) {
@@ -219,6 +229,9 @@ exports.main = async (event) => {
         break
       case 'listRecurring':
         data = await listRecurring(OPENID).catch(missingAsEmpty)
+        break
+      case 'listSubscriptions':
+        data = await listSubscriptions(OPENID).catch(missingAsEmpty)
         break
       case 'listExpenses':
         data = await listExpenses(OPENID, event.month)
