@@ -30,6 +30,9 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
 const _ = db.command
 
+// 取消指引内容库(T2.3):渠道级 + 平台级 + 双兜底,见 cancelGuides.js
+const cancelGuides = require('./cancelGuides')
+
 // Node 16 没有全局 fetch,用 undici 兜底;Node 18+ 走原生
 const fetchFn = typeof fetch === 'function' ? fetch : require('undici').fetch
 
@@ -88,10 +91,24 @@ const PROMPT_HEAD = `你是「账本君」,用户的私人财务助手。语气�
 const PROMPT_CHAT = `
 
 # 本次可用能力(查询工具)
-本轮可调用工具:query_expenses(查历史开销明细)、query_summary(查月度收支汇总)、compare_months(对比任意两个月)。
+本轮可调用工具:query_expenses(查历史开销明细)、query_summary(查月度收支汇总)、compare_months(对比任意两个月)、evaluate_subscription(订阅断舍离评估)。
 - 问本月的问题:优先直接用【本月数据】块回答,数字都够
 - 问更早月份 / 任意月份区间 / 明细排行(如"去年八月花了多少""打车最贵的十次""上半年餐饮")→ 必须调用对应工具,禁止凭【近期明细】猜(它只有本月 top20)
 - 问"两个月对比"(如"3月和4月差多少""上月比上上月多花在哪""哪个月打车多")→ 用 compare_months,它会返回收支与分类差异
+- 问"订阅值不值 / 要不要续 / 砍不砍"(如"爱奇艺还值不值""Netflix 续不续""这个订阅要不要")→ 用 evaluate_subscription 工具,云函数会查订阅事实(年化+使用频率)+ 走专用评估 prompt 生成结论
+
+# 订阅评估规则(evaluate_subscription)
+**该调的场景**:用户在问一个订阅的去留(值不值/续不续/砍不砍/月费是不是浪费);评估**必须基于用户已记录的订阅字段**,不允许 AI 自己编金额、年化或免费平替价格。
+**不调的场景**:
+- 用户没记录的订阅(云函数返回「还没记录 XX」)→ 直接告诉用户先去订阅页加一条,不要替用户编数据
+- 纯提问"我有哪些订阅" → 引导用户去订阅页看,或先加工具后再说
+- 想看年化总额 / 订阅列表 → 走订阅页/年度报告,本工具只做单条评估
+**评估硬规则**(工具内部第 2 次 LLM 会再被 prompt 约束一次,这里写给主对话用):
+1. 数字只能来自订阅事实块:amount、cycle、yearly、usage、status、nextCharge、platform、payChannel;**不得自己估算年化或编金额**
+2. **usage 是评估核心,但只能靠用户自评** — usage 缺失或自评为「很少/从不」时,必须**先问用户一句"XX 你现在大概多久用一次?"**,不要替用户判断
+3. 免费平替判断可基于订阅类型常识(视频/音乐/网盘),**不得编造具体价格** — 不确定就说"有免费平替,具体可自行查"
+4. 结论分三档:留 / 砍 / 观望;只有结论是"砍"时才给省钱数字(等于年化金额),否则只给依据
+5. 单轮只调 1 次工具,工具返回结论后基于结论回答用户;不再二次追问或扩写
 - 【近 N 个月趋势】只覆盖近 12 个月,超出范围必须用 query_summary 查
 - 工具查不到(区间无记录)就直说"没有记录",不许编
 - 单轮只能调用 1 个工具,拿到结果后基于结果回答
@@ -156,7 +173,47 @@ const PROMPT_RECORD = `
   1) 告知:"刚才/今天已记过一笔 ¥20 的 XX"
   2) 反问:"确定还要再记一笔吗?"
   3) 用户确认(要 / 再记 / 确认 / 是的 / 对)后,再次调用 addExpense 且 **force=true**,真正写入
-  禁止直接回"已记录过,不用再记"——记不记由用户决定,不是由你替用户决定`
+  禁止直接回"已记录过,不用再记"——记不记由用户决定,不是由你替用户决定
+
+# 记账工具 addSubscription(记订阅/自动续费)
+**该调的场景**:
+- 用户在描述一笔**订阅/自动续费**并希望记录。触发词:记订阅 / 订阅了 / 续费 / 包月 / 年费 / 季费 / 包周 / 会员 / 大会员 / 开通了 / 续了。
+- 例:"记个订阅 爱奇艺每月25"、"订阅了 B站大会员每年98"、"Netflix 续费每月 90"、"开了 QQ 音乐包月 15"、"Apple Music 年费 98"、"开了个 WPS 会员季费 45"、"爱奇艺到9月15号每年298"、"腾讯视频半年包88 到期2026年9月4号"。
+- 同时表达「**订阅**」+ 周期 + 金额 → 必须调用 addSubscription。哪怕表达里没「记订阅」三字,只要语义是订阅/续费,就要调。
+**不调的场景**:
+- 单次开销(单次外卖、单次打车、单次购物):走 addExpense,不要混用。订阅的关键特征是**周期性自动扣费**,单次没有周期一律走开销。
+- 提问("你订阅了多少个""有哪些订阅")、分析("该不该续这个") → 不调,纯文本回答。
+- 已经在订阅页手动录入的,用户再次提同名订阅照样**先调用工具**,是否重复由工具侧判断(防重提示后按 addExpense 同样的"告知 + 反问 + force=true 确认"流程)。
+**调用规范**:
+- name:≤20 字,直接抄订阅名(爱奇艺 / Netflix / B站大会员),不要带价格或周期。
+- amount:大于 0 的数字,最多 2 位小数。
+- cycle:monthly / yearly / quarterly / weekly / custom 五选一,用户没说周期默认 monthly。**用户说「半年包/季包/N 个月包/两年包」等非标准周期 → cycle=custom + customMonths**。
+- **customMonths(仅 cycle=custom 时必填)**:正整数 1-36。半年包=6,季包=3,两年包=24。标准周期不传。
+- **nextCharge(主录入字段)**:YYYY-MM-DD(下次扣费/到期日期)。用户说「到9月15号扣」「有效期至2026-09-15」「会员到X号」「9月15号扣」→ 解析后传此字段;用户对着 App 会员中心「会员有效期至」照抄即可,零计算。系统自动反推 cycleDay=day(nextCharge) 和 firstChargeDate=nextCharge-1 周期(年度报告用)。**cycle=custom 必须传 nextCharge**(期限包没有「每月几号」可降级)。
+- **cycleDay(降级兜底字段)**:用户明确说只记得「每月 X 号扣」时,monthly / quarterly / weekly 传 1-31 数字字符串(如 "15");yearly 传 "MM-DD"(如 "09-18")。**传了 nextCharge 就不要传 cycleDay**——cycleDay 由系统自动从 nextCharge 反推。**cycle=custom 不支持 cycleDay**。
+- usage:frequent / occasional / rare / never 四选一,用户没表达时默认 rare(确认语注明「按"很少"记了,可随时改」;阶段 2 AI 评估时再引导确认更合适)。
+- platform:可选,扣费平台(支付宝 / 微信 / App Store),用户没提不传。
+- payChannel:扣费渠道(可选,wechat / alipay / apple / inapp / unknown)。用户说"微信扣的/微信自动续费" → wechat;"支付宝扣的/支付宝自动续费/花呗自动扣款" → alipay;"苹果订阅/App Store 订的" → apple;"App 里开的" → inapp;没说或不记得 → 不传或 unknown。T2.3 取消指引匹配靠它。
+- **记完用一句确定性确认语**(工具返回 nextCharge 时会用工具生成的版本),确认语必须带:
+  1. 订阅名
+  2. 周期内金额(¥25/月、¥98/年、¥88/半年 等;custom 时用「X 个月包」)
+  3. 下次扣费/到期日期(如 2026-10-15 / 2026-12-15)
+  例:"✓ 已记订阅 爱奇艺 ¥25/月,下次扣费 2026-10-15"、"✓ 已记订阅 腾讯视频 ¥88/半年,下次到期 2026-09-15"
+  用户看到这条就够,不需要再说别的分析/建议。
+**与 addExpense/addSalary 的区别**:单次开销走 addExpense,单次收入走 addSalary;周期性扣费走 addSubscription。三者互斥,**同一笔只能调一个**。
+**字段缺失分层追问纪律(核心,防连环问毁爽快感)**:
+- nextCharge(到期日) — **阻塞式追问**:不调工具,先问「会员到哪天到期?打开 App 会员中心看一眼「有效期至」告诉我」;用户回答后下一轮从会话历史凑齐再调工具。**理由:提醒功能的命根子;默认「今天+1周期」对老订阅必错**
+- platform — **不追问**,用 name 直接填(腾讯视频 → 平台就是腾讯视频,name≈platform 占绝大多数)
+- usage — **不追问**,默认 rare,确认语注明「按"很少"记了,可随时改」(阶段 2 AI 评估时再引导确认更合适)
+- payChannel — **非阻塞顺带问**:照常录入(unknown),确认语末尾自动带一句渠道问题,用户答了下轮 update,不答也不影响(只影响取消指引精度,双路径兜底场景已经处理)
+
+**追问纪律(防烦人)**:
+1. **一次最多 1 个阻塞式问题(只允许 nextCharge)**,**禁止连环问**(不许一口气问「哪天到期?什么渠道?用得多吗?」)
+2. 用户明确说「不知道/不想说」时**立即按默认录入并如实告知,不再纠缠**
+3. 多轮 slot filling 用会话历史凑齐参数(function calling 标准玩法,finChat 现有 chatLogs 架构已支持)
+
+**数据库优先纪律(防历史幻觉,核心)**：「是否已录入过」**只能以工具执行结果/数据库现状为准,禁止以会话历史为准**——用户可能已在订阅页删除/修改过,历史里聊过"已录入"不代表现在还存在。典型场景:用户上轮录入腾讯视频 → 在订阅页删了 → 这轮说"记个腾讯视频" → AI **不得说"之前已经录入过了"**,直接调工具(执行器会查库,软删记录不参与查重,正常放行新增)。
+**conflict 处理纪律**:工具返回 conflict=true 时,**禁止编造"已记上"**(库里实际没写入)——必须原样转述冲突信息让用户二选一(改这条 / 再记一条),用户答「再记一条」→ 带 confirmed=true 重调放行;答「改」→ 引导去订阅页或说清楚改什么。`
 
 /**
  * Plan 模式附加指令 — 仅 chat 模式且问题为"怎么改进/建议/列计划"类时拼到模式段之后。
@@ -331,6 +388,77 @@ const TOOL_DEFS = [
           keyword: { type: 'string', description: '匹配关键词,包含该词的记忆会被删除;留空=清空全部' }
         },
         required: []
+      }
+    }
+  },
+  // ↓ 新增:账本君记订阅工具(T1.4 自动续费管家,mode='record' 时与 addExpense/addSalary 同时挂载)
+  //   录入口径见 4.3 节:nextCharge 是主录入字段(用户照抄)+ 唯一到期判断依据;cycleDay 降为兜底(用户只记得每月几号时用);firstChargeDate 仅年度报告用,从 nextCharge 自动反推
+  {
+    type: 'function',
+    function: {
+      name: 'addSubscription',
+      description: '当用户描述一笔订阅/自动续费并希望记录时调用。例:"记个订阅 爱奇艺每月25"、"B站大会员每年98"、"Netflix 续费每月 90"、"QQ 音乐包月 15"、"爱奇艺到9月15号每年298"、"腾讯视频半年包88 到期2026年9月4号"、"微信扣的我这个爱奇艺每月25"。**主录入字段是 nextCharge(下次扣费日期)**:用户说「到期X号/有效期至X/会员到X/9月15号扣」就解析这个——用户对着 App 会员中心「会员有效期至」照抄,零计算;若用户只说「每月 X 号扣」,降级用 cycleDay 字段。用户说「半年包/季包/N 个月包/两年包」等非标准周期时用 cycle=custom + customMonths(必填 1-36)。只在用户**明确表达记录订阅意图**(记订阅/订阅/续费/包月/年费/会员/开通/开通了)时调用;讨论/分析/提问/假设时不调用;普通一笔开销(单次外卖、单次打车)用 addExpense,不要混用。\n\n**【硬规则 — 防连环问】**:\n1. **nextCharge 缺失时禁止调用本工具**——先反问用户「会员到哪天到期?打开 App 会员中心看一眼『有效期至』告诉我」,用户回答后(下一轮从会话历史凑齐 nextCharge)再发起调用。**默认「今天+1周期」对老订阅必错**,会污染提醒功能\n2. platform 缺失不追问,用 name 直接填(name≈platform 占绝大多数,如「腾讯视频」→平台就是腾讯视频)\n3. usage 缺失不追问,默认 rare,确认语注明「使用频率按"很少"记了,可随时改」(阶段 2 AI 评估时再引导确认更合适)\n4. payChannel 缺失**非阻塞顺带问**:照常录入(unknown),确认语末尾自动带一句渠道问题,用户答了下轮 update,不答也不影响\n5. **一次最多 1 个阻塞式问题(只允许 nextCharge),禁止一口气问「哪天到期?什么渠道?用得多吗?」**;用户说「不知道/不想说」时立即按默认录入并如实告知,不再纠缠',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: '订阅名称(≤20 字),如「爱奇艺」「B站大会员」「Netflix」' },
+          amount: { type: 'number', description: '单期金额(元),正数,最多 2 位小数' },
+          cycle: {
+            type: 'string',
+            enum: ['monthly', 'yearly', 'quarterly', 'weekly', 'custom'],
+            description: '扣费周期:monthly=包月,yearly=年费,quarterly=季费,weekly=包周,custom=自定义周期(配合 customMonths,如「半年包/季包/两年包」)。用户没说周期时默认 monthly(国内订阅大多是月付)'
+          },
+          customMonths: {
+            type: 'number',
+            description: '**仅 cycle=custom 时必填**:每个周期含多少个月,正整数 1-36。半年包=6,季包=3,两年包=24。标准周期不传'
+          },
+          nextCharge: {
+            type: 'string',
+            description: '**下次扣费日期 / 首次到期日期 YYYY-MM-DD,主录入字段**。如「2026-09-15」。用户说「到期X号/有效期至X/会员到X/9月15号扣」就解析这个——用户对着 App 会员中心「会员有效期至」照抄,零计算。系统自动反推 cycleDay=day(nextCharge) 和 firstChargeDate=nextCharge-1 周期(年度报告用)'
+          },
+          cycleDay: {
+            type: 'string',
+            description: '**降级兜底字段**:用户只记得「每月 X 号扣」时才用。monthly/quarterly/weekly 传 1-31 的数字字符串(如 "15");yearly 传 "MM-DD"(如 "09-18")。**传了 nextCharge 就不要传这个**——cycleDay 由系统从 nextCharge 自动反推。**cycle=custom 不支持此字段**'
+          },
+          platform: { type: 'string', description: '可选,扣费平台/来源(≤20 字),如「支付宝」「微信」「App Store」' },
+          payChannel: {
+            type: 'string',
+            enum: ['wechat', 'alipay', 'apple', 'inapp', 'unknown'],
+            description: '扣费渠道(可选):wechat=微信自动续费(用户说"微信扣的/微信自动续费"),alipay=支付宝自动扣款(用户说"支付宝扣的/支付宝自动续费/花呗自动扣款"),apple=苹果订阅(用户说"苹果订阅/App Store 订的"),inapp=App 内开通(用户说"App 里开的"),unknown=用户没说/不清楚(默认)。T2.3 取消指引匹配用。'
+          },
+          usage: {
+            type: 'string',
+            enum: ['frequent', 'occasional', 'rare', 'never'],
+            description: '使用频率(可选):frequent=几乎每天用,occasional=一周几次,rare=偶尔用,never=办了不用。用户没表达时默认 occasional'
+          },
+          // 防重闸门:写入前查库命中 active 同名订阅时,工具返回 conflict=true 不写入;
+          // AI 转述让用户二选一,用户答「再记一条」→ 重调时传 confirmed=true 跳过查重放行。
+          // 家里确实有多账号 / 多设备同一订阅场景的逃生口。
+          confirmed: {
+            type: 'boolean',
+            description: '查重冲突后用户明确确认"要新增重复订阅"时传 true 跳过查重(如家里确实有两条爱奇艺)。默认 false。**严禁默认 true**——一旦默认会绕开防重闸门,与历史幻觉 + 重复录入风险共生。'
+          }
+        },
+        // required 升级:name + amount + nextCharge(防连环问三连 — JSON schema 层面强制)
+        // platform / usage / payChannel 都是非必填,默认兜底(见 description 与 PROMPT_RECORD 分层追问纪律)
+        required: ['name', 'amount', 'nextCharge']
+      }
+    }
+  },
+  // ↓ 新增:账本君订阅「断舍离」评估工具(T2.1 自动续费管家)
+  //   查库(按 name 模糊匹配)→ 拼订阅事实 + 年化金额 → 第 2 次 LLM 走评估专用 prompt 生成结论
+  //   评估结构:结论(留/砍/观望)→ 依据(年化 + usage)→ 免费平替(不确定就明说)→ 省钱金额
+  {
+    type: 'function',
+    function: {
+      name: 'evaluate_subscription',
+      description: '对用户的一个订阅做「断舍离」价值评估。读取该订阅的金额/周期/使用频率(usage),结合订阅名称/平台判断:使用频率是否配得上价格、有无免费平替、是否冲动订阅,给出去留建议与省钱方案。当用户问"这个订阅要不要留""爱奇艺还值不值""XX 续不续"时调用;用户没记录这个订阅时不要编数据。',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: '订阅名称或平台(用于定位用户已记录的订阅),如「爱奇艺」「Netflix」「百度网盘」' }
+        },
+        required: ['name']
       }
     }
   }
@@ -629,8 +757,8 @@ async function clearChatLogs(openid) {
  */
 async function callLLM(data, question, mode, history, openid, profile, memories, lastSession, budget) {
   const messages = buildMessages(data, question, mode, history, profile, memories, lastSession)
-  const RECORD_TOOLS = ['addExpense', 'addSalary', 'saveMemory', 'forgetMemory', 'query_expenses', 'query_summary', 'compare_months']
-  const QUERY_TOOLS = ['saveMemory', 'forgetMemory', 'query_expenses', 'query_summary', 'compare_months']
+  const RECORD_TOOLS = ['addExpense', 'addSalary', 'addSubscription', 'saveMemory', 'forgetMemory', 'query_expenses', 'query_summary', 'compare_months']
+  const QUERY_TOOLS = ['saveMemory', 'forgetMemory', 'query_expenses', 'query_summary', 'compare_months', 'evaluate_subscription']
   const tools = (mode === 'record')
     ? TOOL_DEFS.filter((t) => RECORD_TOOLS.indexOf(t.function.name) >= 0)
     : TOOL_DEFS.filter((t) => QUERY_TOOLS.indexOf(t.function.name) >= 0)
@@ -691,9 +819,17 @@ async function callLLM(data, question, mode, history, openid, profile, memories,
   if (fname === 'compare_months') {
     return handleCompareTool(call, openid, budget)
   }
+  // 订阅评估工具(T2.1):查库 + 拼订阅事实 + 第 2 次 LLM 走评估专用 prompt(用确定性事实避免编造)
+  if (fname === 'evaluate_subscription') {
+    return handleEvaluateSubscription(call, openid, budget)
+  }
   // 长期记忆工具分支(chat / record 共用):确定性确认语,不追加 LLM 调用(504003 教训)
   if (fname === 'saveMemory' || fname === 'forgetMemory') {
     return handleMemoryTool(call, fname, openid)
+  }
+  // 订阅工具分支(T1.4):写库后用确定性确认语,不追加 LLM 调用
+  if (fname === 'addSubscription') {
+    return handleSubscriptionTool(call, openid)
   }
   if (fname !== 'addExpense' && fname !== 'addSalary') {
     // 未知工具兜底:不执行,只用 content 回答
@@ -1083,6 +1219,382 @@ async function checkDuplicateSalary(openid, amount, payDate, source) {
   }
 }
 
+/* ---------------- 工具执行:addSubscription(T1.4 自动续费管家) ---------------- */
+
+/**
+ * 从当前 nextCharge 滚动到下一周期的 nextCharge(云函数侧独立实现,与前端 utils/util.js nextChargeOf 保持一致)。
+ * - 仅在订阅到期后滚动下一期时用(remind 触发器扣减后 / 用户主动「标记已续费」按钮)
+ * - 用户首次录入不走这条路径(nextCharge 是用户照抄进的主字段,不是推算的)
+ * - 语义:从 currentNextCharge 出发按 cycle 推进 1 周期;月末 dayInMonth clamp
+ * @returns {'YYYY-MM-DD'};参数非法返回 ''
+ */
+function nextChargeOf(cycle, currentNextCharge, now, customMonths) {
+  const dayInMonth = (yy, mm, dd) => Math.min(dd, new Date(yy, mm + 1, 0).getDate())
+  const fmt = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+  const raw = String(currentNextCharge == null ? '' : currentNextCharge).trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return ''
+  const parts = raw.split('-').map(Number)
+  const cy = parts[0]
+  const cm0 = parts[1] - 1
+  const cd = parts[2]
+  if (!Number.isFinite(cy) || !Number.isFinite(cm0) || !Number.isFinite(cd)) return ''
+  if (cycle === 'yearly') {
+    return fmt(new Date(cy + 1, cm0, dayInMonth(cy + 1, cm0, cd)))
+  }
+  if (cycle === 'weekly') {
+    const base = new Date(cy, cm0, cd)
+    return fmt(new Date(base.getTime() + 7 * 86400000))
+  }
+  if (cycle === 'custom') {
+    const cm = Number(customMonths)
+    if (!Number.isInteger(cm) || cm < 1 || cm > 36) return ''
+    const totalM = cy * 12 + cm0 + cm
+    const ny = Math.floor(totalM / 12)
+    const nm = totalM % 12
+    return fmt(new Date(ny, nm, dayInMonth(ny, nm, cd)))
+  }
+  const step = cycle === 'monthly' ? 1 : cycle === 'quarterly' ? 3 : 0
+  if (!step) return ''
+  const totalM = cy * 12 + cm0 + step
+  const ny = Math.floor(totalM / 12)
+  const nm = totalM % 12
+  return fmt(new Date(ny, nm, dayInMonth(ny, nm, cd)))
+}
+
+/** 从 nextCharge 反推 cycleDay：monthly/quarterly/weekly → 数字 1-31;yearly → 'MM-DD';custom → null */
+function deriveCycleDay(cycle, nextCharge) {
+  const raw = String(nextCharge == null ? '' : nextCharge).trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null
+  const parts = raw.split('-')
+  const dd = Number(parts[2])
+  if (!Number.isFinite(dd) || dd < 1 || dd > 31) return null
+  if (cycle === 'yearly') return `${parts[1]}-${parts[2]}`
+  if (cycle === 'custom') return null
+  return dd
+}
+
+/** 从 nextCharge 估算 firstChargeDate = nextCharge - 1 周期(年度报告用) */
+function deriveFirstChargeDate_(cycle, nextCharge, customMonths) {
+  const dayInMonth = (yy, mm, dd) => Math.min(dd, new Date(yy, mm + 1, 0).getDate())
+  const fmt = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+  const raw = String(nextCharge == null ? '' : nextCharge).trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return ''
+  const parts = raw.split('-').map(Number)
+  const y = parts[0]
+  const m = parts[1] - 1
+  const d = parts[2]
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return ''
+  if (cycle === 'yearly') return fmt(new Date(y - 1, m, dayInMonth(y - 1, m, d)))
+  if (cycle === 'weekly') {
+    const base = new Date(y, m, d)
+    return fmt(new Date(base.getTime() - 7 * 86400000))
+  }
+  if (cycle === 'custom') {
+    const cm = Number(customMonths)
+    if (!Number.isInteger(cm) || cm < 1 || cm > 36) return ''
+    const totalM = y * 12 + m - cm
+    const ny = Math.floor(totalM / 12)
+    const nm = totalM % 12
+    return fmt(new Date(ny, nm, dayInMonth(ny, nm, d)))
+  }
+  const step = cycle === 'monthly' ? 1 : cycle === 'quarterly' ? 3 : 0
+  if (!step) return ''
+  const totalM = y * 12 + m - step
+  const ny = Math.floor(totalM / 12)
+  const nm = totalM % 12
+  return fmt(new Date(ny, nm, dayInMonth(ny, nm, d)))
+}
+
+/** 降级路径：cycleDay → nextCharge(本月该日 / 下月该日)。用户只说每月几号扣时反填 */
+function fallbackNextCharge(cycle, cycleDay) {
+  const today = nowInChina()
+  const y = today.getFullYear()
+  const m = today.getMonth()
+  const td = today.getDate()
+  if (cycle === 'yearly') {
+    const raw = String(cycleDay == null ? '' : cycleDay)
+    if (!/^\d{2}-\d{2}$/.test(raw)) return fmtDate_(today)
+    const tm = Number(raw.slice(0, 2)) - 1
+    const tdd = Number(raw.slice(3, 5))
+    if (!Number.isFinite(tm) || !Number.isFinite(tdd)) return fmtDate_(today)
+    if (m > tm || (m === tm && td >= tdd)) {
+      return `${y + 1}-${String(tm + 1).padStart(2, '0')}-${String(tdd).padStart(2, '0')}`
+    }
+    return `${y}-${String(tm + 1).padStart(2, '0')}-${String(tdd).padStart(2, '0')}`
+  }
+  const day = Number(cycleDay)
+  if (!Number.isFinite(day) || day < 1 || day > 31) return fmtDate_(today)
+  if (td < day) {
+    return `${y}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  }
+  const nm = m + 1
+  return `${new Date(y, nm, 1).getFullYear()}-${String((nm % 12) + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+/** 取今天 'YYYY-MM-DD'(北京时区,与 nowInChina 对齐) */
+function fmtDate_(t) {
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
+}
+
+/**
+ * 查重:用户已有 active/paused 同名订阅?(7.6 节)
+ * - 只查非 deleted 记录(软删记录不参与查重——用户删了再录是正常操作,必须放行)
+ * - status === 'cancelled' 也跳过(已取消的不算有效订阅,允许同名新增)
+ * - name 匹配规则:精确相等 OR 双向包含(如「腾讯视频」vs「腾讯视频VIP」)
+ * - 大小写不敏感 + trim 后比对(用户可能大小写不规范)
+ * - 集合未创建(-502005)视为无冲突,不阻塞主流程
+ * - 命中返回 dup 文档;未命中返回 null
+ */
+async function _findDuplicateSubscription(openid, name) {
+  const key = String(name || '').trim().toLowerCase()
+  if (!key) return null
+  let rows = []
+  try {
+    const res = await db.collection('subscriptions')
+      .where({ _openid: openid, deleted: db.command.neq(true) })
+      .limit(1000)
+      .get()
+    rows = (res && res.data) || []
+  } catch (e) {
+    // 集合未创建等异常:视为无冲突,主流程放行
+    if (e && (e.errCode === -502005 || /not exist/i.test(e.errMsg || ''))) return null
+    throw e
+  }
+  for (const s of rows) {
+    if (!s || s.status === 'cancelled') continue
+    const exist = String(s.name || '').trim().toLowerCase()
+    if (!exist) continue
+    if (exist === key || exist.includes(key) || key.includes(exist)) return s
+  }
+  return null
+}
+
+/**
+ * 写一笔 subscription(账本君记订阅/自动续费)。
+ * 安全校验 + 口径归一 + 计算 nextCharge + 写库 + 校验回查。
+ * 返回 { ok: true, id, record } 或 { ok: false, reason, type: 'subscription' }
+ *
+ * 口径归一(4.3 节,nextCharge 主录入):
+ * - 传 nextCharge → cycleDay = deriveCycleDay(nextCharge);firstChargeDate = nextCharge - 1 周期(年度报告用)
+ * - 只传 cycleDay(降级路径,用户只记得每月几号)→ nextCharge = fallbackNextCharge(cycle, cycleDay);firstChargeDate = nextCharge - 1 周期
+ * - 都没传 → nextCharge 兜底用今天;firstChargeDate 同理
+ * - cycle=custom 必须传 nextCharge(不支持 cycleDay 降级,期限包无「每月几号」可降级)
+ *
+ * 防 prompt injection:
+ * - name: ≤ 20 字(后台截断兜底)
+ * - amount: number, 0 < x ≤ 1,000,000,小数 ≤ 2 位
+ * - cycle: 月/季/年/周/custom 五选一,非法值兜底 monthly
+ * - customMonths: 仅 cycle=custom 时必填,正整数 1-36(防荒谬值)
+ * - cycle=custom 必须有 nextCharge(不支持「不记得了」降级,期限包无「每月几号」可降级)
+ * - nextCharge: YYYY-MM-DD 合法格式,日期在合理范围内
+ * - cycleDay: 降级字段,yearly='MM-DD',其他 1-31 整数;非法值给默认
+ * - usage: frequent/occasional/rare/never 四选一,非法值兜底 occasional
+ * - platform: 可选,≤ 20 字
+ */
+async function executeAddSubscription(args, openid) {
+  // 0. openid 空值拦截(云函数偶发上下文丢失,写入后前端查不到)
+  if (!openid || typeof openid !== 'string') {
+    return { ok: false, reason: '用户身份异常,请重新登录后再试', type: 'subscription' }
+  }
+
+  // 1. 名称
+  const name = String(args.name || '').trim().slice(0, 20)
+  if (!name) return { ok: false, reason: '订阅名称不能为空', type: 'subscription' }
+
+  // 2. 金额
+  const amount = Number(args.amount)
+  if (!isFinite(amount) || amount <= 0 || amount > 1000000) {
+    return { ok: false, reason: '金额不合法', type: 'subscription' }
+  }
+  const amountRounded = Math.round(amount * 100) / 100
+
+  // 3. 周期(白名单防 prompt injection，非法值兜底 monthly)
+  const CYCLE_WHITELIST = ['monthly', 'yearly', 'quarterly', 'weekly', 'custom']
+  const cycle = CYCLE_WHITELIST.indexOf(args.cycle) >= 0 ? args.cycle : 'monthly'
+
+  // 3.5 customMonths 校验:仅 cycle=custom 时生效,正整数 1-36(防荒谬值)
+  //    cycle=custom 必须有 nextCharge(下面 6. 主路径会校验),不支持 cycleDay 降级
+  let customMonths = 0
+  if (cycle === 'custom') {
+    const cm = Number(args.customMonths)
+    if (!Number.isInteger(cm) || cm < 1 || cm > 36) {
+      return { ok: false, reason: '自定义周期月数需为 1-36 的整数(如半年包=6、季包=3)', type: 'subscription' }
+    }
+    customMonths = cm
+  }
+
+  // 4. 使用频率(白名单,非法值兜底 rare — 与 PROMPT_RECORD「分层追问」纪律一致:usage 不阻塞追问)
+  const USAGE_WHITELIST = ['frequent', 'occasional', 'rare', 'never']
+  const usage = USAGE_WHITELIST.indexOf(args.usage) >= 0 ? args.usage : 'rare'
+
+  // 4.5 扣费渠道(白名单,非法值兜底 unknown)—— 与 CYCLE/USAGE_WHITELIST 模式一致
+  // 老数据无此字段,前端 picker 默认「不清楚」=unknown,LLM 不传也兜底 unknown
+  const PAYCHANNEL_WHITELIST = ['wechat', 'alipay', 'apple', 'inapp', 'unknown']
+  const payChannel = PAYCHANNEL_WHITELIST.indexOf(args.payChannel) >= 0 ? args.payChannel : 'unknown'
+
+  // 5. 平台(可选,≤ 20 字)
+  const platform = String(args.platform || '').trim().slice(0, 20)
+
+  // 6. 口径归一:确定 nextCharge + cycleDay + firstChargeDate(4.3 节,nextCharge 主录入)
+  const today = nowInChina()
+  let nextCharge = ''
+  let cycleDay = ''
+  const ncRaw = String(args.nextCharge == null ? '' : args.nextCharge).trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(ncRaw)) {
+    // 校验日期在合理范围内(不晚于今天 + 1 天,不早于 5 年前)
+    const d = new Date(ncRaw + 'T00:00:00+08:00')
+    if (isFinite(d.getTime())) {
+      const tomorrow = new Date(today.getTime() + 86400000)
+      const fiveYearsAgo = new Date(today.getTime() - 5 * 365 * 86400000)
+      if (d >= fiveYearsAgo && d <= tomorrow) {
+        nextCharge = ncRaw
+      }
+    }
+  }
+  if (nextCharge) {
+    // 主路径:传了 nextCharge(主录入字段)→ cycleDay 自动反推
+    if (cycle === 'custom') {
+      // custom 无 cycleDay:留空字符串
+      cycleDay = ''
+    } else {
+      const derived = deriveCycleDay(cycle, nextCharge)
+      if (derived != null) cycleDay = String(derived)
+    }
+  } else if (cycle === 'custom') {
+    // cycle=custom 不支持 cycleDay 降级(期限包没有「每月几号」可降级),必须有 nextCharge
+    return { ok: false, reason: '自定义周期需提供下次扣费日期(不支持「不记得了」降级)', type: 'subscription' }
+  } else {
+    // 降级路径或兜底:用 cycleDay(降级)反推 nextCharge,或今天兜底
+    const cdRaw = String(args.cycleDay == null ? '' : args.cycleDay).trim()
+    if (cdRaw) {
+      let cdValid = false
+      if (cycle === 'yearly') {
+        if (/^\d{2}-\d{2}$/.test(cdRaw)) {
+          const tm = Number(cdRaw.slice(0, 2)) - 1
+          const td = Number(cdRaw.slice(3, 5))
+          if (tm >= 0 && tm <= 11 && td >= 1 && td <= 31) { cycleDay = cdRaw; cdValid = true }
+        }
+      } else {
+        const n = Number(cdRaw)
+        if (Number.isInteger(n) && n >= 1 && n <= 31) { cycleDay = String(n); cdValid = true }
+      }
+      if (!cdValid) cycleDay = ''
+    }
+    if (!cycleDay) {
+      // 兜底:cycleDay 非法或未传,用今天日期(年付 MM-DD / 其他用「日」)
+      if (cycle === 'yearly') {
+        cycleDay = `${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+      } else {
+        cycleDay = String(today.getDate())
+      }
+    }
+    // 反推 nextCharge(降级路径 / 兜底):用「本月该日 / 下月该日」
+    nextCharge = fallbackNextCharge(cycle, cycleDay)
+  }
+  if (!nextCharge) {
+    return { ok: false, reason: '下次扣费日期不合法,无法识别', type: 'subscription' }
+  }
+
+  // 7. 估算 firstChargeDate = nextCharge - 1 周期(年度报告算「已订阅几个月」用)
+  const firstChargeDate = deriveFirstChargeDate_(cycle, nextCharge, customMonths)
+
+  // 7.5 取消指引(T2.3):录入时直接命中内容库,前端订阅详情可直接读 record.cancelGuide
+  //      双兜底场景(渠道 unknown + 平台未命中)存 JSON 字符串
+  const cancelMatch = cancelGuides.matchCancelGuide({ payChannel, platform })
+  const cancelGuide = cancelMatch.source === 'fallback'
+    ? JSON.stringify(cancelMatch.guides)
+    : cancelMatch.guide
+
+  // 7.6 写入前查重闸门(防历史幻觉 + 重复录入)
+  //   - 只查非 deleted 记录(软删记录不参与,用户删了再录是正常操作必须放行)
+  //   - name 匹配规则:精确相等 OR 双向包含(如「腾讯视频」vs「腾讯视频VIP」)
+  //   - 命中 status !== 'cancelled' 的同名订阅 + confirmed !== true → 返回 conflict 不写入
+  //   - confirmed=true → 跳过查重放行(用户已确认「再记一条」)
+  //   - 设计权衡:为什么不做「全部录入先确认」?addExpense 就是「直接录+确认语」,
+  //     全量预确认毁「记个订阅爱奇艺25」爽快感;只有冲突才是数据完整性风险,值得多一轮
+  const confirmed = args.confirmed === true
+  if (!confirmed) {
+    const dup = await _findDuplicateSubscription(openid, name)
+    if (dup) {
+      // 不写入,返回 conflict 让 AI 转述;existing 给 AI 拼转述语用的关键字段
+      return {
+        ok: false,
+        conflict: true,
+        type: 'subscription',
+        reason: '已存在同名订阅',
+        existing: {
+          id: dup._id,
+          name: dup.name,
+          amount: dup.amount,
+          cycle: dup.cycle,
+          customMonths: dup.customMonths,
+          nextCharge: dup.nextCharge,
+          usage: dup.usage || '',
+          payChannel: dup.payChannel || 'unknown',
+          status: dup.status
+        }
+      }
+    }
+  }
+
+  // 8. 写库。云函数端 add 不会自动注入 _openid,必须显式带
+  let docId
+  try {
+    const r = await db.collection('subscriptions').add({
+      data: {
+        _openid: openid,
+        name,
+        platform,
+        amount: amountRounded,
+        cycle,
+        customMonths,                    // 仅 cycle=custom 时 >0,标准周期为 0
+        firstChargeDate,
+        cycleDay,
+        nextCharge,
+        usage,
+        payChannel,
+        cancelGuide,                     // T2.3 命中内容库的两级匹配结果
+        cancelGuideSource: cancelMatch.source,  // 'channel' / 'platform' / 'fallback'
+        status: 'active',
+        createdAt: db.serverDate(),
+        updatedAt: db.serverDate()
+      }
+    })
+    docId = r._id || r.id
+  } catch (e) {
+    // 集合未创建时静默告知用户,而不是崩
+    if (e && (e.errCode === -502005 || /not exist/i.test(e.errMsg || ''))) {
+      return { ok: false, reason: '订阅功能还未开通,请联系管理员创建 subscriptions 集合', type: 'subscription' }
+    }
+    throw e
+  }
+
+  // 9. 写入验证(同 addExpense,防 OPENID 异常导致写入后前端查不到)
+  if (docId) {
+    try {
+      const verify = await db.collection('subscriptions').doc(docId).get()
+      const doc = verify.data
+      if (!doc || doc._openid !== openid) {
+        try { await db.collection('subscriptions').doc(docId).remove() } catch (_) {}
+        return { ok: false, reason: '写入验证失败,请重新发送', type: 'subscription' }
+      }
+    } catch (e) {
+      console.warn('subscription 写入验证查询异常', e)
+      try { await db.collection('subscriptions').doc(docId).remove() } catch (_) {}
+      return { ok: false, reason: '写入后验证异常,请重新发送', type: 'subscription' }
+    }
+  } else {
+    return { ok: false, reason: '写入后未返回文档 ID', type: 'subscription' }
+  }
+
+  return {
+    ok: true,
+    type: 'subscription',
+    id: docId,
+    record: { name, platform, amount: amountRounded, cycle, customMonths, firstChargeDate, cycleDay, nextCharge, usage, payChannel, cancelGuide, cancelGuideSource: cancelMatch.source }
+  }
+}
+
 /**
  * 失效 finReports 集合里某月文档,下次读会重新生成(对应 utils/db.js:436-444)。
  * 云函数本地实现,避免引入 utils 路径依赖。
@@ -1235,6 +1747,262 @@ async function handleMemoryTool(call, fname, openid) {
   } catch (e) {
     console.warn('记忆工具执行失败', e)
     return { source: 'tool', text: '记忆没存上，稍后再试一次', toolResult: { added: false, memory: true, error: String(e.message || e) } }
+  }
+}
+
+/**
+ * 订阅工具分发(T1.4):写库后用确定性确认语返回，不追加 LLM 调用(504003 教训)。
+ * - toolResult.type='subscription'：前端按 type 路由到订阅页的撤销按钮
+ * - 文案严格按文档口径:✓ 已记订阅 <名称> ¥<金额>/<周期>,下次扣费 YYYY-MM-DD
+ *   周期单位映射:monthly=月、quarterly=季、yearly=年、weekly=周
+ */
+async function handleSubscriptionTool(call, openid) {
+  let args = {}
+  try {
+    args = JSON.parse(call.function.arguments || '{}')
+  } catch (e) { /* 空参数兜底,executeAddSubscription 自己会校验 */ }
+  let out
+  try {
+    out = await executeAddSubscription(args, openid)
+  } catch (e) {
+    console.warn('订阅工具执行失败', e)
+    return {
+      source: 'tool',
+      text: '订阅没存上，稍后再试一次',
+      toolResult: { added: false, type: 'subscription', error: String(e.message || e) }
+    }
+  }
+  if (!out.ok) {
+    // 防重闸门 conflict:不直接报 reason,而是转成"已存在同名订阅,改 / 再记一条?"让 AI 原样转述
+    // - 关键纪律:库里实际没写入,禁止让 AI 编造"已记上";必须把 existing 关键字段喂给 LLM
+    if (out.conflict && out.existing) {
+      const ex = out.existing
+      const unitMap = { monthly: '月', quarterly: '季', yearly: '年', weekly: '周' }
+      let exUnit
+      if (ex.cycle === 'custom') {
+        const cm = Number(ex.customMonths) || 0
+        exUnit = cm > 0 ? `${cm}个月` : '期'
+      } else {
+        exUnit = unitMap[ex.cycle] || '期'
+      }
+      const exLabel = ex.cycle === 'custom' ? '下次到期' : '下次扣费'
+      const text = `你已有一条「${ex.name}」(¥${ex.amount}/${exUnit}，${exLabel} ${ex.nextCharge})。改这条还是再记一条？`
+      return {
+        source: 'tool',
+        text,
+        toolResult: {
+          added: false,
+          type: 'subscription',
+          conflict: true,
+          existing: ex,
+          // 标记 AI 后续需要:用户说"再记一条" → 带 confirmed:true 重调;说"改" → 引导去订阅页
+          needsChoice: true
+        }
+      }
+    }
+    return {
+      source: 'tool',
+      text: out.reason || '订阅没记上',
+      toolResult: { added: false, type: 'subscription', error: out.reason }
+    }
+  }
+  const rec = out.record
+  // 周期展示:standard monthly/yearly/quarterly/weekly → 单字;custom → 「N 个月」
+  let unit
+  if (rec.cycle === 'custom') {
+    const cm = Number(rec.customMonths) || 0
+    unit = cm > 0 ? `${cm}个月` : '自定义'
+  } else {
+    const unitMap = { monthly: '月', quarterly: '季', yearly: '年', weekly: '周' }
+    unit = unitMap[rec.cycle] || '期'
+  }
+  // custom 是「期限包」:到点不一定自动扣;按文档口径确认语用「下次到期」
+  const nextLabel = rec.cycle === 'custom' ? '下次到期' : '下次扣费'
+  const platformTxt = rec.platform ? ` (${rec.platform})` : ''
+  let text = `✓ 已记订阅 ${rec.name}${platformTxt} ¥${rec.amount}/${unit}，${nextLabel} ${rec.nextCharge}`
+  // 双模板确认语(防连环问):payChannel=unknown 时末尾非阻塞顺带问一句渠道
+  // 用户答了下轮 update;不答也不影响(取消指引有双兜底兜着)
+  if ((rec.payChannel || 'unknown') === 'unknown') {
+    text += '。对了,是在微信/支付宝/苹果里开通的吗?告诉我,取消订阅时给你精确路径'
+  }
+  return {
+    source: 'tool',
+    text,
+    toolResult: {
+      added: true,
+      type: 'subscription',
+      subscription: rec,
+      id: out.id
+    }
+  }
+}
+
+/**
+ * 订阅评估工具分发(T2.1):查库 → 拼订阅事实 → 第 2 次 LLM 走评估专用 prompt。
+ * - 单轮至多 1 次工具调用:第 2 次 LLM 仅润色/扩展,不递归调工具
+ * - 工具事实(年化金额/usage 等)由拼数据阶段钉死,LLM 禁止编造数字与免费平替价格
+ * - usage 是评估核心输入,缺/rare 时 prompt 强制引导用户确认,不允许 AI 自评
+ * - 5s 查库超时 + 4.5s 评估 LLM 超时 + 80% token 熔断 → 三道安全阀同 handleQueryTool
+ */
+async function handleEvaluateSubscription(call, openid, budget) {
+  let args = {}
+  try {
+    args = JSON.parse(call.function.arguments || '{}')
+  } catch (e) {
+    return { source: 'llm', text: '评估参数解析失败,换个问法试试' }
+  }
+  const name = String(args.name || '').trim()
+  if (!name) {
+    return { source: 'llm', text: '想评估哪个订阅?告诉我订阅名,例如「爱奇艺」「Netflix」' }
+  }
+  let result
+  try {
+    const _tq = Date.now()
+    result = await withTimeout(executeEvaluateSubscription({ name }, openid), 5000)
+    console.log(`[finChat] 订阅评估查库 +${Date.now() - _tq}ms`)
+  } catch (e) {
+    console.error('订阅评估查库失败', e)
+    return { source: 'llm', text: '查订阅数据时出了点问题,稍后再试' }
+  }
+  if (!result.found) {
+    return { source: 'llm', text: `还没记录「${name}」这个订阅,先去订阅页加一条再说` }
+  }
+  const raw = formatEvaluateAnswer(result)
+  return { source: 'llm', text: await polishEvaluateAnswer(raw, openid, budget) }
+}
+
+/**
+ * 订阅评估查询:按 name 模糊匹配(大小写不敏感),取最近的 1 条 active 记录。
+ * - db.RegExp 做正则匹配,中文/英文混排都能 hit
+ * - 全量拉取后 JS 再按 name includes 兜一层(防 RegExp 转义问题)
+ * - 同名多条时按 nextCharge asc 取最近一条(优先评估「马上要扣」的)
+ */
+async function executeEvaluateSubscription(args, openid) {
+  const { name } = args
+  // 模糊匹配 name(防 RegExp 特殊字符),用 .includes 在 JS 端兜一遍
+  let docs = []
+  try {
+    const r = await db.collection('subscriptions')
+      .where({ _openid: openid, deleted: _.neq(true) })
+      .limit(100).get()
+    docs = (r.data || []).filter((d) => {
+      const n = String(d.name || '').toLowerCase()
+      const p = String(d.platform || '').toLowerCase()
+      const q = String(name || '').toLowerCase()
+      return n.includes(q) || p.includes(q)
+    })
+  } catch (e) {
+    // 集合未创建等异常 → 当作未找到
+    return { found: false }
+  }
+  if (!docs.length) return { found: false }
+  // 优先 active + 最近要扣的
+  docs.sort((a, b) => {
+    const aActive = (a.status === 'active') ? 0 : 1
+    const bActive = (b.status === 'active') ? 0 : 1
+    if (aActive !== bActive) return aActive - bActive
+    return String(a.nextCharge || '').localeCompare(String(b.nextCharge || ''))
+  })
+  const sub = docs[0]
+  const amount = Number(sub.amount) || 0
+  const cycle = sub.cycle || 'monthly'
+  const unitMap = { monthly: 12, quarterly: 4, yearly: 1, weekly: 52 }
+  const yearly = Math.round(amount * (unitMap[cycle] || 12) * 100) / 100
+  const channelLabels = { wechat: '微信自动续费', alipay: '支付宝自动扣款', apple: '苹果订阅', inapp: 'App内开通', unknown: '不清楚' }
+  // 取消指引(T2.3):实时按 payChannel + platform 命中,DB 里可能没存或版本旧,以实时匹配为准
+  const cancelMatch = cancelGuides.matchCancelGuide({ payChannel: sub.payChannel, platform: sub.platform })
+  return {
+    found: true,
+    name: sub.name,
+    platform: sub.platform || '',
+    payChannel: sub.payChannel || 'unknown',
+    payChannelLabel: channelLabels[sub.payChannel || 'unknown'] || '不清楚',
+    amount,
+    cycle,
+    cycleDay: sub.cycleDay || '',
+    nextCharge: sub.nextCharge || '',
+    usage: sub.usage || '',
+    status: sub.status || 'active',
+    yearly,
+    // T2.3 取消指引(双兜底时为数组)
+    cancelGuide: cancelMatch.source === 'fallback' ? cancelMatch.guides : cancelMatch.guide,
+    cancelGuideSource: cancelMatch.source  // 'channel' | 'platform' | 'fallback'
+  }
+}
+
+/**
+ * 评估事实块(确定性,数字 100% 来自工具结果):
+ * - 「数据块」+「usage 缺失/rare 提示」分两段,LLM 必须基于事实 + 提示生成结论
+ * - 不在这里塞建议/评价,留给第 2 次 LLM 评估专用 prompt 发挥
+ */
+function formatEvaluateAnswer(r) {
+  const usageText = {
+    frequent: '常用(几乎每天)',
+    occasional: '偶尔(一周几次)',
+    rare: '很少(偶尔用)',
+    never: '从不(办了不用)'
+  }[r.usage] || '(未自评)'
+
+  const lines = [
+    `【订阅评估事实】`,
+    `名称:${r.name}`,
+    `平台:${r.platform || '-'}`,
+    `扣费渠道:${r.payChannelLabel}`,
+    `金额:¥${r.amount.toFixed(2)}/${r.cycle === 'monthly' ? '月' : r.cycle === 'quarterly' ? '季' : r.cycle === 'yearly' ? '年' : '周'}`,
+    `年化金额:¥${r.yearly.toFixed(2)}`,
+    `下次扣费:${r.nextCharge || '-'}`,
+    `使用频率自评:${usageText}`,
+    `状态:${r.status === 'active' ? '使用中' : r.status === 'paused' ? '已暂停' : '已取消'}`
+  ]
+
+  // usage 缺失或 rare → 强制引导用户确认(不让 AI 自己拍)
+  if (!r.usage || r.usage === 'rare' || r.usage === 'never') {
+    lines.push(`【评估前置】usage 未自评或自评为很少/从不 — 在结论前必须先问用户一句:"${r.name} 你现在大概多久用一次?",不要替用户判断使用频率`)
+  }
+
+  // 取消指引(T2.3):已按 payChannel × platform 命中,直接拼到事实块让 LLM 一并告诉用户
+  // 双兜底时给出微信 + 支付宝两条通用路径
+  if (r.cancelGuide) {
+    if (r.cancelGuideSource === 'fallback' && Array.isArray(r.cancelGuide)) {
+      lines.push(`【取消指引】未识别到具体扣费渠道和平台,你可任选一条通用路径尝试:`)
+      r.cancelGuide.forEach((g, i) => lines.push(`  路径 ${i + 1}:${g}`))
+    } else if (r.cancelGuideSource === 'channel') {
+      lines.push(`【取消指引】按扣费渠道匹配:${r.cancelGuide}`)
+    } else if (r.cancelGuideSource === 'platform') {
+      lines.push(`【取消指引】按平台匹配:${r.cancelGuide}`)
+    }
+  }
+  return lines.join('\n')
+}
+
+/**
+ * 评估专用 LLM(独立于 polishAnswer 的"只润色不添意"约束):
+ * - 输入是事实块 + 可选 usage 提示
+ * - 输出:结论 → 依据 → 免费平替 → 省钱数字
+ * - 硬规则:数字必须来自事实块;不得编免费平替价格;usage 缺失/rare 强制前置问
+ * - 同 polishAnswer 安全阀:4.5s 超时 + 80% token 熔断,失败回退事实块本身
+ */
+async function polishEvaluateAnswer(rawText, openid, budget) {
+  if (!rawText || rawText.length < 8) return rawText
+  if (budget && budget.limit && budget.used > budget.limit * 0.8) return rawText
+  try {
+    const json = await callDeepSeek({
+      messages: [
+        {
+          role: 'system',
+          content: '你是账本君的「订阅断舍离」评估助手。基于给定的订阅事实,给用户一段口语化、可执行的评估。结构硬约束:1)【结论】留/砍/观望,一句话;2)【依据】年化金额 + 使用频率,数字必须原样照抄事实块,不得加减不得编;3)【免费平替】有就提(基于订阅类型常识),**不得编造具体价格**,不确定就说"有免费平替,具体可自行查";4)【省钱数字】仅当结论是砍时给出,等于年化金额,直接用事实块里的数字。硬规则:不得新增事实块里没有的信息;不加 Markdown 标题、不用列表、不用表情;总长度不超过 220 字;事实块里若含【评估前置】(usage 缺失/rare/never),结论前必须先用一句话问用户使用频率,不要替用户拍板。直接输出评估文字,不要任何前后缀解释。'
+        },
+        { role: 'user', content: rawText }
+      ],
+      temperature: 0.5,
+      timeoutMs: 4500,
+      maxTokens: 320
+    }, openid)
+    const text = (json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content || '').trim()
+    if (text && text.length >= 8) return text
+    return rawText
+  } catch (e) {
+    return rawText
   }
 }
 
@@ -2024,6 +2792,26 @@ function formatDataForLLM(d, catAvg) {
   // 本月待记固定支出(前端与记一笔快捷条同源逻辑):AI 主动询问「记了吗」,防漏记/重复记账
   if (Array.isArray(d.pendingRecurring) && d.pendingRecurring.length) {
     lines.push(`本月待记固定支出：${d.pendingRecurring.slice(0, 6).join('、')}——可主动询问用户是否已付`)
+  }
+
+  // T2.4 订阅摘要(数据块自带):让 AI 免工具即可答「我一年订阅花多少」「有哪些订阅」类问题
+  // - subscriptions 数组已由 aiChat.serialize 透传(最多 10 条 active,按 nextCharge 升序)
+  // - subYearlyTotal 是前端算好的年化合计(月×12/年×1/季×4/周×52),AI 必须原样引用,不得自行换算
+  if (Array.isArray(d.subscriptions) && d.subscriptions.length) {
+    const CHANNEL_LABELS = { wechat: '微信', alipay: '支付宝', apple: '苹果', inapp: 'App内', unknown: '渠道未知' }
+    const USAGE_LABELS = { frequent: '常用', occasional: '偶尔', rare: '很少', never: '从不' }
+    const unitMap = { monthly: '月', quarterly: '季', yearly: '年', weekly: '周' }
+    const items = d.subscriptions.map((s) => {
+      const channel = CHANNEL_LABELS[s.payChannel || 'unknown'] || CHANNEL_LABELS.unknown
+      const usage = USAGE_LABELS[s.usage] || ''
+      const unit = unitMap[s.cycle] || '期'
+      const usageTxt = usage ? `,${usage}` : ''
+      return `${s.name || '-'}(${s.platform || '-'}/${channel}) ¥${(s.amount || 0).toFixed(0)}/${unit} 下次 ${s.nextCharge || '-'}${usageTxt}`
+    })
+    const yearlyTxt = (typeof d.subYearlyTotal === 'number' && d.subYearlyTotal > 0)
+      ? `,年化 ¥${d.subYearlyTotal.toFixed(0)}`
+      : ''
+    lines.push(`订阅：共 ${d.subscriptions.length} 项${yearlyTxt};明细:${items.join('；')}`)
   }
 
   // 未还卡逐卡实时明细(前端透传;画像里的信用卡是 24h 缓存汇总,还完款当天会滞后)
