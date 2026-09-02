@@ -173,7 +173,9 @@ console.log('\n== 8.7 分层追问:required + description + PROMPT_RECORD + 双�
 // 1) schema required 升级
 ok(/required:\s*\[\s*'name',\s*'amount',\s*'nextCharge'\s*\]/.test(code), 'addSubscription required = [name, amount, nextCharge](JSON schema 层面强制)')
 // 2) description 硬规则
-ok(/name:\s*'addSubscription'[\s\S]*?nextCharge\s*缺失时禁止调用本工具/.test(code), 'description 含「nextCharge 缺失时禁止调用本工具」硬规则')
+ok(/name:\s*'addSubscription'[\s\S]*?nextCharge\s*与\s*cycleDay\s*必须传其一/.test(code), 'description 含「nextCharge 与 cycleDay 必须传其一」硬规则')
+ok(/name:\s*'addSubscription'[\s\S]*?禁止\s*LLM\s*用.*?今天\s*\+\s*1\s*周期.*?默写/.test(code), 'description 禁止 LLM 用「今天+1周期」默写默认值')
+ok(/name:\s*'addSubscription'[\s\S]*?半年包[\s\S]*?custom[\s\S]*?customMonths/.test(code), 'description 标注「半年包 → cycle=custom + customMonths」(防 LLM 误识别 weekly)')
 ok(/name:\s*'addSubscription'[\s\S]*?反问用户|先反问|打开\s*App\s*会员中心|有效期至/.test(code), 'description 给出 nextCharge 阻塞追问的具体话术(去 App 会员中心照抄有效期)')
 ok(/name:\s*'addSubscription'[\s\S]*?platform\s*缺失不追问/.test(code), 'description 硬规则:platform 缺失不追问(name 兜底)')
 ok(/name:\s*'addSubscription'[\s\S]*?usage\s*缺失不追问/.test(code), 'description 硬规则:usage 缺失不追问(默认 rare)')
@@ -194,6 +196,9 @@ ok(/executeAddSubscription[\s\S]*?USAGE_WHITELIST[\s\S]*?usage\s*=\s*USAGE_WHITE
 // 6) 双确认语模板
 ok(/handleSubscriptionTool[\s\S]*?payChannel[\s\S]*?unknown[\s\S]*?微信[\s\S]*?支付宝[\s\S]*?苹果/.test(code), 'handleSubscriptionTool 双确认语:payChannel=unknown 时末尾追问渠道')
 ok(/handleSubscriptionTool[\s\S]*?payChannel[\s\S]*?unknown[\s\S]*?取消订阅时[\s\S]*?精确路径/.test(code), '双确认语文案:「取消订阅时给你精确路径」')
+// 7) executeAddSubscription 硬拦截:nextCharge + cycleDay 都缺时工具侧直接 return reason
+ok(/executeAddSubscription[\s\S]*?cycleDay[\s\S]*?return[\s\S]*?ok:\s*false[\s\S]*?有效期至|会员中心|请先告诉账本君/.test(code), 'executeAddSubscription 硬拦截:nextCharge + cycleDay 都缺时 return reason,反问用户去 App 会员中心')
+ok(/executeAddSubscription[\s\S]*?禁止\s*LLM\s*用.*?今天|默写默认值|今天\s*\+\s*1\s*周期\s*偷偷兜底/.test(code), 'executeAddSubscription 注释说明禁止 LLM 用「今天」偷偷兜底')
 
 /* ---------------- 9. 语法检查 ---------------- */
 console.log('\n== 9. 语法检查 ==')

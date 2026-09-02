@@ -397,7 +397,7 @@ const TOOL_DEFS = [
     type: 'function',
     function: {
       name: 'addSubscription',
-      description: '当用户描述一笔订阅/自动续费并希望记录时调用。例:"记个订阅 爱奇艺每月25"、"B站大会员每年98"、"Netflix 续费每月 90"、"QQ 音乐包月 15"、"爱奇艺到9月15号每年298"、"腾讯视频半年包88 到期2026年9月4号"、"微信扣的我这个爱奇艺每月25"。**主录入字段是 nextCharge(下次扣费日期)**:用户说「到期X号/有效期至X/会员到X/9月15号扣」就解析这个——用户对着 App 会员中心「会员有效期至」照抄,零计算;若用户只说「每月 X 号扣」,降级用 cycleDay 字段。用户说「半年包/季包/N 个月包/两年包」等非标准周期时用 cycle=custom + customMonths(必填 1-36)。只在用户**明确表达记录订阅意图**(记订阅/订阅/续费/包月/年费/会员/开通/开通了)时调用;讨论/分析/提问/假设时不调用;普通一笔开销(单次外卖、单次打车)用 addExpense,不要混用。\n\n**【硬规则 — 防连环问】**:\n1. **nextCharge 缺失时禁止调用本工具**——先反问用户「会员到哪天到期?打开 App 会员中心看一眼『有效期至』告诉我」,用户回答后(下一轮从会话历史凑齐 nextCharge)再发起调用。**默认「今天+1周期」对老订阅必错**,会污染提醒功能\n2. platform 缺失不追问,用 name 直接填(name≈platform 占绝大多数,如「腾讯视频」→平台就是腾讯视频)\n3. usage 缺失不追问,默认 rare,确认语注明「使用频率按"很少"记了,可随时改」(阶段 2 AI 评估时再引导确认更合适)\n4. payChannel 缺失**非阻塞顺带问**:照常录入(unknown),确认语末尾自动带一句渠道问题,用户答了下轮 update,不答也不影响\n5. **一次最多 1 个阻塞式问题(只允许 nextCharge),禁止一口气问「哪天到期?什么渠道?用得多吗?」**;用户说「不知道/不想说」时立即按默认录入并如实告知,不再纠缠',
+      description: '当用户描述一笔订阅/自动续费并希望记录时调用。例:"记个订阅 爱奇艺每月25"、"B站大会员每年98"、"Netflix 续费每月 90"、"QQ 音乐包月 15"、"爱奇艺到9月15号每年298"、"腾讯视频半年包88 到期2026年9月4号"、"微信扣的我这个爱奇艺每月25"。**主录入字段是 nextCharge(下次扣费日期)**:用户说「到期X号/有效期至X/会员到X/9月15号扣」就解析这个——用户对着 App 会员中心「会员有效期至」照抄,零计算;若用户只说「每月 X 号扣」,降级用 cycleDay 字段。**关键映射**:**「半年包/季包/N 个月包/两年包」→ cycle=custom + customMonths=6/3/24**(绝不要错选 weekly!)只在用户**明确表达记录订阅意图**(记订阅/订阅/续费/包月/年费/会员/开通/开通了)时调用;讨论/分析/提问/假设时不调用;普通一笔开销(单次外卖、单次打车)用 addExpense,不要混用。\n\n**【硬规则 — 防连环问】**:\n1. **nextCharge 与 cycleDay 必须传其一,否则禁止调用**——nextCharge 缺失且 cycleDay 也缺失时,工具会直接报错。**禁止 LLM 用「今天 + 1 周期」默写默认值**!对老订阅必错,会污染提醒功能。请先反问用户「会员到哪天到期?打开 App 会员中心看一眼『会员有效期至』告诉我日期」,用户回答后再发起调用。\n2. platform 缺失不追问,用 name 直接填(name≈platform 占绝大多数,如「腾讯视频」→平台就是腾讯视频)\n3. usage 缺失不追问,默认 rare,确认语注明「使用频率按"很少"记了,可随时改」(阶段 2 AI 评估时再引导确认更合适)\n4. payChannel 缺失**非阻塞顺带问**:照常录入(unknown),确认语末尾自动带一句渠道问题,用户答了下轮 update,不答也不影响\n5. **一次最多 1 个阻塞式问题(只允许 nextCharge),禁止一口气问「哪天到期?什么渠道?用得多吗?」**;用户说「不知道/不想说」时立即按默认录入并如实告知,不再纠缠',
       parameters: {
         type: 'object',
         properties: {
@@ -406,7 +406,7 @@ const TOOL_DEFS = [
           cycle: {
             type: 'string',
             enum: ['monthly', 'yearly', 'quarterly', 'weekly', 'custom'],
-            description: '扣费周期:monthly=包月,yearly=年费,quarterly=季费,weekly=包周,custom=自定义周期(配合 customMonths,如「半年包/季包/两年包」)。用户没说周期时默认 monthly(国内订阅大多是月付)'
+            description: '扣费周期。**关键:用户说「半年包 / 季包 / N 个月包 / 两年包 / 一年半包」等任何非标准周期 → 必须 cycle=custom + customMonths=6/3/24...**(绝不是 weekly!)。monthly=包月,yearly=年费,quarterly=季费,weekly=包周(只有用户明确说「每周/包周」才用),custom=自定义周期。用户没说周期时默认 monthly'
           },
           customMonths: {
             type: 'number',
@@ -1464,7 +1464,7 @@ async function executeAddSubscription(args, openid) {
     // cycle=custom 不支持 cycleDay 降级(期限包没有「每月几号」可降级),必须有 nextCharge
     return { ok: false, reason: '自定义周期需提供下次扣费日期(不支持「不记得了」降级)', type: 'subscription' }
   } else {
-    // 降级路径或兜底:用 cycleDay(降级)反推 nextCharge,或今天兜底
+    // 降级路径:用户只记得「每月几号扣」才走这里
     const cdRaw = String(args.cycleDay == null ? '' : args.cycleDay).trim()
     if (cdRaw) {
       let cdValid = false
@@ -1480,15 +1480,16 @@ async function executeAddSubscription(args, openid) {
       }
       if (!cdValid) cycleDay = ''
     }
+    // 硬拦截:nextCharge + cycleDay 都缺 → 必须反问用户,不允许 LLM 用「今天」偷偷兜底
+    // (LLM 历史教训:曾用「今天 + 1 周期」默写,污染老订阅的提醒日期)
     if (!cycleDay) {
-      // 兜底:cycleDay 非法或未传,用今天日期(年付 MM-DD / 其他用「日」)
-      if (cycle === 'yearly') {
-        cycleDay = `${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
-      } else {
-        cycleDay = String(today.getDate())
+      return {
+        ok: false,
+        reason: '请先告诉账本君订阅到期日 / 每月扣费日:打开 App 会员中心看一眼「会员有效期至」,把日期(YYYY-MM-DD)告诉账本君;若只记得「每月 X 号扣」也直接说',
+        type: 'subscription'
       }
     }
-    // 反推 nextCharge(降级路径 / 兜底):用「本月该日 / 下月该日」
+    // 反推 nextCharge(降级路径):用「本月该日 / 下月该日」
     nextCharge = fallbackNextCharge(cycle, cycleDay)
   }
   if (!nextCharge) {
