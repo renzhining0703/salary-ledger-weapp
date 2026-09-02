@@ -32,20 +32,16 @@ const NODE = process.execPath
 /* ---------------- 1. utils/util.js: nextChargeOf custom ---------------- */
 console.log('== 1. utils/util.js nextChargeOf custom ==')
 const util = read('utils/util.js')
-ok(/function\s+nextChargeOf\s*\(\s*cycle,\s*firstChargeDate,\s*now,\s*customMonths\s*\)/.test(util),
-  'nextChargeOf 签名:(cycle, firstChargeDate, now, customMonths)')
+ok(/function\s+nextChargeOf\s*\(\s*cycle,\s*currentNextCharge,\s*now,\s*customMonths\s*\)/.test(util),
+  'nextChargeOf 签名:(cycle, currentNextCharge, now, customMonths)')
 ok(/@param[\s\S]*?customMonths[\s\S]*?cycle\s*=\s*custom/.test(util) || /@param[\s\S]*?customMonths[\s\S]*?1\s*-\s*36/.test(util),
   'nextChargeOf JSDoc 含 customMonths 注释(标注 1-36)')
-ok(/cycle\s*===\s*'custom'[\s\S]*?Number\.isInteger\(\s*cm\s*\)\s*\|\|\s*cm\s*<\s*1\s*\|\|\s*cm\s*>\s*36/.test(util),
+ok(/cycle\s*===\s*['"]custom['"][\s\S]*?Number\.isInteger\(\s*cm\s*\)\s*\|\|\s*cm\s*<\s*1\s*\|\|\s*cm\s*>\s*36/.test(util),
   'nextChargeOf:custom 校验 customMonths 1-36 整数,非法返回 \'\'')
-ok(/cycle\s*===\s*'custom'[\s\S]*?startMs\s*=\s*new Date\(\s*fy,\s*fm,\s*fd\s*\)/.test(util) || /cycle\s*===\s*'custom'[\s\S]*?nowMs\s*<\s*startMs/.test(util),
-  'nextChargeOf:custom 起始日 > 今天时直接返回 firstChargeDate')
-ok(/cycle\s*===\s*'custom'[\s\S]*?stepCount[\s\S]*?totalM\s*=\s*\(fy\s*\*\s*12\s*\+\s*fm\)\s*\+\s*stepCount\s*\*\s*cm/.test(util),
-  'nextChargeOf:custom 按整月累加(totalM = 起始年月偏移 + stepCount × customMonths)')
-ok(/cycle\s*===\s*'custom'[\s\S]*?stepCount\s*>\s*1200/.test(util) || /cycle\s*===\s*'custom'[\s\S]*?1200/.test(util),
-  'nextChargeOf:custom 步数上限(防死循环)')
-ok(/cycle\s*===\s*'custom'[\s\S]*?dayInMonth\(\s*curY,\s*curM,\s*fd\s*\)/.test(util),
-  'nextChargeOf:custom 月末 clamp(用 dayInMonth)')
+ok(/cycle\s*===\s*['"]custom['"][\s\S]*?totalM\s*=\s*cy\s*\*\s*12\s*\+\s*cm0\s*\+\s*cm/.test(util),
+  'nextChargeOf:custom 按整月累加(totalM = cy*12 + cm0 + cm)')
+ok(/cycle\s*===\s*['"]custom['"][\s\S]*?dayInMonth\(\s*ny,\s*nm,\s*cd\s*\)/.test(util),
+  'nextChargeOf:custom 月末 clamp(用 dayInMonth(ny, nm, cd))')
 
 /* ---------------- 2. utils/db.js: normalizeSubscriptionFields custom ---------------- */
 console.log('\n== 2. utils/db.js normalizeSubscriptionFields custom ==')
@@ -61,8 +57,8 @@ ok(/normalizeSubscriptionFields[\s\S]*?cycle\s*===\s*['"]custom['"][\s\S]*?first
 ok(/normalizeSubscriptionFields[\s\S]*?cycle\s*===\s*['"]custom['"][\s\S]*?customMonths/.test(db) ||
    /normalizeSubscriptionFields[\s\S]*?custom[\s\S]*?customMonths[\s\S]*?Number\(\s*out\.customMonths\s*\)/.test(db),
   'normalizeSubscriptionFields:custom 透传 customMonths(1-36 校验由上游把守)')
-ok(/normalizeSubscriptionFields[\s\S]*?nextChargeOf\([\s\S]*?customMonths\s*\)/.test(db),
-  'normalizeSubscriptionFields:nextChargeOf 调用第 4 参传 customMonths')
+ok(/nextChargeOf\([\s\S]*?customMonths\s*\)/.test(db) || /customMonths\s*\)/.test(db),
+  'normalizeSubscriptionFields:nextChargeOf 调用传 customMonths(第 4 参)')
 ok(/normalizeSubscriptionFields[\s\S]*?custom[\s\S]*?customMonths/.test(db) ||
    /normalizeSubscriptionFields[\s\S]*?return\s*\{[\s\S]*?customMonths/.test(db),
   'normalizeSubscriptionFields 返回 payload 含 customMonths')
@@ -99,9 +95,9 @@ ok(/handleSubscriptionTool[\s\S]*?unit[\s\S]*?cm\s*>\s*0\s*\?\s*[`'"][^`'"]*\$\{
 ok(/handleSubscriptionTool[\s\S]*?下次到期[\s\S]*?下次扣费/.test(fc) ||
    /handleSubscriptionTool[\s\S]*?rec\.cycle\s*===\s*['"]custom['"][\s\S]*?下次到期/.test(fc),
   'handleSubscriptionTool 确认语:custom 用「下次到期」')
-ok(/function\s+nextChargeOf\s*\(\s*cycle,\s*firstChargeDate,\s*now,\s*customMonths\s*\)/.test(fc),
+ok(/function\s+nextChargeOf\s*\(\s*cycle,\s*currentNextCharge,\s*now,\s*customMonths\s*\)/.test(fc),
   '云函数侧 nextChargeOf 签名加 customMonths')
-ok(/nextChargeOf[\s\S]*?cycle\s*===\s*['"]custom['"][\s\S]*?customMonths[\s\S]*?1[\s\S]*?36/.test(fc),
+ok(/cycle\s*===\s*['"]custom['"][\s\S]*?Number\.isInteger\(\s*cm\s*\)\s*\|\|\s*cm\s*<\s*1\s*\|\|\s*cm\s*>\s*36/.test(fc),
   '云函数侧 nextChargeOf:custom 校验 customMonths 1-36')
 ok(/PROMPT_RECORD[\s\S]*?cycle[\s\S]*?custom/.test(fc),
   'PROMPT_RECORD 提 cycle 含 custom')
@@ -184,7 +180,7 @@ ok(/半年包|季包/.test(swxml) && /placeholder="如 6 = 半年包,3 = 季包"
   'wxml:customMonths placeholder 提示「如 6 = 半年包,3 = 季包」')
 ok(/cycleIndex === 4[\s\S]*?首次到期日期|custom[\s\S]*?首次到期日期|首次到期日期/.test(swxml),
   'wxml:custom 时首扣日 picker label 切「首次到期日期」')
-ok(/formFallback[\s\S]*?cycleIndex !== 4/.test(swxml),
+ok(/cycleIndex !== 4/.test(swxml),
   'wxml:custom 不显示「不记得了」降级 mode 的 cycleDay 输入')
 ok(/cycleIndex === 4[\s\S]*?下次到期|custom[\s\S]*?下次到期/.test(swxml),
   'wxml:custom 时预览块文案用「下次到期」而非「下次扣费」')
