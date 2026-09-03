@@ -106,10 +106,10 @@ ok(/formatEvaluateAnswer[\s\S]*?cancelGuideSource\s*===\s*'fallback'[\s\S]*?r\.c
 /* ---------------- 10. 订阅页 WXML 取消指引 ---------------- */
 console.log('\n== 10. pages/subscriptions/subscriptions.wxml ==')
 const swxml = read('pages/subscriptions/subscriptions.wxml')
-ok(/class="sub-cancel"/.test(swxml), 'wxml .sub-cancel 展开区')
+ok(/class="sub-cancel/.test(swxml), 'wxml .sub-cancel 展开区(v2 改主提示卡样式)')
 ok(/catchtap="toggleCancelGuide"/.test(swxml), 'wxml 展开 catchtap=toggleCancelGuide')
 ok(/data-id="{{item\._id}}"/.test(swxml), 'wxml data-id 传订阅 _id')
-ok(/\{\{item\.cancelGuideLabel\}\}/.test(swxml), 'wxml 用 cancelGuideLabel 字段')
+ok(/想取消.{0,5}关闭指引|收起取消指引/.test(swxml) || /\{\{item\.cancelGuideLabel\}\}/.test(swxml), 'wxml 用 cancelGuideLabel 或新硬引导文案')
 ok(/\{\{item\.cancelGuideOpen\}\}/.test(swxml), 'wxml 用 cancelGuideOpen 控制展开状态')
 ok(/\{\{item\.cancelGuideSource[^}]*\}\}/.test(swxml) && /cancelGuideSource === 'fallback'/.test(swxml), 'wxml 三分支渲染:channel/platform/fallback')
 ok(/cancelGuideList/.test(swxml), 'wxml 双兜底场景迭代 cancelGuideList')

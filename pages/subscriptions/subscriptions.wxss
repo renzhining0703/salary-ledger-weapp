@@ -498,39 +498,53 @@
   margin: 0 4rpx;
 }
 
-/* ---------- T2.3 取消指引 ---------- */
+/* ---------- T2.3 取消指引 (v2 可见性改造) ---------- */
+/* v1 是次要灰色 22rpx + 虚线分割,首屏完全看不到;
+   v2 改成暖色提示卡(渐变背景 + 主色边框 + 主色文字 + 26rpx + 圆角),引导用户点击 */
 .sub-cancel {
   margin-top: 16rpx;
-  padding-top: 16rpx;
-  border-top: 1rpx dashed var(--border, #e5e5e5);
+  padding: 14rpx 18rpx;
+  background: linear-gradient(135deg, #fff8e1 0%, #fff3cd 100%);
+  border: 1rpx solid #ffe082;
+  border-radius: 12rpx;
   width: 100%;
+  box-sizing: border-box;
+}
+.sub-cancel-open {
+  background: linear-gradient(135deg, #fffbf0 0%, #fff8e1 100%);
 }
 .sub-cancel-head {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  font-size: 22rpx;
-  color: var(--text-sub);
+  gap: 8rpx;
+  font-size: 26rpx;
+  color: var(--text-main, #1f2329);
+  font-weight: 500;
+}
+.sub-cancel-icon {
+  font-size: 24rpx;
+  line-height: 1;
 }
 .sub-cancel-label {
   flex: 1;
 }
 .sub-cancel-arrow {
   font-size: 28rpx;
-  font-weight: 300;
+  font-weight: 400;
+  color: var(--text-sub, #6b7280);
   transition: transform 0.2s ease;
-  margin-left: 8rpx;
 }
 .sub-cancel-arrow-open {
   transform: rotate(90deg);
+  color: var(--text-main, #1f2329);
 }
 .sub-cancel-body {
   margin-top: 12rpx;
   padding: 12rpx 16rpx;
-  background: var(--bg-secondary, #f4f4f6);
-  border-radius: 12rpx;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 8rpx;
   font-size: 24rpx;
-  color: var(--text);
+  color: var(--text, #1f2329);
   line-height: 1.6;
 }
 .sub-cancel-single {

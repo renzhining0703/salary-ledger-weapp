@@ -57,10 +57,11 @@
           <view class="sub-act sub-act-del" catchtap="confirmRemove" data-id="{{item._id}}" data-name="{{item.name}}">删除</view>
         </view>
       </view>
-      <!-- T2.3 取消指引:每条订阅可展开看关闭路径(渠道/平台/双兜底) -->
-      <view wx:if="{{item.cancelGuide}}" class="sub-cancel" catchtap="toggleCancelGuide" data-id="{{item._id}}">
+      <!-- T2.3 取消指引:暖色提示卡,首屏可见引导点击(v2 可见性改造:v1 灰色22rpx 易忽略 → v2 主色26rpx + 渐变背景) -->
+      <view wx:if="{{item.cancelGuide}}" class="sub-cancel {{item.cancelGuideOpen ? 'sub-cancel-open' : ''}}" catchtap="toggleCancelGuide" data-id="{{item._id}}">
         <view class="sub-cancel-head">
-          <text class="sub-cancel-label">{{item.cancelGuideLabel}}</text>
+          <text class="sub-cancel-icon">📍</text>
+          <text class="sub-cancel-label">{{item.cancelGuideOpen ? '收起取消指引' : '想取消？看关闭指引'}}</text>
           <text class="sub-cancel-arrow {{item.cancelGuideOpen ? 'sub-cancel-arrow-open' : ''}}">›</text>
         </view>
         <view wx:if="{{item.cancelGuideOpen}}" class="sub-cancel-body">

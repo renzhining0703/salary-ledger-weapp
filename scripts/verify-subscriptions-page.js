@@ -160,6 +160,18 @@ ok(/\.mini-sheet/.test(swxss) && /miniSheetIn/.test(swxss), '删除确认迷你�
 ok(/\.empty-card\s+\.empty-guide/.test(swxss), 'wxss 含 .empty-guide 样式')
 ok(/\.empty-card\s+\.empty-guide\s+\.guide-key/.test(swxss), 'wxss 含 .guide-key 高亮样式(路径文字加粗)')
 
+/* ---------------- 5.5 T2.3 取消指引 v2 可见性 ---------------- */
+ok(/sub-cancel\s+\{\{.*?sub-cancel-open/.test(swxml) || /class="sub-cancel\s*\{\{/.test(swxml), 'wxml:sub-cancel 容器绑 sub-cancel-open 状态类(展开态区分样式)')
+ok(/sub-cancel-icon/.test(swxml), 'wxml:sub-cancel-head 含 icon(可见性提示)')
+ok(/想取消\?看关闭指引|想取消\?看/.test(swxml) || /想取消.{0,5}关闭指引/.test(swxml), 'wxml:默认文案改为「想取消?看关闭指引」引导点击')
+ok(/收起取消指引/.test(swxml), 'wxml:展开后文案切「收起取消指引」')
+ok(/\.sub-cancel\s*\{[\s\S]*?linear-gradient/.test(swxss), 'wxss:.sub-cancel 暖色渐变背景(可见性提升)')
+ok(/\.sub-cancel[\s\S]*?#ffe082|#fff8e1|#fff3cd/.test(swxss), 'wxss:.sub-cancel 暖色配色 #ffe082/#fff8e1/#fff3cd')
+ok(/\.sub-cancel-head\s*\{[\s\S]*?font-size:\s*26rpx/.test(swxss), 'wxss:.sub-cancel-head 字号 22rpx → 26rpx(主文本级别)')
+ok(/\.sub-cancel-head\s*\{[\s\S]*?color:\s*var\(--text-main/.test(swxss), 'wxss:.sub-cancel-head 颜色 text-sub → text-main(高对比)')
+ok(/\.sub-cancel-icon/.test(swxss), 'wxss:.sub-cancel-icon 样式(图标占位)')
+ok(/\.sub-cancel-open/.test(swxss), 'wxss:.sub-cancel-open 展开态区分样式')
+
 /* ---------------- 6. pages/my 次入口 ---------------- */
 console.log('\n== 6. pages/my 次入口 ==')
 const myWxml = read('pages/my/my.wxml')
