@@ -50,8 +50,8 @@ ok(/const\s+API_KEY\s*=\s*process\.env\.LLM_API_KEY/.test(sr), '读环境变量 
 ok(/const\s+BASE_URL\s*=\s*process\.env\.LLM_BASE_URL\s*\|\|\s*'https:\/\/api\.deepseek\.com'/.test(sr), 'BASE_URL 兜底 https://api.deepseek.com')
 ok(/const\s+MODEL\s*=\s*process\.env\.LLM_MODEL\s*\|\|\s*'deepseek-chat'/.test(sr), 'MODEL 兜底 deepseek-chat')
 
-// 缓存版本 CACHE_VER = 1
-ok(/const\s+CACHE_VER\s*=\s*1\b/.test(sr), 'CACHE_VER = 1(首个稳定版)')
+// 缓存版本 CACHE_VER(v1→v2 升级:换「年度体检报告」语气 + 禁词表 + 取消指引)
+ok(/const\s+CACHE_VER\s*=\s*2\b/.test(sr), 'CACHE_VER = 2(年度体检报告 v2 升级版)')
 
 // 年化系数 12/4/1/52
 ok(/monthly:\s*12,\s*quarterly:\s*4,\s*yearly:\s*1,\s*weekly:\s*52/.test(sr), 'CYCLE_UNIT 年化系数:monthly×12/quarterly×4/yearly×1/weekly×52')
@@ -59,10 +59,18 @@ ok(/monthly:\s*12,\s*quarterly:\s*4,\s*yearly:\s*1,\s*weekly:\s*52/.test(sr), 'C
 // 浪费系数 never/rare/occasional/frequent
 ok(/never:\s*1(?:\.0)?,\s*rare:\s*0\.5,\s*occasional:\s*0,\s*frequent:\s*0/.test(sr), 'WASTE_FACTOR:never=1.0 / rare=0.5 / occasional=0 / frequent=0')
 
-// SYSTEM_PROMPT 关键约束
-ok(/SYSTEM_PROMPT\s*=/.test(sr) && /断舍离|年度|浪费/.test(sr), 'SYSTEM_PROMPT 包含断舍离/年度/浪费语境')
-ok(/数字必须来自数据块/.test(sr) || /每一个数字必须来自数据块/.test(sr), 'SYSTEM_PROMPT 硬约束:数字必须来自数据块')
-ok(/不得|不许.*编造|不许给.*价格|不得给出平替名/.test(sr), 'SYSTEM_PROMPT 硬约束:不得编平替价格')
+// CACHE_VER 缓存版本控制(prompt 变更必须 +1)
+ok(/const\s+CACHE_VER\s*=\s*\d+/.test(sr), 'CACHE_VER 常量定义存在(版本控制)')
+
+// SYSTEM_PROMPT 关键约束(年度体检报告 v2 口径)
+ok(/SYSTEM_PROMPT\s*=/.test(sr) && /年度体检报告/.test(sr), 'SYSTEM_PROMPT 标题改为「年度体检报告」')
+ok(/数字必须来自数据块|每个数字必须来自数据块/.test(sr), 'SYSTEM_PROMPT 硬约束:数字必须来自数据块')
+ok(/禁止.*冲动.*智商税.*剁手.*白扔/.test(sr), 'SYSTEM_PROMPT 禁词表:冲动/智商税/剁手/白扔')
+ok(/最多\s*3\s*条|不堆砌全部订阅/.test(sr), 'SYSTEM_PROMPT:最多讲 3 条订阅')
+ok(/取消指引/.test(sr) && /关闭路径/.test(sr), 'SYSTEM_PROMPT 取消指引:点取消指引看关闭路径')
+ok(/年化.*折算|按当前周期折算|不是今年已经扣掉的钱/.test(sr), 'SYSTEM_PROMPT 口径:年化折算 vs 已扣')
+ok(/不能替用户下|不能替用户.*?结论|不能替用户下.*根本不用/.test(sr), 'SYSTEM_PROMPT:不能替用户下「根本不用」结论')
+ok(/疑问句引导/.test(sr), 'SYSTEM_PROMPT:用疑问句引导,不替用户决定')
 
 // 入口校验 year 格式(在 JS 源码里出现的 regex literal 是 \d{4},即字符序列 \\d{4})
 ok(/\\d\{4\}/.test(sr), 'year 校验正则 /\\d{4}/(必须是 4 位数字)')
